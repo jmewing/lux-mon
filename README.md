@@ -64,8 +64,11 @@ The API server runs on port 8080 and provides:
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/status` | Latest snapshot with all decoded registers |
+| `GET /api/summary` | Compact key metrics for dashboards |
 | `GET /api/history?minutes=60&fields=soc,battery_voltage` | Time-series data |
 | `GET /api/health` | Health check |
+
+The API also serves a built-in web dashboard at `/` with real-time gauges, power flow, historic charts, battery details, and energy totals.
 
 ```bash
 # Start the API server
@@ -75,6 +78,27 @@ python -m api
 sudo cp api/lux-api.service /etc/systemd/system/
 sudo systemctl enable --now lux-api.service
 ```
+
+### Apache Reverse Proxy (Optional)
+
+To serve the dashboard on port 80 instead of 8080, configure Apache as a reverse proxy:
+
+```bash
+# Enable proxy modules
+sudo a2enmod proxy proxy_http
+
+# Add to your default virtual host (/etc/apache2/sites-available/000-default.conf):
+#
+# <VirtualHost *:80>
+#     ProxyPreserveHost On
+#     ProxyPass / http://127.0.0.1:8080/
+#     ProxyPassReverse / http://127.0.0.1:8080/
+# </VirtualHost>
+
+sudo systemctl reload apache2
+```
+
+Now the dashboard is available at `http://<your-server>/` and the API at `http://<your-server>/api/status`, etc.
 
 ## Environment Variables
 
@@ -141,5 +165,5 @@ This project is actively running on a Raspberry Pi 4 ("alpha") monitoring an EG4
 | Collector | ✅ Live | 111 registers decoded, ~2 snapshots/min to MariaDB |
 | REST API | ✅ Live | FastAPI on port 8080, systemd-managed |
 | Storage | ✅ Live | MariaDB, ~11K snapshots/day, ~110MB/day |
-| Dashboard | 🔜 Planned | Grafana or simple web UI |
+| Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals |
 | Active polling | 🔜 Planned | Fallback for non-broadcasting dongles |
