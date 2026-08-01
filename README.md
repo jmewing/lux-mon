@@ -7,10 +7,10 @@ Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi don
 ## What It Does
 
 - **Passively listens** to your inverter's WiFi dongle — zero bus contention
-- **Stores** time-series data in **MariaDB/MySQL** by default; InfluxDB is optional
-- **Visualizes** with Grafana dashboards
-- **Exposes** a REST API for scripting, morning briefings, Home Assistant, etc.
+- **Stores** time-series data in **MariaDB/MySQL** (InfluxDB optional)
+- **Exposes** a **REST API** for scripting, morning briefings, Home Assistant, etc.
 - **Runs anywhere** — your Mac, a Raspberry Pi, a Docker container
+- **Dashboard-ready** — works with Grafana or any SQL-based visualization tool
 
 ## Architecture
 
@@ -29,13 +29,12 @@ EG4/LuxPower Inverter → WiFi Dongle (TCP :8000)
                     │  MariaDB/MySQL  │  (or InfluxDB)
                     └────────┬────────┘
                              │
-                    ┌────────┴────────┐
-                    │                 │
-                    ▼                 ▼
-            ┌──────────┐     ┌──────────────┐
-            │ Grafana  │     │  REST API     │
-            │ Dashboard│     │  (FastAPI)    │
-            └──────────┘     └──────────────┘
+                             ▼
+                    ┌─────────────────┐
+                    │   REST API       │  FastAPI
+                    │  /api/status     │  port 8080
+                    │  /api/history    │
+                    └─────────────────┘
 ```
 
 ## Quick Start
@@ -58,6 +57,25 @@ python -m collector
 
 For a config-file approach you can also copy `config.example.py` to `config.py` and pass `--config config.py`.
 
+## REST API
+
+The API server runs on port 8080 and provides:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/status` | Latest snapshot with all decoded registers |
+| `GET /api/history?minutes=60&fields=soc,battery_voltage` | Time-series data |
+| `GET /api/health` | Health check |
+
+```bash
+# Start the API server
+python -m api
+
+# Or install the systemd service (Linux)
+sudo cp api/lux-api.service /etc/systemd/system/
+sudo systemctl enable --now lux-api.service
+```
+
 ## Environment Variables
 
 All config can be set via env vars:
@@ -73,18 +91,20 @@ All config can be set via env vars:
 | `LUX_MARIADB_USER` | `luxmon` | MariaDB user |
 | `LUX_MARIADB_PASSWORD` | `luxmon` | MariaDB password |
 | `LUX_MARIADB_DATABASE` | `luxmon` | MariaDB database |
-| `LUX_INFLUX_URL` | `http://localhost:8086` | InfluxDB URL |
-| `LUX_INFLUX_TOKEN` | `lux-mon-token` | InfluxDB token |
-| `LUX_INFLUX_ORG` | `luxmon` | InfluxDB org |
-| `LUX_INFLUX_BUCKET` | `solar` | InfluxDB bucket |
+| `LUX_INFLUX_URL` | `http://localhost:8086` | InfluxDB URL (optional) |
+| `LUX_INFLUX_TOKEN` | `lux-mon-token` | InfluxDB token (optional) |
+| `LUX_INFLUX_ORG` | `luxmon` | InfluxDB org (optional) |
+| `LUX_INFLUX_BUCKET` | `solar` | InfluxDB bucket (optional) |
 | `LUX_REPLAY_FILE` | — | Replay a capture instead of live TCP |
+| `LUX_API_HOST` | `0.0.0.0` | API bind address |
+| `LUX_API_PORT` | `8080` | API port |
 
 ## Development Replay
 
 Test parsing/storage without a live inverter:
 
 ```bash
-python -m collector --replay tests/capture_raw.bin --interval 5
+python -m collector --replay <your-capture-file> --interval 5
 ```
 
 ## Protocol
