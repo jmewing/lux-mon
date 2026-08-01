@@ -96,7 +96,8 @@ class PassiveCollector:
         self._sock: Optional[socket.socket] = None
         self._writer: Optional[Thread] = None
         self._reader: Optional[Thread] = None
-        self._latest_raw: dict[int, int] = {}
+        self._latest_input_raw: dict[int, int] = {}
+        self._latest_hold_raw: dict[int, int] = {}
         self._latest_decoded: dict = {}
         self._last_write = 0.0
         self._on_snapshot = on_snapshot
@@ -251,29 +252,46 @@ class PassiveCollector:
 
     def _handle_frame(self, frame: LuxFrame) -> None:
         """Process a parsed frame."""
-        if frame.is_translated_data:
-            if frame.is_read:
-                # Merge register values into the latest snapshot
-                for i, raw_val in enumerate(frame.values):
-                    reg_num = frame.register + i
-                    self._latest_raw[reg_num] = raw_val
+        if not frame.is_translated_data:
+            return
 
-                if frame.values:
-                    logger.debug("Frame: %s %d regs starting @ %d",
-                                 "ReadInput" if frame.is_read_input else "ReadHold",
-                                 len(frame.values), frame.register)
+        if frame.is_read_input:
+            # Merge input register values into the latest snapshot.
+            for i, raw_val in enumerate(frame.values):
+                reg_num = frame.register + i
+                self._latest_input_raw[reg_num] = raw_val
+
+            if frame.values:
+                logger.debug("Input frame: %d regs starting @ %d",
+                             len(frame.values), frame.register)
+
+        elif frame.is_read_hold:
+            # Holding registers are configuration/settings; keep them separate
+            # for future use but do not decode them as live telemetry.
+            for i, raw_val in enumerate(frame.values):
+                reg_num = frame.register + i
+                self._latest_hold_raw[reg_num] = raw_val
+
+            if frame.values:
+                logger.debug("Hold frame: %d regs starting @ %d",
+                             len(frame.values), frame.register)
 
     def _writer_loop(self) -> None:
         """Periodic writer thread: decode registers and write to storage."""
         writer = self._create_writer()
 
         while not self._stop.wait(self.cfg.write_interval):
-            if not self._latest_raw:
-                logger.warning("No data received yet, skipping write")
+            if not self._latest_input_raw:
+                logger.warning("No input data received yet, skipping write")
+                continue
+
+            # Require at least the core battery voltage register before writing
+            if 4 not in self._latest_input_raw:
+                logger.warning("Input register batch incomplete, skipping write")
                 continue
 
             try:
-                self._latest_decoded = decode_registers(self._latest_raw)
+                self._latest_decoded = decode_registers(self._latest_input_raw)
                 self._write_snapshot(writer, self._latest_decoded)
                 self._last_write = time.time()
 
@@ -401,7 +419,7 @@ class PassiveCollector:
         import pymysql
 
         prefix = self.cfg.mariadb_table_prefix
-        raw_json = json.dumps(self._latest_raw)
+        raw_json = json.dumps(self._latest_input_raw)
 
         with conn.cursor() as cur:
             cur.execute(
@@ -426,7 +444,8 @@ class PassiveCollector:
         return {
             "connected": self._sock is not None,
             "frames_received": self._frames_received,
-            "registers_known": len(self._latest_raw),
+            "input_registers_known": len(self._latest_input_raw),
+            "hold_registers_known": len(self._latest_hold_raw),
             "last_write": self._last_write,
             "uptime": time.time() - self._connect_time if self._connect_time else 0,
         }
