@@ -173,6 +173,7 @@ def api_summary():
             # Key metrics for dashboard
             keys = [
                 "soc", "soh", "battery_voltage", "battery_current",
+                "battery_capacity",
                 "charge_power", "discharge_power",
                 "charge_energy_today", "discharge_energy_today",
                 "pv1_power", "pv2_power", "pv1_energy_today", "pv2_energy_today",
@@ -185,6 +186,12 @@ def api_summary():
                 "cell_temp_min", "cell_temp_max",
                 "runtime", "cycle_count",
                 "state", "fault_code", "warning_code",
+                "bms_status_0", "bms_status_1", "bms_status_2",
+                "bms_status_3", "bms_status_4", "bms_status_5",
+                "bms_status_6", "bms_status_7", "bms_status_8", "bms_status_9",
+                "bms_charge_voltage_ref", "bms_discharge_cut_voltage",
+                "bms_max_charge_current", "bms_max_discharge_current",
+                "bms_fault_code", "bms_warning_code",
             ]
             placeholders = ",".join(["%s"] * len(keys))
             cur.execute(
