@@ -67,6 +67,9 @@ The API server runs on port 8080 and provides:
 | `GET /api/summary` | Compact key metrics for dashboards |
 | `GET /api/history?minutes=60&fields=soc,battery_voltage` | Time-series data |
 | `GET /api/health` | Health check |
+| `GET /api/settings` | All runtime settings |
+| `GET /api/settings/{name}` | Single setting value |
+| `PUT /api/settings/{name}` | Update a setting (JSON body: `{"value": "..."}`) |
 
 The API also serves a built-in web dashboard at `/` with real-time gauges, power flow, historic charts, battery details, and energy totals.
 
@@ -174,6 +177,42 @@ The collector uses a pluggable writer pattern. To add support for PostgreSQL, SQ
 3. Add the corresponding `LUX_POSTGRES_*` env vars to `config_from_env()`
 
 See `_create_mariadb_writer()` and `_write_mariadb()` for the pattern to follow.
+
+## Runtime Settings
+
+Settings are stored in the `lux_settings` MariaDB table (auto-created) and read live by the API and dashboard — no config files, no restarts. Change any value with a single API call and the dashboard picks it up on the next refresh.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `pv_max_power` | `8000` | Max PV input power (W) — sets gauge ceiling |
+| `battery_capacity` | `200` | Battery capacity (Ah) — sets battery gauge ceiling |
+| `grid_max_power` | `6000` | Max grid pass-through (W) |
+| `eps_max_power` | `6000` | Max EPS output (W) |
+| `charge_max_power` | `5000` | Max charge power (W) |
+| `discharge_max_power` | `5000` | Max discharge power (W) |
+| `dashboard_refresh_sec` | `5` | Dashboard auto-refresh interval |
+| `chart_default_hours` | `6` | Default chart time range |
+| `write_interval_sec` | `5` | Seconds between MariaDB writes |
+
+```bash
+# Read all settings
+curl http://your-server/api/settings
+
+# Read one setting
+curl http://your-server/api/settings/pv_max_power
+
+# Update a setting
+curl -X PUT http://your-server/api/settings/pv_max_power \
+  -H 'Content-Type: application/json' \
+  -d '{"value": "10000"}'
+```
+
+Settings can also be edited directly in MariaDB:
+
+```sql
+INSERT INTO lux_settings (name, value) VALUES ('pv_max_power', '10000')
+  ON DUPLICATE KEY UPDATE value = '10000';
+```
 
 ## Development Replay
 
