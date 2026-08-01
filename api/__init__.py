@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import pymysql
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 TZ = ZoneInfo("America/Chicago")
-from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="lux-mon API", version="0.1.0")
 
@@ -150,3 +152,62 @@ def api_history(
 def api_health():
     """Health check."""
     return {"status": "ok"}
+
+
+@app.get("/api/summary")
+def api_summary():
+    """Compact summary for dashboards — key metrics only."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, ts FROM lux_snapshots ORDER BY id DESC LIMIT 1"
+            )
+            snap = cur.fetchone()
+            if not snap:
+                raise HTTPException(404, "No snapshots found")
+
+            snap_id, snap_ts = snap
+            ts_aware = snap_ts.replace(tzinfo=TZ) if snap_ts.tzinfo is None else snap_ts
+
+            # Key metrics for dashboard
+            keys = [
+                "soc", "soh", "battery_voltage", "battery_current",
+                "charge_power", "discharge_power",
+                "charge_energy_today", "discharge_energy_today",
+                "pv1_power", "pv2_power", "pv1_energy_today", "pv2_energy_today",
+                "grid_import_power", "grid_export_power",
+                "grid_import_today", "grid_export_today",
+                "grid_voltage_r", "grid_frequency",
+                "eps_power", "eps_energy_today",
+                "temp_inverter", "temp_battery", "temp_radiator_1",
+                "cell_voltage_min", "cell_voltage_max",
+                "cell_temp_min", "cell_temp_max",
+                "runtime", "cycle_count",
+                "state", "fault_code", "warning_code",
+            ]
+            placeholders = ",".join(["%s"] * len(keys))
+            cur.execute(
+                f"SELECT name, value, unit FROM lux_registers "
+                f"WHERE snapshot_id = %s AND name IN ({placeholders})",
+                [snap_id] + keys,
+            )
+            registers = {
+                row[0]: {"value": float(row[1]), "unit": row[2]}
+                for row in cur.fetchall()
+            }
+
+        return {
+            "snapshot_id": snap_id,
+            "timestamp": ts_aware.isoformat(),
+            "registers": registers,
+        }
+    finally:
+        conn.close()
+
+
+# ── static dashboard ────────────────────────────────────────────────────────
+
+STATIC_DIR = Path(__file__).parent / "static"
+STATIC_DIR.mkdir(exist_ok=True)
+app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
