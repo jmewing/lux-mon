@@ -284,6 +284,8 @@
 // ── State ──
 let currentTab = 'overview';
 let chartRange = 360;
+let gaugesBuilt = false;
+let battGaugesBuilt = false;
 const charts = {};
 const API = '';
 
@@ -298,8 +300,7 @@ function fmtkWh(k) { return Number(k).toFixed(1)+' kWh'; }
 function fmtDays(s) { return Math.round(Number(s)/86400)+' days'; }
 function fmtHz(h) { return Number(h).toFixed(1)+' Hz'; }
 
-// ── Radial Gauge (SVG arc) ──
-// R=40, stroke=6, center=50,50. Arc from 135° to 405° (270° sweep).
+// ── Radial Gauge helpers ──
 function gaugeColor(pct) {
   if (pct >= 80) return 'var(--green)';
   if (pct >= 50) return 'var(--yellow)';
@@ -319,23 +320,37 @@ function describeArc(cx, cy, r, startAngle, endAngle) {
   return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 0 ${e.x} ${e.y}`;
 }
 
-function radialGauge(pct, color, label, valueText, unit) {
-  const R = 38, stroke = 5, cx = 50, cy = 50;
-  const startAngle = 135, endAngle = 405;
-  const sweep = endAngle - startAngle; // 270°
-  const fillAngle = startAngle + (pct / 100) * sweep;
-  const c = color || gaugeColor(pct);
+const R = 38, STROKE = 5, CX = 50, CY = 50;
+const START_ANGLE = 135, END_ANGLE = 405, SWEEP = 270;
+const BG_ARC = describeArc(CX, CY, R, START_ANGLE, END_ANGLE);
 
-  const bgArc = describeArc(cx, cy, R, startAngle, endAngle);
-  const fillArc = pct > 0 ? describeArc(cx, cy, R, startAngle, fillAngle) : '';
+function fillArcPath(pct) {
+  if (pct <= 0) return '';
+  const fillAngle = START_ANGLE + (pct / 100) * SWEEP;
+  return describeArc(CX, CY, R, START_ANGLE, fillAngle);
+}
 
+function buildGaugeSVG(id) {
   return `<svg class="gauge-svg" viewBox="0 0 100 60">
-    <path d="${bgArc}" fill="none" stroke="var(--border)" stroke-width="${stroke}" stroke-linecap="round"/>
-    ${fillArc ? `<path d="${fillArc}" fill="none" stroke="${c}" stroke-width="${stroke}" stroke-linecap="round"/>` : ''}
-    <text x="50" y="48" text-anchor="middle" fill="var(--text)" font-size="14" font-weight="700">${valueText}</text>
-    <text x="50" y="58" text-anchor="middle" fill="var(--muted)" font-size="7">${unit}</text>
-  </svg>
-  <div class="gauge-label">${label}</div>`;
+    <path d="${BG_ARC}" fill="none" stroke="var(--border)" stroke-width="${STROKE}" stroke-linecap="round"/>
+    <path id="${id}-arc" d="" fill="none" stroke="var(--green)" stroke-width="${STROKE}" stroke-linecap="round"/>
+    <text id="${id}-val" x="50" y="48" text-anchor="middle" fill="var(--text)" font-size="14" font-weight="700">—</text>
+    <text id="${id}-unit" x="50" y="58" text-anchor="middle" fill="var(--muted)" font-size="7"></text>
+  </svg>`;
+}
+
+function updateGauge(id, pct, color, valueText, unit) {
+  const arc = document.getElementById(id+'-arc');
+  const val = document.getElementById(id+'-val');
+  const unt = document.getElementById(id+'-unit');
+  if (!arc || !val) return;
+  const d = fillArcPath(pct);
+  if (arc.getAttribute('d') !== d) {
+    arc.setAttribute('d', d);
+    arc.setAttribute('stroke', color || gaugeColor(pct));
+  }
+  if (val.textContent !== valueText) val.textContent = valueText;
+  if (unt.textContent !== unit) unt.textContent = unit;
 }
 
 // ── Chart helpers ──
@@ -347,6 +362,7 @@ function makeChart(id) {
     data: { labels: [], datasets: [] },
     options: {
       responsive: true, maintainAspectRatio: false,
+      animation: { duration: 300 },
       interaction: { intersect: false, mode: 'index' },
       plugins: { legend: { labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8, font: {size:10} } } },
       scales: {
@@ -362,7 +378,7 @@ function setChartData(id, labels, datasets) {
   const c = makeChart(id);
   c.data.labels = labels;
   c.data.datasets = datasets;
-  c.update();
+  c.update('none');
 }
 
 function timeLabel(ts) {
@@ -372,8 +388,18 @@ function timeLabel(ts) {
 
 function extract(h, key) { return h.snapshots.map(s => s.registers[key] || 0); }
 
-// ── Overview Tab ──
-function renderGauges(r) {
+// ── Build gauges once, update in-place ──
+function buildOverviewGauges() {
+  const ids = ['g-soc','g-pv','g-grid','g-load','g-chg','g-battv','g-invt','g-battt'];
+  const labels = ['Battery SOC','Solar PV','Grid Import','Load (EPS)','Charge/Discharge','Battery Voltage','Inverter Temp','Battery Temp'];
+  document.getElementById('gauges').innerHTML = ids.map((id,i) =>
+    `<div class="gauge-card card">${buildGaugeSVG(id)}<div class="gauge-label">${labels[i]}</div></div>`
+  ).join('');
+  gaugesBuilt = true;
+}
+
+function updateOverviewGauges(r) {
+  if (!gaugesBuilt) buildOverviewGauges();
   const soc = r.soc?.value || 0;
   const pv = (r.pv1_power?.value || 0) + (r.pv2_power?.value || 0);
   const grid = r.grid_import_power?.value || 0;
@@ -381,37 +407,46 @@ function renderGauges(r) {
   const chg = r.charge_power?.value || 0;
   const dis = r.discharge_power?.value || 0;
   const battV = r.battery_voltage?.value || 0;
-  const battA = r.battery_current?.value || 0;
   const invT = r.temp_inverter?.value || 0;
   const battT = r.temp_battery?.value || 0;
-
-  // Max values from settings (fetched async, use defaults as fallback)
   const pvMax = window._settings?.pv_max_power || 8000;
   const gridMax = window._settings?.grid_max_power || 6000;
   const loadMax = window._settings?.eps_max_power || 6000;
   const chgMax = window._settings?.charge_max_power || 5000;
   const disMax = window._settings?.discharge_max_power || 5000;
 
-  const items = [
-    { pct: soc, color: gaugeColor(soc), label: 'Battery SOC', value: fmtPct(soc), unit: '' },
-    { pct: Math.min((pv / pvMax) * 100, 100), color: 'var(--yellow)', label: 'Solar PV', value: fmtW(pv), unit: pvMax+'W max' },
-    { pct: Math.min((grid / gridMax) * 100, 100), color: 'var(--accent)', label: 'Grid Import', value: fmtW(grid), unit: gridMax+'W max' },
-    { pct: Math.min((load / loadMax) * 100, 100), color: 'var(--purple)', label: 'Load (EPS)', value: fmtW(load), unit: loadMax+'W max' },
-    { pct: chg > 0 ? Math.min((chg / chgMax) * 100, 100) : (dis > 0 ? Math.min((dis / disMax) * 100, 100) : 0),
-      color: chg > 0 ? 'var(--green)' : (dis > 0 ? 'var(--orange)' : 'var(--muted)'),
-      label: chg > 0 ? 'Charging' : (dis > 0 ? 'Discharging' : 'Battery Idle'),
-      value: chg > 0 ? fmtW(chg) : (dis > 0 ? fmtW(dis) : '0 W'), unit: chg > 0 ? chgMax+'W max' : (dis > 0 ? disMax+'W max' : '') },
-    { pct: Math.min((battV - 42) / (58 - 42) * 100, 100), color: 'var(--green)', label: 'Battery Voltage', value: fmtV(battV), unit: '42–58V range' },
-    { pct: Math.min((invT / 80) * 100, 100), color: invT > 60 ? 'var(--red)' : (invT > 45 ? 'var(--yellow)' : 'var(--green)'), label: 'Inverter Temp', value: fmtC(invT), unit: '80°C max' },
-    { pct: Math.min((battT / 60) * 100, 100), color: battT > 50 ? 'var(--red)' : (battT > 40 ? 'var(--yellow)' : 'var(--green)'), label: 'Battery Temp', value: fmtC(battT), unit: '60°C max' },
-  ];
-
-  document.getElementById('gauges').innerHTML = items.map(item =>
-    `<div class="gauge-card card">${radialGauge(item.pct, item.color, item.label, item.value, item.unit)}</div>`
-  ).join('');
+  updateGauge('g-soc', soc, gaugeColor(soc), fmtPct(soc), '');
+  updateGauge('g-pv', Math.min((pv/pvMax)*100,100), 'var(--yellow)', fmtW(pv), pvMax+'W max');
+  updateGauge('g-grid', Math.min((grid/gridMax)*100,100), 'var(--accent)', fmtW(grid), gridMax+'W max');
+  updateGauge('g-load', Math.min((load/loadMax)*100,100), 'var(--purple)', fmtW(load), loadMax+'W max');
+  if (chg > 0) {
+    updateGauge('g-chg', Math.min((chg/chgMax)*100,100), 'var(--green)', fmtW(chg), chgMax+'W max');
+    document.querySelector('#gauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Charging';
+  } else if (dis > 0) {
+    updateGauge('g-chg', Math.min((dis/disMax)*100,100), 'var(--orange)', fmtW(dis), disMax+'W max');
+    document.querySelector('#gauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Discharging';
+  } else {
+    updateGauge('g-chg', 0, 'var(--muted)', '0 W', '');
+    document.querySelector('#gauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Battery Idle';
+  }
+  updateGauge('g-battv', Math.min((battV-42)/(58-42)*100,100), 'var(--green)', fmtV(battV), '42–58V range');
+  updateGauge('g-invt', Math.min((invT/80)*100,100), invT>60?'var(--red)':(invT>45?'var(--yellow)':'var(--green)'), fmtC(invT), '80°C max');
+  updateGauge('g-battt', Math.min((battT/60)*100,100), battT>50?'var(--red)':(battT>40?'var(--yellow)':'var(--green)'), fmtC(battT), '60°C max');
 }
 
-function renderFlow(r) {
+// ── Flow cards: build once, update text in-place ──
+let flowBuilt = false;
+function buildFlowCards() {
+  document.getElementById('flow').innerHTML = `
+    <div class="flow-card card"><div class="icon">☀️</div><div class="name">Solar</div><div class="power" id="f-solar-pwr">—</div><div class="detail" id="f-solar-det">—</div></div>
+    <div class="flow-card card"><div class="icon">🔋</div><div class="name" id="f-batt-name">Battery</div><div class="power" id="f-batt-pwr">—</div><div class="detail" id="f-batt-det">—</div></div>
+    <div class="flow-card card"><div class="icon">🏠</div><div class="name">Grid</div><div class="power" id="f-grid-pwr">—</div><div class="detail" id="f-grid-det">—</div></div>
+    <div class="flow-card card"><div class="icon">🔌</div><div class="name">EPS (Backup)</div><div class="power" id="f-eps-pwr">—</div><div class="detail" id="f-eps-det">—</div></div>`;
+  flowBuilt = true;
+}
+
+function updateFlow(r) {
+  if (!flowBuilt) buildFlowCards();
   const pv = (r.pv1_power?.value||0) + (r.pv2_power?.value||0);
   const chg = r.charge_power?.value||0;
   const dis = r.discharge_power?.value||0;
@@ -420,29 +455,42 @@ function renderFlow(r) {
   const eps = r.eps_power?.value||0;
   const soc = r.soc?.value||0;
 
-  const cards = [
-    { icon:'☀️', name:'Solar', power:fmtW(pv), detail:`PV1: ${fmtW(r.pv1_power?.value||0)} · PV2: ${fmtW(r.pv2_power?.value||0)}` },
-    { icon:'🔋', name:`Battery ${fmtPct(soc)}`, power:chg>0?`⚡ ${fmtW(chg)}`:(dis>0?`🔽 ${fmtW(dis)}`:'Idle'), detail:`${fmtV(r.battery_voltage?.value||0)} · ${fmtA(r.battery_current?.value||0)}` },
-    { icon:'🏠', name:'Grid', power:gridIn>0?`📥 ${fmtW(gridIn)}`:(gridOut>0?`📤 ${fmtW(gridOut)}`:'0 W'), detail:`${fmtV(r.grid_voltage_r?.value||0)} · ${fmtHz(r.grid_frequency?.value)}` },
-    { icon:'🔌', name:'EPS (Backup)', power:fmtW(eps), detail:`Today: ${fmtkWh(r.eps_energy_today?.value||0)}` },
-  ];
-  document.getElementById('flow').innerHTML = cards.map(c =>
-    `<div class="flow-card card"><div class="icon">${c.icon}</div><div class="name">${c.name}</div><div class="power">${c.power}</div><div class="detail">${c.detail}</div></div>`
-  ).join('');
+  document.getElementById('f-solar-pwr').textContent = fmtW(pv);
+  document.getElementById('f-solar-det').textContent = `PV1: ${fmtW(r.pv1_power?.value||0)} · PV2: ${fmtW(r.pv2_power?.value||0)}`;
+  document.getElementById('f-batt-name').textContent = `Battery ${fmtPct(soc)}`;
+  document.getElementById('f-batt-pwr').textContent = chg>0?`⚡ ${fmtW(chg)}`:(dis>0?`🔽 ${fmtW(dis)}`:'Idle');
+  document.getElementById('f-batt-det').textContent = `${fmtV(r.battery_voltage?.value||0)} · ${fmtA(r.battery_current?.value||0)}`;
+  document.getElementById('f-grid-pwr').textContent = gridIn>0?`📥 ${fmtW(gridIn)}`:(gridOut>0?`📤 ${fmtW(gridOut)}`:'0 W');
+  document.getElementById('f-grid-det').textContent = `${fmtV(r.grid_voltage_r?.value||0)} · ${fmtHz(r.grid_frequency?.value)}`;
+  document.getElementById('f-eps-pwr').textContent = fmtW(eps);
+  document.getElementById('f-eps-det').textContent = `Today: ${fmtkWh(r.eps_energy_today?.value||0)}`;
 }
 
-function renderStatus(r) {
+// ── Status bar: build once, update in-place ──
+let statusBuilt = false;
+function buildStatus() {
+  document.getElementById('statusBar').innerHTML = `
+    <span><span class="dot green" id="s-dot"></span> <span id="s-health">OK</span></span>
+    <span>SOH: <span id="s-soh">—</span></span>
+    <span>Cycles: <span id="s-cycles">—</span></span>
+    <span>Runtime: <span id="s-runtime">—</span></span>
+    <span>State: <span id="s-state">—</span></span>`;
+  statusBuilt = true;
+}
+
+function updateStatus(r) {
+  if (!statusBuilt) buildStatus();
   const fault = r.fault_code?.value||0;
   const warn = r.warning_code?.value||0;
-  const healthDot = fault?'red':(warn?'yellow':'green');
-  const healthLabel = fault?'FAULT':(warn?'Warning':'OK');
-  document.getElementById('statusBar').innerHTML = `
-    <span><span class="dot ${healthDot}"></span> ${healthLabel}</span>
-    <span>SOH: ${fmtPct(r.soh?.value||0)}</span>
-    <span>Cycles: ${r.cycle_count?.value||0}</span>
-    <span>Runtime: ${fmtDays(r.runtime?.value||0)}</span>
-    <span>State: ${r.state?.value||0}</span>
-  `;
+  const dot = document.getElementById('s-dot');
+  const health = document.getElementById('s-health');
+  if (fault) { dot.className = 'dot red'; health.textContent = 'FAULT'; }
+  else if (warn) { dot.className = 'dot yellow'; health.textContent = 'Warning'; }
+  else { dot.className = 'dot green'; health.textContent = 'OK'; }
+  document.getElementById('s-soh').textContent = fmtPct(r.soh?.value||0);
+  document.getElementById('s-cycles').textContent = r.cycle_count?.value||0;
+  document.getElementById('s-runtime').textContent = fmtDays(r.runtime?.value||0);
+  document.getElementById('s-state').textContent = r.state?.value||0;
 }
 
 // ── Charts Tab ──
@@ -472,7 +520,7 @@ function renderCharts(h) {
   ];
   c4.options.scales.y = { ticks:{color:'#64748b',font:{size:9}}, grid:{color:'#1e293b'}, title:{display:true,text:'Volts',color:'#64748b'} };
   c4.options.scales.y1 = { position:'right', min:0, max:100, ticks:{color:'#64748b',callback:v=>v+'%',font:{size:9}}, grid:{display:false}, title:{display:true,text:'SOC %',color:'#64748b'} };
-  c4.update();
+  c4.update('none');
 
   setChartData('chart-load', labels, [
     { label:'EPS Load (W)', data:extract(h,'eps_power'), borderColor:'#facc15', tension:0.3, pointRadius:0, borderWidth:1.5 },
@@ -486,7 +534,17 @@ function renderCharts(h) {
 }
 
 // ── Battery Tab ──
-function renderBattery(r) {
+function buildBattGauges() {
+  const ids = ['bg-soc','bg-soh','bg-volt','bg-curr','bg-chg','bg-cap','bg-cyc','bg-temp'];
+  const labels = ['SOC','SOH','Voltage','Current','Charge/Discharge','Capacity','Cycles','Batt Temp'];
+  document.getElementById('battGauges').innerHTML = ids.map((id,i) =>
+    `<div class="gauge-card card">${buildGaugeSVG(id)}<div class="gauge-label">${labels[i]}</div></div>`
+  ).join('');
+  battGaugesBuilt = true;
+}
+
+function updateBattGauges(r) {
+  if (!battGaugesBuilt) buildBattGauges();
   const soc = r.soc?.value || 0;
   const soh = r.soh?.value || 0;
   const battV = r.battery_voltage?.value || 0;
@@ -499,23 +557,27 @@ function renderBattery(r) {
   const chgMax = window._settings?.charge_max_power || 5000;
   const disMax = window._settings?.discharge_max_power || 5000;
 
-  const items = [
-    { pct: soc, color: gaugeColor(soc), label: 'SOC', value: fmtPct(soc), unit: '' },
-    { pct: soh, color: soh >= 90 ? 'var(--green)' : (soh >= 70 ? 'var(--yellow)' : 'var(--red)'), label: 'SOH', value: fmtPct(soh), unit: '' },
-    { pct: Math.min((battV - 42) / (58 - 42) * 100, 100), color: 'var(--green)', label: 'Voltage', value: fmtV(battV), unit: '42–58V' },
-    { pct: Math.min((Math.abs(battA) / 100) * 100, 100), color: battA > 0 ? 'var(--green)' : 'var(--orange)', label: 'Current', value: fmtA(battA), unit: '±100A' },
-    { pct: chg > 0 ? Math.min((chg / chgMax) * 100, 100) : (dis > 0 ? Math.min((dis / disMax) * 100, 100) : 0),
-      color: chg > 0 ? 'var(--green)' : (dis > 0 ? 'var(--orange)' : 'var(--muted)'),
-      label: chg > 0 ? 'Charging' : (dis > 0 ? 'Discharging' : 'Idle'),
-      value: chg > 0 ? fmtW(chg) : (dis > 0 ? fmtW(dis) : '0 W'), unit: '' },
-    { pct: Math.min((cap / 300) * 100, 100), color: 'var(--accent)', label: 'Capacity', value: fmt(cap,0)+' Ah', unit: '300Ah max' },
-    { pct: Math.min((cycles / 6000) * 100, 100), color: 'var(--purple)', label: 'Cycles', value: fmt(cycles,0), unit: '6000 rated' },
-    { pct: Math.min((battT / 60) * 100, 100), color: battT > 50 ? 'var(--red)' : (battT > 40 ? 'var(--yellow)' : 'var(--green)'), label: 'Batt Temp', value: fmtC(battT), unit: '60°C max' },
-  ];
+  updateGauge('bg-soc', soc, gaugeColor(soc), fmtPct(soc), '');
+  updateGauge('bg-soh', soh, soh>=90?'var(--green)':(soh>=70?'var(--yellow)':'var(--red)'), fmtPct(soh), '');
+  updateGauge('bg-volt', Math.min((battV-42)/(58-42)*100,100), 'var(--green)', fmtV(battV), '42–58V');
+  updateGauge('bg-curr', Math.min((Math.abs(battA)/100)*100,100), battA>0?'var(--green)':'var(--orange)', fmtA(battA), '±100A');
+  if (chg > 0) {
+    updateGauge('bg-chg', Math.min((chg/chgMax)*100,100), 'var(--green)', fmtW(chg), '');
+    document.querySelector('#battGauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Charging';
+  } else if (dis > 0) {
+    updateGauge('bg-chg', Math.min((dis/disMax)*100,100), 'var(--orange)', fmtW(dis), '');
+    document.querySelector('#battGauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Discharging';
+  } else {
+    updateGauge('bg-chg', 0, 'var(--muted)', '0 W', '');
+    document.querySelector('#battGauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Idle';
+  }
+  updateGauge('bg-cap', Math.min((cap/300)*100,100), 'var(--accent)', fmt(cap,0)+' Ah', '300Ah max');
+  updateGauge('bg-cyc', Math.min((cycles/6000)*100,100), 'var(--purple)', fmt(cycles,0), '6000 rated');
+  updateGauge('bg-temp', Math.min((battT/60)*100,100), battT>50?'var(--red)':(battT>40?'var(--yellow)':'var(--green)'), fmtC(battT), '60°C max');
+}
 
-  document.getElementById('battGauges').innerHTML = items.map(item =>
-    `<div class="gauge-card card">${radialGauge(item.pct, item.color, item.label, item.value, item.unit)}</div>`
-  ).join('');
+function renderBattery(r) {
+  updateBattGauges(r);
 
   // Cell voltages
   const cellLabels = [];
@@ -610,10 +672,10 @@ async function refresh() {
     const r = status.registers;
     const labels = history.snapshots.map(s => timeLabel(s.timestamp));
 
-    // Overview
-    renderGauges(r);
-    renderFlow(r);
-    renderStatus(r);
+    // Overview — update in-place, no DOM rebuild
+    updateOverviewGauges(r);
+    updateFlow(r);
+    updateStatus(r);
     setChartData('chart-overview', labels, [
       { label:'PV (W)', data:extract(history,'pv1_power'), borderColor:'#facc15', tension:0.3, pointRadius:0, borderWidth:1.5 },
       { label:'Charge (W)', data:extract(history,'charge_power'), borderColor:'#4ade80', tension:0.3, pointRadius:0, borderWidth:1.5 },
@@ -627,7 +689,7 @@ async function refresh() {
     ];
     cb.options.scales.y = { ticks:{color:'#64748b',font:{size:9}}, grid:{color:'#1e293b'}, title:{display:true,text:'Volts',color:'#64748b'} };
     cb.options.scales.y1 = { position:'right', min:0, max:100, ticks:{color:'#64748b',callback:v=>v+'%',font:{size:9}}, grid:{display:false}, title:{display:true,text:'SOC %',color:'#64748b'} };
-    cb.update();
+    cb.update('none');
 
     // Charts tab
     renderCharts(history);
@@ -741,7 +803,6 @@ async function saveSettings() {
   if (fail === 0) {
     status.textContent = `✅ Saved ${ok} setting${ok!==1?'s':''}`;
     status.style.color = 'var(--green)';
-    // Reload settings so gauges pick up new max values
     loadSettingsForGauges();
   } else {
     status.textContent = `⚠️ ${ok} saved, ${fail} failed`;
