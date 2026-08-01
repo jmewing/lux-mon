@@ -34,3 +34,5 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yaml
+PROJECT.md
+PLAN.md
