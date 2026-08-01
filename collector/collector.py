@@ -494,6 +494,14 @@ class PassiveCollector:
                         ON DELETE CASCADE
                 ) ENGINE=InnoDB
             """)
+            cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS {prefix}settings (
+                    name VARCHAR(64) PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB
+            """)
 
     def _write_snapshot(self, writer, decoded: dict) -> None:
         """Write a decoded register snapshot to the configured store."""

@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pymysql
 from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -36,7 +37,9 @@ DB_CONFIG = {
 
 
 def _get_conn() -> pymysql.Connection:
-    return pymysql.connect(**DB_CONFIG)
+    conn = pymysql.connect(**DB_CONFIG)
+    conn.autocommit(True)
+    return conn
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────
@@ -209,6 +212,53 @@ def api_summary():
             "timestamp": ts_aware.isoformat(),
             "registers": registers,
         }
+    finally:
+        conn.close()
+
+
+# ── settings ────────────────────────────────────────────────────────────────
+
+class SettingUpdate(BaseModel):
+    value: str
+
+
+@app.get("/api/settings")
+def api_settings():
+    """Return all settings (defaults + overrides from DB)."""
+    from collector.settings import get_all, seed_defaults
+
+    conn = _get_conn()
+    try:
+        seed_defaults(conn)
+        return {"settings": get_all(conn)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/settings/{name}")
+def api_setting_get(name: str):
+    """Get a single setting value."""
+    from collector.settings import get
+
+    conn = _get_conn()
+    try:
+        value = get(conn, name)
+        if value is None:
+            raise HTTPException(404, f"Setting '{name}' not found")
+        return {"name": name, "value": value}
+    finally:
+        conn.close()
+
+
+@app.put("/api/settings/{name}")
+def api_setting_put(name: str, body: SettingUpdate):
+    """Update a setting value."""
+    from collector.settings import set_
+
+    conn = _get_conn()
+    try:
+        set_(conn, name, body.value)
+        return {"name": name, "value": body.value, "updated": True}
     finally:
         conn.close()
 
