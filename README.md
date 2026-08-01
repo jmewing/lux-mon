@@ -6,11 +6,11 @@ Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi don
 
 ## What It Does
 
-- **Passively listens** to your inverter's WiFi dongle — zero bus contention, coexists with SolarAssistant
-- **Stores** time-series data in InfluxDB (or SQLite for lightweight setups)
+- **Passively listens** to your inverter's WiFi dongle — zero bus contention
+- **Stores** time-series data in **MariaDB/MySQL** (default) or InfluxDB
 - **Visualizes** with Grafana dashboards
 - **Exposes** a REST API for scripting, morning briefings, Home Assistant, etc.
-- **Runs anywhere** — your Mac, a Raspberry Pi, a Docker container, alongside Home Assistant
+- **Runs anywhere** — your Mac, a Raspberry Pi, a Docker container
 
 ## Architecture
 
@@ -26,7 +26,7 @@ EG4/LuxPower Inverter → WiFi Dongle (TCP :8000)
                              │
                              ▼
                     ┌─────────────────┐
-                    │  InfluxDB       │  (or SQLite)
+                    │  MariaDB/MySQL  │  (or InfluxDB)
                     └────────┬────────┘
                              │
                     ┌────────┴────────┐
@@ -46,13 +46,42 @@ git clone https://github.com/jmewing/lux-mon.git
 cd lux-mon
 
 # Install
-pip install -r requirements.txt
+pip install -r docker/requirements.txt
 
-# Configure (edit your inverter's IP)
-cp config.example.yaml config.yaml
+# Configure (copy example and edit)
+cp config.example.py config.py
 
 # Run the collector
-python -m collector
+python -m collector --config config.py
+```
+
+## Environment Variables
+
+All config can be set via env vars:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LUX_DONGLE_HOST` | `192.168.1.100` | Inverter dongle IP |
+| `LUX_DONGLE_PORT` | `8000` | Dongle TCP port |
+| `LUX_WRITE_INTERVAL` | `30` | Seconds between DB writes |
+| `LUX_STORAGE_TYPE` | `mariadb` | `mariadb` or `influxdb` |
+| `LUX_MARIADB_HOST` | `localhost` | MariaDB host |
+| `LUX_MARIADB_PORT` | `3306` | MariaDB port |
+| `LUX_MARIADB_USER` | `luxmon` | MariaDB user |
+| `LUX_MARIADB_PASSWORD` | `luxmon` | MariaDB password |
+| `LUX_MARIADB_DATABASE` | `luxmon` | MariaDB database |
+| `LUX_INFLUX_URL` | `http://localhost:8086` | InfluxDB URL |
+| `LUX_INFLUX_TOKEN` | `lux-mon-token` | InfluxDB token |
+| `LUX_INFLUX_ORG` | `luxmon` | InfluxDB org |
+| `LUX_INFLUX_BUCKET` | `solar` | InfluxDB bucket |
+| `LUX_REPLAY_FILE` | — | Replay a capture instead of live TCP |
+
+## Development Replay
+
+Test parsing/storage without a live inverter:
+
+```bash
+python -m collector --replay tests/capture_raw.bin --interval 5
 ```
 
 ## Protocol
@@ -60,10 +89,10 @@ python -m collector
 The LuxPower WiFi dongle broadcasts inverter data over TCP port 8000 using a proprietary framing protocol (not standard Modbus TCP). The protocol has been reverse-engineered — see `docs/reference/lux-protocol/PROTOCOL.md` for the full spec.
 
 Key facts:
-- **No polling needed** — the dongle pushes data every ~2 seconds
+- **No polling needed** — the dongle pushes data every ~2 seconds when the inverter is active
+- **Single TCP client limit** — the dongle closes extra connections when another client is already connected (or when the inverter is off and has no telemetry to send)
 - **6 packets per cycle**: 3 input register batches + 3 holding register batches
 - **40 registers per batch** = 240 registers total per cycle
-- **Coexists peacefully** with SolarAssistant — both just listen
 
 ## Reference Projects
 

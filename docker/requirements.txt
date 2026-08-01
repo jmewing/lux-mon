@@ -1,1 +1,2 @@
 influxdb-client>=1.50.0
+pymysql>=1.1.0
