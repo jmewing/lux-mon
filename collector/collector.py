@@ -233,7 +233,12 @@ class PassiveCollector:
                 self._stop.wait(self.cfg.reconnect_delay)
 
     def _poll_loop(self) -> None:
-        """Active polling mode: send ReadInput requests and parse responses."""
+        """Active polling mode: send ReadInput requests and parse responses.
+
+        Polls all three register batches (0-39, 40-79, 80-119) in sequence
+        to get the full inverter telemetry set. Each batch is requested
+        individually, with a short gap between batches.
+        """
         if not self.cfg.datalog_serial or not self.cfg.inverter_serial:
             logger.error(
                 "Poll mode requires LUX_DATALOG_SERIAL and LUX_INVERTER_SERIAL. "
@@ -242,21 +247,31 @@ class PassiveCollector:
             self._passive_loop()
             return
 
+        # Three register batches covering the full input register map
+        batches = [
+            (0, 40),    # registers 0-39:  voltages, power, daily energy
+            (40, 40),   # registers 40-79: all-time energy, temperatures, runtime
+            (80, 40),   # registers 80-119: battery status, capacity, charge params
+        ]
+
         logger.info(
-            "Active polling mode: reading %d registers starting at %d every %.1fs",
-            self.cfg.poll_register_count,
-            self.cfg.poll_register_start,
-            self.cfg.poll_interval,
+            "Active polling mode: %d batches every %.1fs",
+            len(batches), self.cfg.poll_interval,
         )
 
-        # Build the request packet once (it doesn't change)
-        request = build_read_request(
-            datalog_serial=self.cfg.datalog_serial,
-            inverter_serial=self.cfg.inverter_serial,
-            device_function=MODBUS_READ_INPUT,
-            start_register=self.cfg.poll_register_start,
-            count=self.cfg.poll_register_count,
-        )
+        # Pre-build all request packets
+        requests = [
+            build_read_request(
+                datalog_serial=self.cfg.datalog_serial,
+                inverter_serial=self.cfg.inverter_serial,
+                device_function=MODBUS_READ_INPUT,
+                start_register=start,
+                count=count,
+            )
+            for start, count in batches
+        ]
+
+        batch_idx = 0
 
         while not self._stop.is_set():
             if self._sock is None:
@@ -267,7 +282,9 @@ class PassiveCollector:
                 buffer = b""
 
             try:
-                # Send the ReadInput request
+                # Send the next batch request
+                request = requests[batch_idx]
+                start_reg, count = batches[batch_idx]
                 self._sock.sendall(request)
                 self._poll_requests += 1
 
@@ -292,7 +309,8 @@ class PassiveCollector:
                     last_pos = buffer.find(last_frame.raw) + len(last_frame.raw)
                     buffer = buffer[last_pos:]
 
-                # Wait before next poll
+                # Advance to next batch, wait between batches
+                batch_idx = (batch_idx + 1) % len(batches)
                 self._stop.wait(self.cfg.poll_interval)
 
             except socket.timeout:
