@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>lux-mon — Solar Dashboard</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --green: #4ade80;
+    --yellow: #facc15;
+    --red: #f87171;
+    --orange: #fb923c;
+    --border: #334155;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 1rem;
+  }
+  .header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.5rem;
+  }
+  .header h1 { font-size: 1.5rem; font-weight: 600; }
+  .header .updated { color: var(--muted); font-size: 0.8rem; }
+  .grid { display: grid; gap: 1rem; }
+  .gauges {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1rem;
+  }
+  .card .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .card .value { font-size: 1.75rem; font-weight: 700; margin: 0.25rem 0; }
+  .card .unit { color: var(--muted); font-size: 0.8rem; }
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+  }
+  .flow-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    text-align: center;
+  }
+  .flow-card .icon { font-size: 2rem; margin-bottom: 0.25rem; }
+  .flow-card .name { color: var(--muted); font-size: 0.8rem; }
+  .flow-card .power { font-size: 1.5rem; font-weight: 700; }
+  .flow-card .detail { color: var(--muted); font-size: 0.75rem; margin-top: 0.25rem; }
+  .chart-card { grid-column: 1 / -1; }
+  .chart-card canvas { width: 100%; height: 300px; }
+  .status-bar {
+    display: flex; gap: 1rem; flex-wrap: wrap;
+    margin-top: 1rem; font-size: 0.8rem; color: var(--muted);
+  }
+  .status-bar span { display: flex; align-items: center; gap: 0.25rem; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.green { background: var(--green); }
+  .dot.yellow { background: var(--yellow); }
+  .dot.red { background: var(--red); }
+  .battery-bar {
+    width: 100%; height: 8px; background: var(--border);
+    border-radius: 4px; margin-top: 0.5rem; overflow: hidden;
+  }
+  .battery-fill {
+    height: 100%; border-radius: 4px;
+    transition: width 0.5s ease, background 0.5s ease;
+  }
+  @media (max-width: 600px) {
+    .gauges { grid-template-columns: repeat(2, 1fr); }
+    .value { font-size: 1.25rem !important; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>☀️ lux-mon</h1>
+  <div class="updated" id="updated">Loading…</div>
+</div>
+
+<div class="grid">
+  <!-- Gauges row -->
+  <div class="gauges" id="gauges"></div>
+
+  <!-- Power flow -->
+  <div class="flow" id="flow"></div>
+
+  <!-- Chart -->
+  <div class="card chart-card">
+    <div class="label">Power — Last 2 Hours</div>
+    <canvas id="chart"></canvas>
+  </div>
+</div>
+
+<div class="status-bar" id="statusBar"></div>
+
+<script>
+const API = '';
+
+function fmt(n, d=1) {
+  if (n == null) return '—';
+  return Number(n).toFixed(d);
+}
+
+function fmtW(w) {
+  const n = Number(w);
+  if (n >= 1000) return (n/1000).toFixed(1) + ' kW';
+  return n.toFixed(0) + ' W';
+}
+
+function fmtV(v) { return Number(v).toFixed(1) + ' V'; }
+function fmtA(a) { return Number(a).toFixed(1) + ' A'; }
+function fmtC(c) { return Number(c).toFixed(0) + '°C'; }
+function fmtPct(p) { return Number(p).toFixed(0) + '%'; }
+function fmtkWh(k) { return Number(k).toFixed(1) + ' kWh'; }
+function fmtDays(s) { return Math.round(Number(s)/86400) + ' days'; }
+
+function battColor(soc) {
+  if (soc >= 60) return 'var(--green)';
+  if (soc >= 30) return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+function renderGauges(r) {
+  const items = [
+    { key: 'soc', label: 'Battery SOC', fmt: fmtPct, bar: true },
+    { key: 'battery_voltage', label: 'Battery Voltage', fmt: fmtV },
+    { key: 'battery_current', label: 'Battery Current', fmt: fmtA },
+    { key: 'charge_power', label: 'Charge Power', fmt: fmtW },
+    { key: 'pv1_power', label: 'PV Power', fmt: fmtW },
+    { key: 'grid_import_power', label: 'Grid Import', fmt: fmtW },
+    { key: 'temp_inverter', label: 'Inverter Temp', fmt: fmtC },
+    { key: 'temp_battery', label: 'Battery Temp', fmt: fmtC },
+  ];
+
+  let html = '';
+  for (const item of items) {
+    const v = r[item.key];
+    const val = v ? v.value : null;
+    html += `<div class="card">
+      <div class="label">${item.label}</div>
+      <div class="value">${item.fmt(val)}</div>
+      <div class="unit">${v ? v.unit : ''}</div>`;
+    if (item.bar && val != null) {
+      html += `<div class="battery-bar">
+        <div class="battery-fill" style="width:${val}%;background:${battColor(val)}"></div>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  document.getElementById('gauges').innerHTML = html;
+}
+
+function renderFlow(r) {
+  const pv = (r.pv1_power?.value || 0) + (r.pv2_power?.value || 0);
+  const chg = r.charge_power?.value || 0;
+  const dis = r.discharge_power?.value || 0;
+  const gridIn = r.grid_import_power?.value || 0;
+  const gridOut = r.grid_export_power?.value || 0;
+  const eps = r.eps_power?.value || 0;
+  const soc = r.soc?.value || 0;
+
+  const cards = [
+    { icon: '☀️', name: 'Solar', power: fmtW(pv),
+      detail: `PV1: ${fmtW(r.pv1_power?.value||0)} · PV2: ${fmtW(r.pv2_power?.value||0)}` },
+    { icon: '🔋', name: `Battery ${fmtPct(soc)}`, power: chg > 0 ? `⚡ ${fmtW(chg)}` : (dis > 0 ? `🔽 ${fmtW(dis)}` : 'Idle'),
+      detail: `${fmtV(r.battery_voltage?.value||0)} · ${fmtA(r.battery_current?.value||0)}` },
+    { icon: '🏠', name: 'Grid', power: gridIn > 0 ? `📥 ${fmtW(gridIn)}` : (gridOut > 0 ? `📤 ${fmtW(gridOut)}` : '0 W'),
+      detail: `${fmtV(r.grid_voltage_r?.value||0)} · ${r.grid_frequency?.value?.toFixed(1)||'—'} Hz` },
+    { icon: '🔌', name: 'EPS (Backup)', power: fmtW(eps),
+      detail: `Today: ${fmtkWh(r.eps_energy_today?.value||0)}` },
+  ];
+
+  document.getElementById('flow').innerHTML = cards.map(c =>
+    `<div class="flow-card">
+      <div class="icon">${c.icon}</div>
+      <div class="name">${c.name}</div>
+      <div class="power">${c.power}</div>
+      <div class="detail">${c.detail}</div>
+    </div>`
+  ).join('');
+}
+
+function renderStatus(r) {
+  const soc = r.soc?.value || 0;
+  const soh = r.soh?.value || 0;
+  const cycles = r.cycle_count?.value || 0;
+  const runtime = r.runtime?.value || 0;
+  const fault = r.fault_code?.value || 0;
+  const warn = r.warning_code?.value || 0;
+  const state = r.state?.value || 0;
+
+  const healthDot = fault ? 'red' : (warn ? 'yellow' : 'green');
+  const healthLabel = fault ? 'FAULT' : (warn ? 'Warning' : 'OK');
+
+  document.getElementById('statusBar').innerHTML = `
+    <span><span class="dot ${healthDot}"></span> ${healthLabel}</span>
+    <span>SOH: ${fmtPct(soh)}</span>
+    <span>Cycles: ${cycles}</span>
+    <span>Runtime: ${fmtDays(runtime)}</span>
+    <span>State: ${state}</span>
+  `;
+}
+
+let chart = null;
+function renderChart(history) {
+  const canvas = document.getElementById('chart');
+  const ctx = canvas.getContext('2d');
+
+  const labels = history.snapshots.map(s => {
+    const t = s.timestamp;
+    return t.substring(t.indexOf('T')+1, t.indexOf('T')+6);
+  });
+  const pvData = history.snapshots.map(s => s.registers.pv1_power || 0);
+  const chgData = history.snapshots.map(s => s.registers.charge_power || 0);
+  const gridData = history.snapshots.map(s => s.registers.grid_import_power || 0);
+  const socData = history.snapshots.map(s => s.registers.soc || 0);
+
+  if (chart) chart.destroy();
+
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'PV Power (W)', data: pvData, borderColor: '#facc15', backgroundColor: 'rgba(250,204,21,0.1)', tension: 0.3, pointRadius: 0, borderWidth: 1.5 },
+        { label: 'Charge (W)', data: chgData, borderColor: '#4ade80', backgroundColor: 'rgba(74,222,128,0.1)', tension: 0.3, pointRadius: 0, borderWidth: 1.5 },
+        { label: 'Grid Import (W)', data: gridData, borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)', tension: 0.3, pointRadius: 0, borderWidth: 1.5 },
+        { label: 'SOC (%)', data: socData, borderColor: '#c084fc', backgroundColor: 'rgba(192,132,252,0.1)', tension: 0.3, pointRadius: 0, borderWidth: 1.5, yAxisID: 'y1' },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: { legend: { labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8 } } },
+      scales: {
+        x: { ticks: { color: '#64748b', maxTicksLimit: 12 }, grid: { color: '#1e293b' } },
+        y: {
+          type: 'linear', position: 'left',
+          ticks: { color: '#64748b', callback: v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v },
+          grid: { color: '#1e293b' },
+          title: { display: true, text: 'Watts', color: '#64748b' }
+        },
+        y1: {
+          type: 'linear', position: 'right',
+          min: 0, max: 100,
+          ticks: { color: '#64748b', callback: v => v+'%' },
+          grid: { display: false },
+          title: { display: true, text: 'SOC %', color: '#64748b' }
+        }
+      }
+    }
+  });
+}
+
+async function refresh() {
+  try {
+    const [statusRes, historyRes] = await Promise.all([
+      fetch(API + '/api/summary'),
+      fetch(API + '/api/history?minutes=120&fields=pv1_power,charge_power,grid_import_power,soc')
+    ]);
+    const status = await statusRes.json();
+    const history = await historyRes.json();
+
+    renderGauges(status.registers);
+    renderFlow(status.registers);
+    renderStatus(status.registers);
+    renderChart(history);
+
+    const ts = status.timestamp;
+    document.getElementById('updated').textContent =
+      'Updated: ' + ts.substring(ts.indexOf('T')+1, ts.indexOf('T')+9);
+  } catch (e) {
+    console.error('Refresh failed:', e);
+  }
+}
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</body>
+</html>
