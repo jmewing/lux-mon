@@ -45,8 +45,9 @@ class CollectorConfig:
     write_interval: int = 30  # seconds between storage writes
     replay_file: Optional[str] = None  # if set, replay a capture file instead of live TCP
 
-    # Active polling mode: send ReadInput requests instead of passive listen.
-    # Required for dongles that don't auto-broadcast (some firmware versions).
+    # Active polling mode: send ReadInput requests for near-real-time updates.
+    # Enable for dongles that don't auto-broadcast. Most dongles broadcast
+    # every ~2s, making passive mode the better default.
     poll_mode: bool = False
     poll_interval: float = 2.0  # seconds between poll requests
     poll_register_start: int = 0  # first register to poll
@@ -238,6 +239,9 @@ class PassiveCollector:
         Polls all three register batches (0-39, 40-79, 80-119) in sequence
         to get the full inverter telemetry set. Each batch is requested
         individually, with a short gap between batches.
+
+        Uses a short read timeout so broadcast data is captured even when
+        the dongle ignores explicit poll requests (hybrid poll/passive mode).
         """
         if not self.cfg.datalog_serial or not self.cfg.inverter_serial:
             logger.error(
@@ -272,6 +276,7 @@ class PassiveCollector:
         ]
 
         batch_idx = 0
+        poll_timeout = max(1.0, self.cfg.poll_interval * 0.8)
 
         while not self._stop.is_set():
             if self._sock is None:
@@ -280,15 +285,17 @@ class PassiveCollector:
                     self._stop.wait(self.cfg.reconnect_delay)
                     continue
                 buffer = b""
+                # Use a short timeout for poll mode so we don't block
+                # waiting for responses the dongle may never send.
+                self._sock.settimeout(poll_timeout)
 
             try:
                 # Send the next batch request
                 request = requests[batch_idx]
-                start_reg, count = batches[batch_idx]
                 self._sock.sendall(request)
                 self._poll_requests += 1
 
-                # Read the response
+                # Read response (or broadcast data) with short timeout
                 chunk = self._sock.recv(4096)
                 if not chunk:
                     logger.warning("Dongle closed connection during poll")
@@ -298,7 +305,7 @@ class PassiveCollector:
 
                 buffer += chunk
 
-                # Parse frames from the response
+                # Parse all complete frames
                 frames = find_frames(buffer)
                 if frames:
                     self._frames_received += len(frames)
@@ -309,13 +316,14 @@ class PassiveCollector:
                     last_pos = buffer.find(last_frame.raw) + len(last_frame.raw)
                     buffer = buffer[last_pos:]
 
-                # Advance to next batch, wait between batches
+                # Advance to next batch
                 batch_idx = (batch_idx + 1) % len(batches)
-                self._stop.wait(self.cfg.poll_interval)
 
             except socket.timeout:
-                logger.warning("Poll timeout, reconnecting...")
-                self._close_socket()
+                # No response to our poll request — the dongle may be in
+                # broadcast mode. That's fine; we'll try the next batch.
+                logger.debug("Poll timeout (dongle may be broadcasting)")
+                batch_idx = (batch_idx + 1) % len(batches)
             except OSError as exc:
                 logger.error("Socket error during poll: %s", exc)
                 self._close_socket()
