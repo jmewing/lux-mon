@@ -5,17 +5,18 @@ Connects to a LuxPower/EG4 WiFi dongle on port 8000 and passively listens to
 the streaming broadcast data. No active polling is required — the dongle
 continuously emits ReadHold and ReadInput frames containing inverter telemetry.
 
-Parsed register values are written to InfluxDB on a configurable interval.
+Parsed register values are written to the configured storage backend (MariaDB
+or InfluxDB) on a configurable interval.
 """
 
 import os
 import socket
-import struct
 import time
 import logging
 import signal
 import sys
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass
 from typing import Optional, Callable
 from threading import Thread, Event
 from pathlib import Path
@@ -41,12 +42,25 @@ class CollectorConfig:
     dongle_port: int = 8000
     read_timeout: float = 60.0
     reconnect_delay: float = 5.0
-    write_interval: int = 30  # seconds between InfluxDB writes
+    write_interval: int = 30  # seconds between storage writes
+    replay_file: Optional[str] = None  # if set, replay a capture file instead of live TCP
+
+    # Storage backend selection: "mariadb" or "influxdb"
+    storage_type: str = "mariadb"
+
+    # InfluxDB settings (used when storage_type == "influxdb")
     influx_url: str = "http://localhost:8086"
     influx_token: str = "lux-mon-token"
     influx_org: str = "luxmon"
     influx_bucket: str = "solar"
-    replay_file: Optional[str] = None  # if set, replay a capture file instead of live TCP
+
+    # MariaDB settings (used when storage_type == "mariadb")
+    mariadb_host: str = "localhost"
+    mariadb_port: int = 3306
+    mariadb_user: str = "luxmon"
+    mariadb_password: str = "luxmon"
+    mariadb_database: str = "luxmon"
+    mariadb_table_prefix: str = "lux_"
 
 
 def config_from_env() -> CollectorConfig:
@@ -57,11 +71,18 @@ def config_from_env() -> CollectorConfig:
         read_timeout=_env_or("LUX_READ_TIMEOUT", 60.0, float),
         reconnect_delay=_env_or("LUX_RECONNECT_DELAY", 5.0, float),
         write_interval=_env_or("LUX_WRITE_INTERVAL", 30, int),
+        replay_file=_env_or("LUX_REPLAY_FILE"),
+        storage_type=_env_or("LUX_STORAGE_TYPE", "mariadb"),
         influx_url=_env_or("LUX_INFLUX_URL", "http://localhost:8086"),
         influx_token=_env_or("LUX_INFLUX_TOKEN", "lux-mon-token"),
         influx_org=_env_or("LUX_INFLUX_ORG", "luxmon"),
         influx_bucket=_env_or("LUX_INFLUX_BUCKET", "solar"),
-    replay_file=_env_or("LUX_REPLAY_FILE"),
+        mariadb_host=_env_or("LUX_MARIADB_HOST", "localhost"),
+        mariadb_port=_env_or("LUX_MARIADB_PORT", 3306, int),
+        mariadb_user=_env_or("LUX_MARIADB_USER", "luxmon"),
+        mariadb_password=_env_or("LUX_MARIADB_PASSWORD", "luxmon"),
+        mariadb_database=_env_or("LUX_MARIADB_DATABASE", "luxmon"),
+        mariadb_table_prefix=_env_or("LUX_MARIADB_TABLE_PREFIX", "lux_"),
     )
 
 
@@ -152,9 +173,10 @@ class PassiveCollector:
                 chunk = self._sock.recv(4096)
                 if not chunk:
                     # Some dongle firmware closes idle/new connections immediately when
-                    # another client already holds the single allowed TCP session.
+                    # another client already holds the single allowed TCP session, or
+                    # when the inverter itself is powered off and has no telemetry to send.
                     logger.warning(
-                        "Dongle closed connection immediately (single-connection limit?)"
+                        "Dongle closed connection immediately (single-connection limit or inverter off)"
                     )
                     self._close_socket()
                     self._stop.wait(self.cfg.reconnect_delay)
@@ -170,19 +192,17 @@ class PassiveCollector:
                         self._handle_frame(frame)
 
                     # Trim buffer to after the last parsed frame
-                    if frames:
-                        last_frame = frames[-1]
-                        last_pos = buffer.find(last_frame.raw) + len(last_frame.raw)
-                        buffer = buffer[last_pos:]
+                    last_frame = frames[-1]
+                    last_pos = buffer.find(last_frame.raw) + len(last_frame.raw)
+                    buffer = buffer[last_pos:]
 
-                    # Keep buffer from growing unbounded if no valid frames
-                    if len(buffer) > 8192:
-                        # Find the next potential frame start
-                        next_a1 = buffer.find(bytes([0xA1, 0x1A]), 1)
-                        if next_a1 > 0:
-                            buffer = buffer[next_a1:]
-                        else:
-                            buffer = b""
+                # Keep buffer from growing unbounded if no valid frames
+                if len(buffer) > 8192:
+                    next_a1 = buffer.find(bytes([0xA1, 0x1A]), 1)
+                    if next_a1 > 0:
+                        buffer = buffer[next_a1:]
+                    else:
+                        buffer = b""
 
             except socket.timeout:
                 logger.warning("Socket timeout, reconnecting...")
@@ -244,8 +264,8 @@ class PassiveCollector:
                                  len(frame.values), frame.register)
 
     def _writer_loop(self) -> None:
-        """Periodic writer thread: decode registers and write to InfluxDB."""
-        influx_writer = self._create_influx_writer()
+        """Periodic writer thread: decode registers and write to storage."""
+        writer = self._create_writer()
 
         while not self._stop.wait(self.cfg.write_interval):
             if not self._latest_raw:
@@ -254,7 +274,7 @@ class PassiveCollector:
 
             try:
                 self._latest_decoded = decode_registers(self._latest_raw)
-                self._write_snapshot(influx_writer, self._latest_decoded)
+                self._write_snapshot(writer, self._latest_decoded)
                 self._last_write = time.time()
 
                 if self._on_snapshot:
@@ -267,6 +287,16 @@ class PassiveCollector:
                 logger.exception("Failed to write snapshot")
 
         logger.info("Writer loop exiting")
+
+    def _create_writer(self):
+        """Create and return a storage writer based on storage_type."""
+        if self.cfg.storage_type == "influxdb":
+            return self._create_influx_writer()
+        elif self.cfg.storage_type == "mariadb":
+            return self._create_mariadb_writer()
+        else:
+            logger.error("Unknown storage_type: %s", self.cfg.storage_type)
+            return None
 
     def _create_influx_writer(self):
         """Create and return an InfluxDB write client."""
@@ -284,15 +314,67 @@ class PassiveCollector:
             logger.error("influxdb_client not installed; cannot write to InfluxDB")
             return None
 
-    def _write_snapshot(self, write_api, decoded: dict) -> None:
-        """Write a decoded register snapshot to InfluxDB."""
-        if write_api is None:
-            return
+    def _create_mariadb_writer(self):
+        """Create and return a MariaDB connection."""
+        try:
+            import pymysql
 
+            conn = pymysql.connect(
+                host=self.cfg.mariadb_host,
+                port=self.cfg.mariadb_port,
+                user=self.cfg.mariadb_user,
+                password=self.cfg.mariadb_password,
+                database=self.cfg.mariadb_database,
+                autocommit=True,
+            )
+            self._init_mariadb_schema(conn)
+            return conn
+        except Exception:
+            logger.exception("Failed to connect to MariaDB")
+            return None
+
+    def _init_mariadb_schema(self, conn) -> None:
+        """Create MariaDB tables if they do not exist."""
+        prefix = self.cfg.mariadb_table_prefix
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS {prefix}snapshots (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    ts DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+                    raw_registers JSON,
+                    KEY idx_ts (ts)
+                ) ENGINE=InnoDB
+            """)
+            cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS {prefix}registers (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    snapshot_id BIGINT NOT NULL,
+                    name VARCHAR(64) NOT NULL,
+                    value DOUBLE NOT NULL,
+                    unit VARCHAR(16),
+                    ts DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+                    KEY idx_ts_name (ts, name),
+                    KEY idx_snapshot (snapshot_id),
+                    CONSTRAINT fk_{prefix}snapshot
+                        FOREIGN KEY (snapshot_id) REFERENCES {prefix}snapshots(id)
+                        ON DELETE CASCADE
+                ) ENGINE=InnoDB
+            """)
+
+    def _write_snapshot(self, writer, decoded: dict) -> None:
+        """Write a decoded register snapshot to the configured store."""
+        if writer is None:
+            return
+        if self.cfg.storage_type == "influxdb":
+            self._write_influxdb(writer, decoded)
+        elif self.cfg.storage_type == "mariadb":
+            self._write_mariadb(writer, decoded)
+
+    def _write_influxdb(self, write_api, decoded: dict) -> None:
+        """Write a decoded register snapshot to InfluxDB."""
         from influxdb_client import Point
 
         points = []
-        timestamp = time.time_ns()
 
         # Main solar point with key metrics
         point = Point("inverter")
@@ -313,6 +395,30 @@ class PassiveCollector:
 
         write_api.write(bucket=self.cfg.influx_bucket, record=points)
         logger.info("Wrote %d points to InfluxDB (%d fields)", len(points), len(decoded))
+
+    def _write_mariadb(self, conn, decoded: dict) -> None:
+        """Write a decoded register snapshot to MariaDB."""
+        import pymysql
+
+        prefix = self.cfg.mariadb_table_prefix
+        raw_json = json.dumps(self._latest_raw)
+
+        with conn.cursor() as cur:
+            cur.execute(
+                f"INSERT INTO {prefix}snapshots (ts, raw_registers) VALUES (NOW(3), %s)",
+                (raw_json,),
+            )
+            snapshot_id = cur.lastrowid
+            rows = [
+                (snapshot_id, key, float(info["value"]), info.get("unit", ""))
+                for key, info in decoded.items()
+                if isinstance(info, dict) and "value" in info
+            ]
+            cur.executemany(
+                f"INSERT INTO {prefix}registers (snapshot_id, name, value, unit) VALUES (%s, %s, %s, %s)",
+                rows,
+            )
+        logger.info("Wrote MariaDB snapshot %d with %d registers", snapshot_id, len(rows))
 
     @property
     def stats(self) -> dict:
