@@ -1,0 +1,65 @@
+version: "3.8"
+
+services:
+  influxdb:
+    image: influxdb:2.7
+    container_name: lux-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: luxmon
+      DOCKER_INFLUXDB_INIT_PASSWORD: lux-mon-password
+      DOCKER_INFLUXDB_INIT_ORG: luxmon
+      DOCKER_INFLUXDB_INIT_BUCKET: solar
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: lux-mon-token
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    networks:
+      - lux-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: lux-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: luxmon
+      GF_SECURITY_ADMIN_PASSWORD: lux-mon-password
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./dashboard/provisioning:/etc/grafana/provisioning
+    networks:
+      - lux-net
+    depends_on:
+      - influxdb
+
+  collector:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.collector
+    container_name: lux-collector
+    restart: unless-stopped
+    environment:
+      LUX_DONGLE_HOST: 192.168.1.100
+      LUX_DONGLE_PORT: 8000
+      LUX_INFLUX_URL: http://influxdb:8086
+      LUX_INFLUX_TOKEN: lux-mon-token
+      LUX_INFLUX_ORG: luxmon
+      LUX_INFLUX_BUCKET: solar
+      LUX_WRITE_INTERVAL: 30
+    networks:
+      - lux-net
+    depends_on:
+      - influxdb
+
+volumes:
+  influxdb-data:
+  grafana-data:
+
+networks:
+  lux-net:
+    driver: bridge
