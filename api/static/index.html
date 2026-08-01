@@ -140,6 +140,37 @@
     .value { font-size: 1.2rem !important; }
     .tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
   }
+
+  /* Settings form */
+  .settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+  }
+  .setting-field label {
+    display: block; font-size: 0.7rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;
+  }
+  .setting-field input {
+    width: 100%; padding: 0.5rem 0.6rem;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 0.4rem; color: var(--text); font-size: 0.9rem;
+    font-family: inherit; transition: border-color 0.2s;
+  }
+  .setting-field input:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .setting-field .hint {
+    font-size: 0.65rem; color: var(--muted); margin-top: 0.15rem;
+  }
+  .save-btn {
+    padding: 0.6rem 1.5rem; font-size: 0.85rem; font-weight: 600;
+    background: var(--accent); color: var(--bg); border: none;
+    border-radius: 0.5rem; cursor: pointer; transition: opacity 0.2s;
+    font-family: inherit;
+  }
+  .save-btn:hover { opacity: 0.85; }
+  .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -154,6 +185,7 @@
     <div class="tab" data-tab="charts">Charts</div>
     <div class="tab" data-tab="battery">Battery</div>
     <div class="tab" data-tab="totals">Totals</div>
+    <div class="tab" data-tab="settings" style="margin-left:auto;padding:0.5rem 0.75rem;font-size:1.1rem" title="Settings">⚙️</div>
   </div>
 
   <!-- Overview Tab -->
@@ -238,6 +270,27 @@
     <div class="card">
       <div class="label">All-Time Totals</div>
       <div id="allTimeTotals"></div>
+    </div>
+  </div>
+
+  <!-- Settings Tab -->
+  <div class="tab-content" id="tab-settings">
+    <div class="card" style="margin-bottom:0.75rem">
+      <div class="label">Inverter Ratings</div>
+      <p style="color:var(--muted);font-size:0.75rem;margin:0.25rem 0 0.75rem">These set the maximum values for dashboard gauges and power indicators.</p>
+      <div class="settings-grid" id="settingsRatings"></div>
+    </div>
+    <div class="card" style="margin-bottom:0.75rem">
+      <div class="label">Dashboard Preferences</div>
+      <div class="settings-grid" id="settingsDashboard"></div>
+    </div>
+    <div class="card">
+      <div class="label">Collector Tuning</div>
+      <div class="settings-grid" id="settingsCollector"></div>
+    </div>
+    <div style="margin-top:1rem;display:flex;gap:0.5rem;align-items:center">
+      <button id="saveSettings" class="save-btn">💾 Save All Settings</button>
+      <span id="saveStatus" style="font-size:0.8rem;color:var(--muted)"></span>
     </div>
   </div>
 </div>
@@ -560,6 +613,87 @@ document.querySelectorAll('.time-btn').forEach(btn => {
 
 refresh();
 setInterval(refresh, 5000);
+
+// ── Settings ──
+const SETTINGS_DEFS = [
+  // Inverter Ratings
+  { key:'pv_max_power', label:'Max PV Power', hint:'Watts — gauge ceiling for solar input', group:'ratings' },
+  { key:'battery_capacity', label:'Battery Capacity', hint:'Amp-hours — gauge ceiling for battery', group:'ratings' },
+  { key:'grid_max_power', label:'Max Grid Power', hint:'Watts — max grid pass-through', group:'ratings' },
+  { key:'eps_max_power', label:'Max EPS Power', hint:'Watts — max backup output', group:'ratings' },
+  { key:'charge_max_power', label:'Max Charge Power', hint:'Watts — max battery charge rate', group:'ratings' },
+  { key:'discharge_max_power', label:'Max Discharge Power', hint:'Watts — max battery discharge rate', group:'ratings' },
+  // Dashboard
+  { key:'dashboard_refresh_sec', label:'Refresh Interval', hint:'Seconds between dashboard updates', group:'dashboard' },
+  { key:'chart_default_hours', label:'Default Chart Range', hint:'Hours shown on initial chart load', group:'dashboard' },
+  // Collector
+  { key:'write_interval_sec', label:'Write Interval', hint:'Seconds between MariaDB writes', group:'collector' },
+];
+
+async function loadSettings() {
+  try {
+    const res = await fetch(API + '/api/settings');
+    const data = await res.json();
+    const s = data.settings;
+
+    document.getElementById('settingsRatings').innerHTML = SETTINGS_DEFS
+      .filter(d => d.group === 'ratings')
+      .map(d => settingField(d, s[d.key] || '')).join('');
+    document.getElementById('settingsDashboard').innerHTML = SETTINGS_DEFS
+      .filter(d => d.group === 'dashboard')
+      .map(d => settingField(d, s[d.key] || '')).join('');
+    document.getElementById('settingsCollector').innerHTML = SETTINGS_DEFS
+      .filter(d => d.group === 'collector')
+      .map(d => settingField(d, s[d.key] || '')).join('');
+  } catch(e) { console.error('Settings load failed:', e); }
+}
+
+function settingField(def, value) {
+  return `<div class="setting-field">
+    <label for="set-${def.key}">${def.label}</label>
+    <input type="text" id="set-${def.key}" value="${value}" data-key="${def.key}">
+    <div class="hint">${def.hint}</div>
+  </div>`;
+}
+
+async function saveSettings() {
+  const btn = document.getElementById('saveSettings');
+  const status = document.getElementById('saveStatus');
+  btn.disabled = true;
+  status.textContent = 'Saving…';
+
+  const inputs = document.querySelectorAll('#tab-settings input[data-key]');
+  let ok = 0, fail = 0;
+
+  for (const input of inputs) {
+    try {
+      const res = await fetch(API + '/api/settings/' + input.dataset.key, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: input.value }),
+      });
+      if (res.ok) ok++; else fail++;
+    } catch(e) { fail++; }
+  }
+
+  btn.disabled = false;
+  if (fail === 0) {
+    status.textContent = `✅ Saved ${ok} setting${ok!==1?'s':''}`;
+    status.style.color = 'var(--green)';
+  } else {
+    status.textContent = `⚠️ ${ok} saved, ${fail} failed`;
+    status.style.color = 'var(--yellow)';
+  }
+  setTimeout(() => { status.textContent = ''; status.style.color = 'var(--muted)'; }, 3000);
+}
+
+document.getElementById('saveSettings').addEventListener('click', saveSettings);
+
+// Load settings when the settings tab is first opened
+const origTabClick = document.querySelector('.tab[data-tab="settings"]');
+if (origTabClick) {
+  origTabClick.addEventListener('click', loadSettings, { once: false });
+}
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </body>
