@@ -115,7 +115,6 @@ All config can be set via env vars:
 | `LUX_MARIADB_USER` | `luxmon` | MariaDB user |
 | `LUX_MARIADB_PASSWORD` | `luxmon` | MariaDB password |
 | `LUX_MARIADB_DATABASE` | `luxmon` | MariaDB database |
-| `LUX_MARIADB_TABLE_PREFIX` | `lux_` | Table name prefix |
 | `LUX_INFLUX_URL` | `http://localhost:8086` | InfluxDB URL (optional) |
 | `LUX_INFLUX_TOKEN` | `lux-mon-token` | InfluxDB token (optional) |
 | `LUX_INFLUX_ORG` | `luxmon` | InfluxDB org (optional) |
@@ -126,62 +125,55 @@ All config can be set via env vars:
 
 ## Storage Backends
 
-The collector supports two storage backends. Choose one with `LUX_STORAGE_TYPE`.
+The collector supports two storage backends. Choose one by setting `LUX_STORAGE_TYPE`.
 
 ### MariaDB / MySQL (default)
 
-**Best for:** most users, especially on Raspberry Pi or existing LAMP stacks.
+**Best for:** most users. Zero additional infrastructure if you already run MySQL/MariaDB. The REST API and dashboard read directly from MariaDB.
 
 ```bash
 # Create the database and user
-sudo mysql -e "CREATE DATABASE luxmon; CREATE USER 'luxmon'@'localhost' IDENTIFIED BY 'your-password'; GRANT ALL ON luxmon.* TO 'luxmon'@'localhost'; FLUSH PRIVILEGES;"
-```
+sudo mysql -e "CREATE DATABASE luxmon; CREATE USER 'luxmon'@'localhost' IDENTIFIED BY 'your-password'; GRANT ALL ON luxmon.* TO 'luxmon'@'localhost';"
 
-Set in `.env`:
-```env
+# Configure
 LUX_STORAGE_TYPE=mariadb
 LUX_MARIADB_HOST=localhost
-LUX_MARIADB_PORT=3306
 LUX_MARIADB_USER=luxmon
 LUX_MARIADB_PASSWORD=your-password
 LUX_MARIADB_DATABASE=luxmon
 ```
 
-Tables are auto-created on first run (`lux_snapshots`, `lux_registers`). The `LUX_MARIADB_TABLE_PREFIX` lets you change the prefix if needed.
+Tables are auto-created on first run:
+- `lux_snapshots` — one row per write interval with timestamp and raw register JSON
+- `lux_registers` — one row per decoded register value, indexed by timestamp and name
 
-**Dependencies:** `pymysql` (included in `docker/requirements.txt`)
+Set `LUX_MARIADB_TABLE_PREFIX` to change the table prefix from `lux_` if needed.
 
-### InfluxDB
+### InfluxDB (optional)
 
-**Best for:** users already running InfluxDB, or who want native time-series query performance.
+**Best for:** users already running InfluxDB, or who want Grafana's native InfluxDB data source. The REST API does **not** read from InfluxDB — you'd use Grafana or InfluxDB's built-in UI for visualization.
 
 ```bash
-# Install InfluxDB OSS v2.x, then create a bucket and token
-influx setup --org luxmon --bucket solar --username admin --password your-password
-influx auth create --org luxmon --write-bucket solar --read-bucket solar
-```
+# Install the Python client
+pip install influxdb-client
 
-Set in `.env`:
-```env
+# Configure
 LUX_STORAGE_TYPE=influxdb
 LUX_INFLUX_URL=http://localhost:8086
-LUX_INFLUX_TOKEN=your-generated-token
-LUX_INFLUX_ORG=luxmon
+LUX_INFLUX_TOKEN=your-token
+LUX_INFLUX_ORG=your-org
 LUX_INFLUX_BUCKET=solar
 ```
 
-**Dependencies:** `influxdb-client` (included in `docker/requirements.txt`)
-
 ### Adding a New Backend
 
-The collector uses a pluggable storage interface. To add support for PostgreSQL, SQLite, or another database:
+The collector uses a pluggable writer pattern. To add support for PostgreSQL, SQLite, or another database:
 
-1. Add a new `_create_<backend>_writer()` method in `collector/collector.py`
-2. Add a `_write_<backend>()` method for the actual writes
-3. Add the new `storage_type` to the `if/elif` chain in `_create_writer()`
-4. Add the corresponding env vars to `CollectorConfig` and `config_from_env()`
+1. Add a new `storage_type` value (e.g. `"postgres"`)
+2. Implement `_create_postgres_writer()` and `_write_postgres()` in `collector/collector.py`
+3. Add the corresponding `LUX_POSTGRES_*` env vars to `config_from_env()`
 
-The schema is simple — two tables (snapshots + registers) — so porting to any SQL database is straightforward.
+See `_create_mariadb_writer()` and `_write_mariadb()` for the pattern to follow.
 
 ## Development Replay
 
