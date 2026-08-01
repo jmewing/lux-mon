@@ -7,7 +7,7 @@ Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi don
 ## What It Does
 
 - **Passively listens** to your inverter's WiFi dongle — zero bus contention
-- **Stores** time-series data in **MariaDB/MySQL** (default) or InfluxDB
+- **Stores** time-series data in **MariaDB/MySQL** by default; InfluxDB is optional
 - **Visualizes** with Grafana dashboards
 - **Exposes** a REST API for scripting, morning briefings, Home Assistant, etc.
 - **Runs anywhere** — your Mac, a Raspberry Pi, a Docker container
@@ -48,12 +48,15 @@ cd lux-mon
 # Install
 pip install -r docker/requirements.txt
 
-# Configure (copy example and edit)
-cp config.example.py config.py
+# Configure via environment (copy example and edit)
+cp .env.example .env
+# edit .env with your DB credentials and dongle IP
 
 # Run the collector
-python -m collector --config config.py
+python -m collector
 ```
+
+For a config-file approach you can also copy `config.example.py` to `config.py` and pass `--config config.py`.
 
 ## Environment Variables
 
@@ -89,8 +92,8 @@ python -m collector --replay tests/capture_raw.bin --interval 5
 The LuxPower WiFi dongle broadcasts inverter data over TCP port 8000 using a proprietary framing protocol (not standard Modbus TCP). The protocol has been reverse-engineered — see `docs/reference/lux-protocol/PROTOCOL.md` for the full spec.
 
 Key facts:
-- **No polling needed** — the dongle pushes data every ~2 seconds when the inverter is active
-- **Single TCP client limit** — the dongle closes extra connections when another client is already connected (or when the inverter is off and has no telemetry to send)
+- **No polling needed** — the dongle pushes data every ~2 seconds when it has an active TCP client
+- **Single TCP client limit** — the dongle accepts only one TCP connection at a time; additional connections are closed immediately. Disconnect any other client (SolarAssistant, the vendor app, another collector instance) before starting this collector.
 - **6 packets per cycle**: 3 input register batches + 3 holding register batches
 - **40 registers per batch** = 240 registers total per cycle
 
