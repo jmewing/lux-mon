@@ -131,3 +131,15 @@ Copies of these are mirrored in `docs/reference/` for preservation.
 ## License
 
 MIT
+
+## Status
+
+This project is actively running on a Raspberry Pi 4 ("alpha") monitoring an EG4 6000XP inverter.
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| Collector | ✅ Live | 111 registers decoded, ~2 snapshots/min to MariaDB |
+| REST API | ✅ Live | FastAPI on port 8080, systemd-managed |
+| Storage | ✅ Live | MariaDB, ~11K snapshots/day, ~110MB/day |
+| Dashboard | 🔜 Planned | Grafana or simple web UI |
+| Active polling | 🔜 Planned | Fallback for non-broadcasting dongles |
