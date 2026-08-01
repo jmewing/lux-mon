@@ -1,0 +1,13 @@
+[Unit]
+Description=lxp-bridge
+After=network-online.target
+
+[Service]
+User=root
+Restart=always
+RestartSec=5
+Environment="RUST_LOG=info"
+ExecStart=/usr/local/bin/lxp-bridge -c /etc/lxp-bridge/config.yaml
+
+[Install]
+WantedBy=default.target

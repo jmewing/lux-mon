@@ -1,0 +1,5 @@
+/target
+config.yaml
+docker-compose.yaml
+!/addon/config.yaml
+!/addon.dev/config.yaml
