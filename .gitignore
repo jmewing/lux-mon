@@ -12,8 +12,10 @@ venv/
 # Config (contains local IPs, possibly credentials)
 config.yaml
 config.py
+.env
 !config.example.yaml
 !config.example.py
+!env.example
 
 # Data
 data/
