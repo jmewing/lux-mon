@@ -1,0 +1,21 @@
+[Unit]
+Description=lux-mon REST API server
+After=network.target mariadb.service
+Wants=mariadb.service
+
+[Service]
+Type=simple
+User=jmewing
+WorkingDirectory=/home/jmewing/src/lux-mon
+ExecStart=/home/jmewing/src/lux-mon/venv/bin/python -m api
+Restart=always
+RestartSec=5
+Environment=LUX_API_HOST=0.0.0.0
+Environment=LUX_API_PORT=8080
+Environment=LUX_DB_HOST=localhost
+Environment=LUX_DB_USER=luxmon
+Environment=LUX_DB_PASSWORD=luxmon
+Environment=LUX_DB_NAME=luxmon
+
+[Install]
+WantedBy=multi-user.target
