@@ -111,7 +111,7 @@ All config can be set via env vars:
 |----------|---------|-------------|
 | `LUX_DONGLE_HOST` | `192.168.1.100` | Inverter dongle IP |
 | `LUX_DONGLE_PORT` | `8000` | Dongle TCP port |
-| `LUX_WRITE_INTERVAL` | `30` | Seconds between DB writes |
+| `LUX_WRITE_INTERVAL` | `5` | Seconds between DB writes |
 | `LUX_STORAGE_TYPE` | `mariadb` | `mariadb` or `influxdb` |
 | `LUX_MARIADB_HOST` | `localhost` | MariaDB host |
 | `LUX_MARIADB_PORT` | `3306` | MariaDB port |
@@ -214,6 +214,34 @@ INSERT INTO lux_settings (name, value) VALUES ('pv_max_power', '10000')
   ON DUPLICATE KEY UPDATE value = '10000';
 ```
 
+## Updating
+
+lux-mon is under active development. To pull the latest changes:
+
+```bash
+cd lux-mon
+git pull origin main
+pip install -r docker/requirements.txt  # if dependencies changed
+sudo systemctl restart lux-mon.service lux-api.service
+```
+
+**One-liner for cron/nightly updates:**
+
+```bash
+cd ~/src/lux-mon && git pull origin main && \
+  venv/bin/pip install -q -r docker/requirements.txt && \
+  sudo systemctl restart lux-mon.service lux-api.service
+```
+
+To update automatically every night at 3am:
+
+```bash
+# Add to crontab (crontab -e)
+0 3 * * * cd ~/src/lux-mon && git pull origin main && venv/bin/pip install -q -r docker/requirements.txt && sudo systemctl restart lux-mon.service lux-api.service
+```
+
+> **Note:** Your `.env` file is gitignored and will never be overwritten. Settings stored in the database (`lux_settings` table) are also preserved across updates.
+
 ## Development Replay
 
 Test parsing/storage without a live inverter:
@@ -253,8 +281,9 @@ This project is actively running on a Raspberry Pi 4 ("alpha") monitoring an EG4
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| Collector | ✅ Live | 111 registers decoded, ~2 snapshots/min to MariaDB |
+| Collector | ✅ Live | 111 registers decoded, every 5s to MariaDB |
 | REST API | ✅ Live | FastAPI on port 8080, systemd-managed |
-| Storage | ✅ Live | MariaDB, ~11K snapshots/day, ~110MB/day |
-| Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals |
-| Active polling | 🔜 Planned | Fallback for non-broadcasting dongles |
+| Storage | ✅ Live | MariaDB, ~17K snapshots/day, ~110MB/day |
+| Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals, settings |
+| Active polling | ✅ Built | Fallback for non-broadcasting dongles |
+| Runtime settings | ✅ Live | DB-backed, editable from dashboard ⚙️ tab |
