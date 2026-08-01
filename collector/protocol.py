@@ -112,6 +112,89 @@ def crc16_modbus(data: bytes) -> int:
     return crc
 
 
+# ── Request Builder ─────────────────────────────────────────────────
+
+def _serial_to_bytes(s: str) -> bytes:
+    """Convert a serial string to a fixed 10-byte field, space-padded."""
+    b = s.encode('ascii', errors='replace')
+    if len(b) < 10:
+        b += b' ' * (10 - len(b))
+    return b[:10]
+
+
+def build_read_request(
+    datalog_serial: str,
+    inverter_serial: str,
+    device_function: int,
+    start_register: int,
+    count: int,
+) -> bytes:
+    """
+    Build a ReadHold (0x03) or ReadInput (0x04) request packet.
+
+    Uses protocol=1 (no VLB) per the LuxPower spec for client requests.
+    Total packet size: 38 bytes.
+
+    Packet layout:
+        [0-1]   Header: 0xA1 0x1A
+        [2-3]   Protocol: 1 (LE u16)
+        [4-5]   Frame length: 32 (LE u16)
+        [6]     Unknown: 0x01
+        [7]     TCP function: 0xC2 (TranslatedData)
+        [8-17]  Datalog serial (10 bytes)
+        [18-19] Data length: 18 (LE u16)
+        [20]    Address: 0x00 (client)
+        [21]    Device function (0x03 or 0x04)
+        [22-31] Inverter serial (10 bytes)
+        [32-33] Start register (LE u16)
+        [34-35] Register count (LE u16)
+        [36-37] CRC-16/Modbus over bytes [20:36]
+    """
+    pkt = bytearray(38)
+
+    # Header
+    pkt[0:2] = PREFIX
+
+    # Protocol = 1 (for requests)
+    struct.pack_into('<H', pkt, 2, 1)
+
+    # Frame length = 32 (38 - 6)
+    struct.pack_into('<H', pkt, 4, 32)
+
+    # Unknown byte
+    pkt[6] = 0x01
+
+    # TCP function: TranslatedData
+    pkt[7] = TCP_FUNC_TRANSLATED_DATA
+
+    # Datalog serial
+    pkt[8:18] = _serial_to_bytes(datalog_serial)
+
+    # Data length = 18 (addr + func + serial + reg + count + crc)
+    struct.pack_into('<H', pkt, 18, 18)
+
+    # Address (client = 0)
+    pkt[20] = 0x00
+
+    # Device function
+    pkt[21] = device_function
+
+    # Inverter serial
+    pkt[22:32] = _serial_to_bytes(inverter_serial)
+
+    # Start register
+    struct.pack_into('<H', pkt, 32, start_register)
+
+    # Register count
+    struct.pack_into('<H', pkt, 34, count)
+
+    # CRC over data frame [20:36]
+    crc = crc16_modbus(bytes(pkt[20:36]))
+    struct.pack_into('<H', pkt, 36, crc)
+
+    return bytes(pkt)
+
+
 # ── Frame Parser ────────────────────────────────────────────────────
 
 def parse_frame(data: bytes) -> Optional[LuxFrame]:

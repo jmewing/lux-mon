@@ -21,7 +21,7 @@ from typing import Optional, Callable
 from threading import Thread, Event
 from pathlib import Path
 
-from .protocol import find_frames, LuxFrame
+from .protocol import find_frames, LuxFrame, build_read_request, MODBUS_READ_INPUT
 from .registers import decode_registers
 
 
@@ -37,13 +37,24 @@ logger = logging.getLogger("luxmon.collector")
 
 @dataclass
 class CollectorConfig:
-    """Configuration for the passive collector."""
+    """Configuration for the collector."""
     dongle_host: str = "192.168.1.100"
     dongle_port: int = 8000
     read_timeout: float = 60.0
     reconnect_delay: float = 5.0
     write_interval: int = 30  # seconds between storage writes
     replay_file: Optional[str] = None  # if set, replay a capture file instead of live TCP
+
+    # Active polling mode: send ReadInput requests instead of passive listen.
+    # Required for dongles that don't auto-broadcast (some firmware versions).
+    poll_mode: bool = False
+    poll_interval: float = 2.0  # seconds between poll requests
+    poll_register_start: int = 0  # first register to poll
+    poll_register_count: int = 40  # registers per poll request
+
+    # Dongle/inverter serials (required for active polling)
+    datalog_serial: str = ""
+    inverter_serial: str = ""
 
     # Storage backend selection: "mariadb" or "influxdb"
     storage_type: str = "mariadb"
@@ -72,6 +83,12 @@ def config_from_env() -> CollectorConfig:
         reconnect_delay=_env_or("LUX_RECONNECT_DELAY", 5.0, float),
         write_interval=_env_or("LUX_WRITE_INTERVAL", 30, int),
         replay_file=_env_or("LUX_REPLAY_FILE"),
+        poll_mode=_env_or("LUX_POLL_MODE", False, lambda v: v.lower() in ("1", "true", "yes")),
+        poll_interval=_env_or("LUX_POLL_INTERVAL", 2.0, float),
+        poll_register_start=_env_or("LUX_POLL_REG_START", 0, int),
+        poll_register_count=_env_or("LUX_POLL_REG_COUNT", 40, int),
+        datalog_serial=_env_or("LUX_DATALOG_SERIAL", ""),
+        inverter_serial=_env_or("LUX_INVERTER_SERIAL", ""),
         storage_type=_env_or("LUX_STORAGE_TYPE", "mariadb"),
         influx_url=_env_or("LUX_INFLUX_URL", "http://localhost:8086"),
         influx_token=_env_or("LUX_INFLUX_TOKEN", "lux-mon-token"),
@@ -103,6 +120,7 @@ class PassiveCollector:
         self._on_snapshot = on_snapshot
         self._connect_time = 0.0
         self._frames_received = 0
+        self._poll_requests = 0
 
         # Register handler for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -161,6 +179,13 @@ class PassiveCollector:
 
     def _reader_loop(self) -> None:
         """Main reader thread: connect, read bytes, parse frames."""
+        if self.cfg.poll_mode:
+            self._poll_loop()
+        else:
+            self._passive_loop()
+
+    def _passive_loop(self) -> None:
+        """Passive listen mode: dongle auto-broadcasts data."""
         buffer = b""
 
         while not self._stop.is_set():
@@ -173,9 +198,6 @@ class PassiveCollector:
             try:
                 chunk = self._sock.recv(4096)
                 if not chunk:
-                    # Some dongle firmware closes idle/new connections immediately when
-                    # another client already holds the single allowed TCP session, or
-                    # when the inverter itself is powered off and has no telemetry to send.
                     logger.warning(
                         "Dongle closed connection immediately (single-connection limit or inverter off)"
                     )
@@ -185,19 +207,16 @@ class PassiveCollector:
 
                 buffer += chunk
 
-                # Parse all complete frames in the buffer
                 frames = find_frames(buffer)
                 if frames:
                     self._frames_received += len(frames)
                     for frame in frames:
                         self._handle_frame(frame)
 
-                    # Trim buffer to after the last parsed frame
                     last_frame = frames[-1]
                     last_pos = buffer.find(last_frame.raw) + len(last_frame.raw)
                     buffer = buffer[last_pos:]
 
-                # Keep buffer from growing unbounded if no valid frames
                 if len(buffer) > 8192:
                     next_a1 = buffer.find(bytes([0xA1, 0x1A]), 1)
                     if next_a1 > 0:
@@ -210,6 +229,77 @@ class PassiveCollector:
                 self._close_socket()
             except OSError as exc:
                 logger.error("Socket error: %s", exc)
+                self._close_socket()
+                self._stop.wait(self.cfg.reconnect_delay)
+
+    def _poll_loop(self) -> None:
+        """Active polling mode: send ReadInput requests and parse responses."""
+        if not self.cfg.datalog_serial or not self.cfg.inverter_serial:
+            logger.error(
+                "Poll mode requires LUX_DATALOG_SERIAL and LUX_INVERTER_SERIAL. "
+                "Falling back to passive mode."
+            )
+            self._passive_loop()
+            return
+
+        logger.info(
+            "Active polling mode: reading %d registers starting at %d every %.1fs",
+            self.cfg.poll_register_count,
+            self.cfg.poll_register_start,
+            self.cfg.poll_interval,
+        )
+
+        # Build the request packet once (it doesn't change)
+        request = build_read_request(
+            datalog_serial=self.cfg.datalog_serial,
+            inverter_serial=self.cfg.inverter_serial,
+            device_function=MODBUS_READ_INPUT,
+            start_register=self.cfg.poll_register_start,
+            count=self.cfg.poll_register_count,
+        )
+
+        while not self._stop.is_set():
+            if self._sock is None:
+                self._sock = self._connect()
+                if self._sock is None:
+                    self._stop.wait(self.cfg.reconnect_delay)
+                    continue
+                buffer = b""
+
+            try:
+                # Send the ReadInput request
+                self._sock.sendall(request)
+                self._poll_requests += 1
+
+                # Read the response
+                chunk = self._sock.recv(4096)
+                if not chunk:
+                    logger.warning("Dongle closed connection during poll")
+                    self._close_socket()
+                    self._stop.wait(self.cfg.reconnect_delay)
+                    continue
+
+                buffer += chunk
+
+                # Parse frames from the response
+                frames = find_frames(buffer)
+                if frames:
+                    self._frames_received += len(frames)
+                    for frame in frames:
+                        self._handle_frame(frame)
+
+                    last_frame = frames[-1]
+                    last_pos = buffer.find(last_frame.raw) + len(last_frame.raw)
+                    buffer = buffer[last_pos:]
+
+                # Wait before next poll
+                self._stop.wait(self.cfg.poll_interval)
+
+            except socket.timeout:
+                logger.warning("Poll timeout, reconnecting...")
+                self._close_socket()
+            except OSError as exc:
+                logger.error("Socket error during poll: %s", exc)
                 self._close_socket()
                 self._stop.wait(self.cfg.reconnect_delay)
 
@@ -444,6 +534,7 @@ class PassiveCollector:
         return {
             "connected": self._sock is not None,
             "frames_received": self._frames_received,
+            "poll_requests": self._poll_requests,
             "input_registers_known": len(self._latest_input_raw),
             "hold_registers_known": len(self._latest_hold_raw),
             "last_write": self._last_write,
