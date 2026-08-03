@@ -28,7 +28,8 @@ for i in {1..30}; do
 done
 
 # Bootstrap if not already set up
-if curl -fsS http://127.0.0.1:8086/api/v2/setup 2>/dev/null | grep -q '"allowed":true'; then
+SETUP_ALLOWED=$(curl -fsS http://127.0.0.1:8086/api/v2/setup 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('allowed', False))")
+if [[ "$SETUP_ALLOWED" == "True" ]]; then
   echo "==> Bootstrapping InfluxDB 2.x..."
   curl -fsS -X POST http://127.0.0.1:8086/api/v2/setup \
     -H "Content-Type: application/json" \
@@ -49,13 +50,15 @@ for a in data.get('authorizations', []):
 
 if [[ -z "$INFLUX_TOKEN" ]]; then
   echo "==> Creating lux-mon API token..."
-  ORG_ID=$(curl -fsS -u luxmon:luxmon http://127.0.0.1:8086/api/v2/orgs 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['orgs'][0]['id'])")
-  USER_ID=$(curl -fsS -u luxmon:luxmon http://127.0.0.1:8086/api/v2/me 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-  TOKEN_RESP=$(curl -fsS -u luxmon:luxmon -X POST http://127.0.0.1:8086/api/v2/authorizations \
-    -H "Content-Type: application/json" \
-    -d "{\"description\":\"lux-mon\",\"orgID\":\"$ORG_ID\",\"userID\":\"$USER_ID\",\"permissions\":[{\"action\":\"read\",\"resource\":{\"type\":\"buckets\"}},{\"action\":\"write\",\"resource\":{\"type\":\"buckets\"}}]}")
-  INFLUX_TOKEN=$(echo "$TOKEN_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))")
-  echo "$TOKEN_RESP" >/tmp/influx-token.json
+  ORG_ID=$(curl -fsS -u luxmon:luxmon http://127.0.0.1:8086/api/v2/orgs 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('orgs',[{}])[0].get('id',''))" || true)
+  USER_ID=$(curl -fsS -u luxmon:luxmon http://127.0.0.1:8086/api/v2/me 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" || true)
+  if [[ -n "$ORG_ID" && -n "$USER_ID" ]]; then
+    TOKEN_RESP=$(curl -fsS -u luxmon:luxmon -X POST http://127.0.0.1:8086/api/v2/authorizations \
+      -H "Content-Type: application/json" \
+      -d "{\"description\":\"lux-mon\",\"orgID\":\"$ORG_ID\",\"userID\":\"$USER_ID\",\"permissions\":[{\"action\":\"read\",\"resource\":{\"type\":\"buckets\"}},{\"action\":\"write\",\"resource\":{\"type\":\"buckets\"}}]}")
+    INFLUX_TOKEN=$(echo "$TOKEN_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" || true)
+    echo "$TOKEN_RESP" >/tmp/influx-token.json
+  fi
 fi
 
 if [[ -n "$INFLUX_TOKEN" ]]; then
