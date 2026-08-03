@@ -7,7 +7,7 @@ Wants=mariadb.service
 Type=simple
 User=jmewing
 WorkingDirectory=/home/jmewing/src/lux-mon
-ExecStart=/home/jmewing/src/lux-mon/venv/bin/python -m api
+ExecStart=/home/jmewing/src/lux-mon/venv/bin/python3 -m api
 Restart=always
 RestartSec=5
 Environment=LUX_API_HOST=0.0.0.0
