@@ -192,14 +192,10 @@ def _build_computed(decoded: dict) -> Dict[str, float]:
     if charge > 0 or discharge > 0:
         computed["battery_power_net"] = charge - discharge
 
-    # AC output voltage: average EPS voltage phases
-    eps_v = [v for v in (
-        _sa_value(decoded, "eps_voltage_r"),
-        _sa_value(decoded, "eps_voltage_s"),
-        _sa_value(decoded, "eps_voltage_t"),
-    ) if v is not None]
-    if eps_v:
-        computed["ac_output_voltage"] = sum(eps_v) / len(eps_v)
+    # AC output voltage: use EPS phase R (S/T registers in current map appear unreliable)
+    eps_r = _sa_value(decoded, "eps_voltage_r")
+    if eps_r is not None:
+        computed["ac_output_voltage"] = eps_r
 
     # PV currents derived from voltage+power when missing
     for i in (1, 2):
