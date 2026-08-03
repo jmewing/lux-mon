@@ -119,6 +119,35 @@ def _load_transport_options() -> dict:
     return {}
 
 
+def _load_db_serials(cfg: CollectorConfig) -> None:
+    """Fill datalog/inverter serials from MariaDB settings if env didn't set them.
+
+    Environment variables take precedence so deployments can keep using .env
+    while the web UI can store the values in the database.
+    """
+    try:
+        import pymysql
+        from .settings import get
+
+        conn = pymysql.connect(
+            host=cfg.mariadb_host,
+            port=cfg.mariadb_port,
+            user=cfg.mariadb_user,
+            password=cfg.mariadb_password,
+            database=cfg.mariadb_database,
+            autocommit=True,
+        )
+        try:
+            if not cfg.datalog_serial:
+                cfg.datalog_serial = get(conn, "datalog_serial") or ""
+            if not cfg.inverter_serial:
+                cfg.inverter_serial = get(conn, "inverter_serial") or ""
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("Failed to load serials from MariaDB settings")
+
+
 def _create_transport(cfg: CollectorConfig, on_frame: Callable[[LuxFrame], None]):
     """Instantiate the configured transport."""
     transport = cfg.transport.lower()
@@ -464,6 +493,9 @@ def run_collector(
         for key, value in overrides.items():
             if value is not None and hasattr(cfg, key):
                 setattr(cfg, key, value)
+
+    # Fill serials from DB if not provided by environment.
+    _load_db_serials(cfg)
 
     # Legacy LUX_POLL_MODE=true maps to tcp_active for backwards compatibility
     poll_mode = os.environ.get("LUX_POLL_MODE", "").lower() in ("1", "true", "yes")

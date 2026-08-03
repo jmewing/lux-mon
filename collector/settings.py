@@ -49,6 +49,8 @@ DEFAULTS = {
     "write_interval_sec": "5",          # Seconds between MariaDB writes
     "dongle_host": "192.168.12.224",    # WiFi dongle IP
     "dongle_port": "8000",              # WiFi dongle port
+    "datalog_serial": "",               # WiFi dongle / datalog serial number
+    "inverter_serial": "",              # Inverter serial number
 }
 
 
@@ -228,6 +230,18 @@ SETTING_META = {
         "section": "collector",
         "min": 1, "max": 65535,
         "hint": "TCP port of the WiFi dongle",
+    },
+    "datalog_serial": {
+        "label": "Dongle Serial",
+        "type": "text",
+        "section": "collector",
+        "hint": "WiFi dongle / datalog serial number (required for active polling)",
+    },
+    "inverter_serial": {
+        "label": "Inverter Serial",
+        "type": "text",
+        "section": "collector",
+        "hint": "Inverter serial number (required for active polling)",
     },
 }
 
