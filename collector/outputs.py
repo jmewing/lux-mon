@@ -53,6 +53,7 @@ _REGISTER_TO_SA = {
     "grid_voltage_r": ("Grid voltage", "inverter_0"),
     "grid_frequency": ("Grid frequency", "inverter_0"),
     "ac_output_voltage": ("AC output voltage", "inverter_0"),
+    "eps_frequency": ("Generator frequency", "inverter_0"),
 
     # State of charge / health
     "soc": ("Battery state of charge", "inverter_0"),
@@ -63,6 +64,10 @@ _REGISTER_TO_SA = {
     "temp_battery": ("Battery temperature", "combined"),
     "temp_radiator_1": ("Radiator temperature 1", "inverter_0"),
     "temp_radiator_2": ("Radiator temperature 2", "inverter_0"),
+    "runtime": ("Inverter runtime", "inverter_0"),
+    "state": ("Inverter state", "inverter_0"),
+    "fault_code": ("Inverter fault code", "inverter_0"),
+    "warning_code": ("Inverter warning code", "inverter_0"),
     "outside_temperature": ("Outside temperature", "combined"),
     "cloud_cover": ("Cloud cover", "combined"),
     "pv_power_predicted": ("PV power predicted", "combined"),
@@ -530,6 +535,14 @@ class Outputs:
             ("ac_output_voltage", "AC Output Voltage", "voltage", "V", "flash"),
             ("temp_inverter", "Inverter Temperature", "temperature", "°C", "thermometer"),
             ("temp_battery", "Battery Temperature", "temperature", "°C", "thermometer"),
+            ("temp_radiator_1", "Radiator Temperature 1", "temperature", "°C", "thermometer"),
+            ("temp_radiator_2", "Radiator Temperature 2", "temperature", "°C", "thermometer"),
+            ("eps_power", "EPS Output Power", "power", "W", "flash"),
+            ("eps_frequency", "EPS Output Frequency", "frequency", "Hz", "sine-wave"),
+            ("runtime", "Runtime", "duration", "s", "timer"),
+            ("state", "Operating State", "", "", "information"),
+            ("fault_code", "Fault Code", "", "", "alert"),
+            ("warning_code", "Warning Code", "", "", "alert"),
         ]
 
         device_info = {

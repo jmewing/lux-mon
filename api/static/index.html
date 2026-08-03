@@ -705,7 +705,9 @@ function buildStatus() {
     <span>SOH: <span id="s-soh">—</span></span>
     <span>Cycles: <span id="s-cycles">—</span></span>
     <span>Runtime: <span id="s-runtime">—</span></span>
-    <span>State: <span id="s-state">—</span></span>`;
+    <span>State: <span id="s-state">—</span></span>
+    <span>Inv Temp: <span id="s-invtemp">—</span></span>
+    <span>AC Out: <span id="s-acvolt">—</span></span>`;
   statusBuilt = true;
 }
 
@@ -722,6 +724,8 @@ function updateStatus(r) {
   document.getElementById('s-cycles').textContent = r.cycle_count?.value||0;
   document.getElementById('s-runtime').textContent = fmtDays(r.runtime?.value||0);
   document.getElementById('s-state').textContent = r.state?.value||0;
+  document.getElementById('s-invtemp').textContent = fmtC(r.temp_inverter?.value);
+  document.getElementById('s-acvolt').textContent = fmtV(r.ac_output_voltage?.value||0);
 }
 
 // ── Charts Tab ──

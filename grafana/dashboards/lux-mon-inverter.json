@@ -1,0 +1,952 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "lux-mon inverter status dashboard",
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 7978469629830128834,
+      "title": "Inverter Temp",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Temp",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Inverter temperature\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 7054339868864439513,
+      "title": "Radiator 1",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 3,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Temp",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Radiator temperature 1\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 5826851334129082309,
+      "title": "Radiator 2",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Temp",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Radiator temperature 2\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 6703341995428899626,
+      "title": "AC Output Voltage",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 9,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Voltage",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"AC output voltage\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "volt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 8375112266072384025,
+      "title": "EPS Power",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Power",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"combined\") FROM \"Generator power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 8239583947458411636,
+      "title": "EPS Frequency",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 15,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Freq",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Generator frequency\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "hertz"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 750188211269276579,
+      "title": "Runtime",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Runtime",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Inverter runtime\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 6572717872097194446,
+      "title": "State",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 21,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "State",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Inverter state\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3383924053656244395,
+      "title": "Fault Code",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "alias": "Fault",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Inverter fault code\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 7567753723396234376,
+      "title": "Warning Code",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 4
+      },
+      "targets": [
+        {
+          "alias": "Warning",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Inverter warning code\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2018410140643635873,
+      "title": "Inverter & Radiator Temperatures",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "alias": "Inverter",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"inverter_0\") FROM \"Inverter temperature\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Radiator 1",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"inverter_0\") FROM \"Radiator temperature 1\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Radiator 2",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"inverter_0\") FROM \"Radiator temperature 2\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": true,
+          "refId": "C",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 476298412496853036,
+      "title": "AC Output Voltage / EPS Power",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "alias": "AC Voltage",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"inverter_0\") FROM \"AC output voltage\" WHERE $timeFilter GROUP BY time($__interval) fill(previous)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "EPS Power",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"combined\") FROM \"Generator power\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "volt"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "EPS Power"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "watt"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {}
+    },
+    {
+      "id": 5950232990059956015,
+      "title": "Inverter State",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 15
+      },
+      "targets": [
+        {
+          "alias": "State",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Inverter state\" WHERE $timeFilter GROUP BY time($__interval) fill(previous)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4424637652848623824,
+      "title": "Fault / Warning Codes",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 15
+      },
+      "targets": [
+        {
+          "alias": "Fault",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT max(\"inverter_0\") FROM \"Inverter fault code\" WHERE $timeFilter GROUP BY time($__interval) fill(0)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Warning",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT max(\"inverter_0\") FROM \"Inverter warning code\" WHERE $timeFilter GROUP BY time($__interval) fill(0)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 2464484090413927918,
+      "title": "EPS Frequency",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 15
+      },
+      "targets": [
+        {
+          "alias": "Frequency",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"inverter_0\") FROM \"Generator frequency\" WHERE $timeFilter GROUP BY time($__interval) fill(previous)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "hertz"
+        },
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": [
+    "lux-mon",
+    "inverter"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "lux-mon Inverter",
+  "uid": "lux-mon-inverter",
+  "version": 1
+}
