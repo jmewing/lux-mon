@@ -17,24 +17,30 @@ Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi don
 ```
 EG4/LuxPower Inverter → WiFi Dongle (TCP :8000)
                               │
-                              ▼ (passive listen)
+                              ▼ (Modbus TCP / passive listen)
                     ┌─────────────────┐
                     │  lux-collector   │  Python
                     │  (protocol      │
                     │   parser)       │
                     └────────┬────────┘
                              │
-                             ▼
-                    ┌─────────────────┐
-                    │  MariaDB/MySQL  │  (or InfluxDB)
-                    └────────┬────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │   REST API       │  FastAPI
-                    │  /api/status     │  port 8080
-                    │  /api/history    │
-                    └─────────────────┘
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+       ┌──────────┐  ┌──────────┐  ┌──────────┐
+       │ MariaDB  │  │ InfluxDB │  │  MQTT    │
+       │          │  │ (Solar   │  │ (Home    │
+       │          │  │ Assistant│  │ Assistant│
+       │          │  │ schema)  │  │ discover)│
+       └────┬─────┘  └────┬─────┘  └────┬─────┘
+            │             │             │
+            └─────────────┴─────────────┘
+                          │
+                          ▼
+                 ┌─────────────────┐
+                 │   REST API       │  FastAPI
+                 │  /api/status     │  port 8080
+                 │  /api/history    │
+                 └─────────────────┘
 ```
 
 ## Quick Start
@@ -49,7 +55,10 @@ pip install -r docker/requirements.txt
 
 # Configure via environment (copy example and edit)
 cp .env.example .env
-# edit .env with your DB credentials and dongle IP
+# edit .env with your DB credentials, dongle IP, InfluxDB/MQTT options
+
+# Optional: install InfluxDB + Mosquitto + Grafana (Debian/Ubuntu)
+bash scripts/setup-grafana-stack.sh
 
 # Run the collector
 python -m collector
@@ -71,7 +80,9 @@ The API server runs on port 8080 and provides:
 | `GET /api/settings/{name}` | Single setting value |
 | `PUT /api/settings/{name}` | Update a setting (JSON body: `{"value": "..."}`) |
 
-The API also serves a built-in web dashboard at `/` with real-time gauges, power flow, historic charts, battery details, and energy totals.
+The API also serves a built-in web dashboard at `/` with real-time gauges, power flow, historic charts, battery details, energy totals, and runtime settings.
+
+A pre-built Grafana dashboard is included in `grafana/dashboards/lux-mon-charts.json` and provisioned automatically by `scripts/setup-grafana-stack.sh`. It uses a SolarAssistant-compatible InfluxDB schema so existing SolarAssistant dashboards import directly.
 
 ```bash
 # Start the API server
