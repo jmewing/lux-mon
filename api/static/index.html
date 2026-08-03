@@ -94,6 +94,13 @@
   }
   .time-btn:hover { color: var(--text); border-color: var(--muted); }
   .time-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .range-btn {
+    padding: 0.25rem 0.6rem; font-size: 0.7rem; border: 1px solid var(--border);
+    background: var(--card); color: var(--muted); border-radius: 0.4rem;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .range-btn:hover { color: var(--text); border-color: var(--muted); }
+  .range-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 
   /* ── Status bar ── */
   .status-bar {
@@ -324,6 +331,15 @@
     <div class="card" style="margin-bottom:0.75rem">
       <div class="label">Today's Energy</div>
       <div id="todayTotals"></div>
+    </div>
+    <div class="card" style="margin-bottom:0.75rem">
+      <div class="label">Energy History</div>
+      <div style="margin-bottom:0.5rem">
+        <button class="range-btn" data-range="daily" onclick="loadEnergyHistory('daily', 14)">Daily</button>
+        <button class="range-btn" data-range="weekly" onclick="loadEnergyHistory('weekly', 12)">Weekly</button>
+        <button class="range-btn" data-range="monthly" onclick="loadEnergyHistory('monthly', 12)">Monthly</button>
+      </div>
+      <div id="energyHistory"></div>
     </div>
     <div class="card">
       <div class="label">All-Time Totals</div>
@@ -866,6 +882,57 @@ function renderTotals(r) {
     </table>`;
 }
 
+// ── Energy History ──
+async function loadEnergyHistory(range, periods) {
+  try {
+    document.querySelectorAll('#tab-totals .range-btn').forEach(b => b.classList.remove('active'));
+    const active = document.querySelector(`#tab-totals .range-btn[data-range="${range}"]`);
+    if (active) active.classList.add('active');
+
+    const res = await fetch(API + `/api/energy?range=${range}&periods=${periods}`);
+    const json = await res.json();
+    const data = json.data || {};
+    const periods_list = Object.keys(data).sort();
+
+    const names = {
+      'PV power': 'PV Generation',
+      'Load power': 'Load Consumption',
+      'Grid power': 'Grid (in/export)',
+      'Battery power': 'Battery (charge/discharge)',
+    };
+
+    const rows = periods_list.map(period => {
+      const p = data[period] || {};
+      const pv = p['PV power'] || { in_kwh: 0, out_kwh: 0 };
+      const load = p['Load power'] || { in_kwh: 0, out_kwh: 0 };
+      const grid = p['Grid power'] || { in_kwh: 0, out_kwh: 0 };
+      const batt = p['Battery power'] || { in_kwh: 0, out_kwh: 0 };
+      return `<tr>
+        <td>${period}</td>
+        <td>${fmt(pv.in_kwh, 2)}</td>
+        <td>${fmt(load.out_kwh, 2)}</td>
+        <td>${fmt(grid.in_kwh, 2)} ↓<br>${fmt(grid.out_kwh, 2)} ↑</td>
+        <td>${fmt(batt.in_kwh, 2)} ↓<br>${fmt(batt.out_kwh, 2)} ↑</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('energyHistory').innerHTML = `
+      <table class="totals-table">
+        <tr>
+          <th>Period</th>
+          <th>PV (kWh)</th>
+          <th>Load (kWh)</th>
+          <th>Grid in/out</th>
+          <th>Battery chg/disch</th>
+        </tr>
+        ${rows || '<tr><td colspan="5">No data yet</td></tr>'}
+      </table>`;
+  } catch(e) {
+    console.error('Energy history failed:', e);
+    document.getElementById('energyHistory').innerHTML = '<p style="color:var(--red)">Failed to load energy history</p>';
+  }
+}
+
 // ── Data fetching ──
 async function refresh() {
   try {
@@ -923,6 +990,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     currentTab = tab.dataset.tab;
     document.getElementById('tab-' + currentTab).classList.add('active');
+    if (currentTab === 'totals') loadEnergyHistory('daily', 14);
     refresh();
   });
 });
@@ -947,7 +1015,10 @@ document.querySelectorAll('#overviewTimeRange .time-btn').forEach(btn => {
   });
 });
 
-loadSettingsForGauges().then(() => refresh());
+loadSettingsForGauges().then(() => {
+  refresh();
+  loadEnergyHistory('daily', 14);
+});
 setInterval(refresh, 5000);
 
 // ── Settings Page ──
