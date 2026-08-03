@@ -1,27 +1,32 @@
 """
-Passive LuxPower TCP collector.
+lux-mon collector.
 
-Connects to a LuxPower/EG4 WiFi dongle on port 8000 and passively listens to
-the streaming broadcast data. No active polling is required — the dongle
-continuously emits ReadHold and ReadInput frames containing inverter telemetry.
+Connects to an inverter or dongle via a pluggable transport, decodes incoming
+Modbus register frames, and writes snapshots to MariaDB or InfluxDB on a
+configurable interval.
 
-Parsed register values are written to the configured storage backend (MariaDB
-or InfluxDB) on a configurable interval.
+Supported transports:
+    tcp_passive   - listen to a LuxPower/EG4 WiFi dongle broadcast stream
+    tcp_active    - actively poll via the dongle's Modbus TCP gateway mode
+    replay        - replay a captured binary file for offline testing
+
+Future transports:
+    rtu_serial    - Modbus RTU over RS485 (USB adapter)
+    solarman      - Solarman WiFi dongle local protocol
 """
 
 import os
-import socket
 import time
 import logging
 import signal
 import sys
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Callable
 from threading import Thread, Event
 from pathlib import Path
 
-from .protocol import find_frames, LuxFrame, build_read_request, MODBUS_READ_INPUT
+from .protocol import LuxFrame
 from .registers import decode_registers
 
 
@@ -45,13 +50,13 @@ class CollectorConfig:
     write_interval: int = 30  # seconds between storage writes
     replay_file: Optional[str] = None  # if set, replay a capture file instead of live TCP
 
-    # Active polling mode: send ReadInput requests for near-real-time updates.
-    # Enable for dongles that don't auto-broadcast. Most dongles broadcast
-    # every ~2s, making passive mode the better default.
-    poll_mode: bool = False
+    # Transport selection. Options: tcp_passive, tcp_active, replay
+    transport: str = "tcp_active"
+
+    # Active polling settings (used by tcp_active)
     poll_interval: float = 2.0  # seconds between poll requests
     poll_register_start: int = 0  # first register to poll
-    poll_register_count: int = 40  # registers per poll request
+    poll_register_count: int = 40  # registers per poll request (legacy single-batch mode)
 
     # Dongle/inverter serials (required for active polling)
     datalog_serial: str = ""
@@ -74,6 +79,9 @@ class CollectorConfig:
     mariadb_database: str = "luxmon"
     mariadb_table_prefix: str = "lux_"
 
+    # Extra transport options passed through to transport constructors
+    transport_options: dict = field(default_factory=dict)
+
 
 def config_from_env() -> CollectorConfig:
     """Build a CollectorConfig from environment variables."""
@@ -84,7 +92,7 @@ def config_from_env() -> CollectorConfig:
         reconnect_delay=_env_or("LUX_RECONNECT_DELAY", 5.0, float),
         write_interval=_env_or("LUX_WRITE_INTERVAL", 30, int),
         replay_file=_env_or("LUX_REPLAY_FILE"),
-        poll_mode=_env_or("LUX_POLL_MODE", False, lambda v: v.lower() in ("1", "true", "yes")),
+        transport=_env_or("LUX_TRANSPORT", "tcp_active"),
         poll_interval=_env_or("LUX_POLL_INTERVAL", 2.0, float),
         poll_register_start=_env_or("LUX_POLL_REG_START", 0, int),
         poll_register_count=_env_or("LUX_POLL_REG_COUNT", 40, int),
@@ -101,27 +109,71 @@ def config_from_env() -> CollectorConfig:
         mariadb_password=_env_or("LUX_MARIADB_PASSWORD", "luxmon"),
         mariadb_database=_env_or("LUX_MARIADB_DATABASE", "luxmon"),
         mariadb_table_prefix=_env_or("LUX_MARIADB_TABLE_PREFIX", "lux_"),
+        transport_options=_load_transport_options(),
     )
 
 
+def _load_transport_options() -> dict:
+    """Load generic transport options from environment if present."""
+    # Currently no dedicated env vars; reserved for future use.
+    return {}
+
+
+def _create_transport(cfg: CollectorConfig, on_frame: Callable[[LuxFrame], None]):
+    """Instantiate the configured transport."""
+    transport = cfg.transport.lower()
+
+    if transport == "replay":
+        from .comm.replay import ReplayTransport
+        if not cfg.replay_file:
+            raise ValueError("LUX_REPLAY_FILE is required when transport=replay")
+        return ReplayTransport(on_frame, cfg.replay_file)
+
+    if transport == "tcp_passive":
+        from .comm.tcp_passive import TcpPassiveTransport
+        return TcpPassiveTransport(
+            on_frame,
+            host=cfg.dongle_host,
+            port=cfg.dongle_port,
+            reconnect_delay=cfg.reconnect_delay,
+            read_timeout=cfg.read_timeout,
+        )
+
+    if transport == "tcp_active":
+        from .comm.tcp_active import TcpActiveTransport
+        if not cfg.datalog_serial or not cfg.inverter_serial:
+            raise ValueError(
+                "LUX_DATALOG_SERIAL and LUX_INVERTER_SERIAL are required "
+                "when transport=tcp_active"
+            )
+        return TcpActiveTransport(
+            on_frame,
+            host=cfg.dongle_host,
+            port=cfg.dongle_port,
+            datalog_serial=cfg.datalog_serial,
+            inverter_serial=cfg.inverter_serial,
+            reconnect_delay=cfg.reconnect_delay,
+            read_timeout=cfg.read_timeout,
+            poll_interval=cfg.poll_interval,
+        )
+
+    raise ValueError(f"Unknown transport: {cfg.transport}")
+
+
 class PassiveCollector:
-    """Passive TCP collector for LuxPower/EG4 dongles."""
+    """Collector that receives frames from a transport and writes snapshots."""
 
     def __init__(self, config: CollectorConfig,
                  on_snapshot: Optional[Callable[[dict], None]] = None):
         self.cfg = config
+        self._on_snapshot = on_snapshot
         self._stop = Event()
-        self._sock: Optional[socket.socket] = None
+        self._transport = None
         self._writer: Optional[Thread] = None
-        self._reader: Optional[Thread] = None
         self._latest_input_raw: dict[int, int] = {}
         self._latest_hold_raw: dict[int, int] = {}
         self._latest_decoded: dict = {}
         self._last_write = 0.0
-        self._on_snapshot = on_snapshot
-        self._connect_time = 0.0
-        self._frames_received = 0
-        self._poll_requests = 0
 
         # Register handler for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -132,247 +184,37 @@ class PassiveCollector:
         self.stop()
 
     def start(self) -> None:
-        """Start the collector threads."""
+        """Start the transport and writer threads."""
         if self.cfg.replay_file:
-            logger.info("Starting LuxPower replay collector from %s", self.cfg.replay_file)
-            self._reader = Thread(target=self._replay_loop, name="lux-replay", daemon=True)
+            logger.info("Starting lux-mon collector (transport=replay, file=%s)",
+                        self.cfg.replay_file)
         else:
-            logger.info("Starting LuxPower passive collector for %s:%d",
-                        self.cfg.dongle_host, self.cfg.dongle_port)
-            self._reader = Thread(target=self._reader_loop, name="lux-reader", daemon=True)
+            logger.info("Starting lux-mon collector (transport=%s, %s:%d)",
+                        self.cfg.transport, self.cfg.dongle_host, self.cfg.dongle_port)
+
+        self._transport = _create_transport(self.cfg, self._handle_frame)
+        self._transport.start()
+
         self._writer = Thread(target=self._writer_loop, name="lux-writer", daemon=True)
-        self._reader.start()
         self._writer.start()
 
     def stop(self) -> None:
-        """Signal the collector to stop and close connections."""
+        """Signal the collector to stop and release resources."""
         self._stop.set()
-        self._close_socket()
+        if self._transport:
+            self._transport.stop()
 
     def wait(self) -> None:
         """Block until the collector stops."""
-        if self._reader and self._reader.is_alive():
-            self._reader.join()
         if self._writer and self._writer.is_alive():
             self._writer.join()
 
-    def _connect(self) -> Optional[socket.socket]:
-        """Open a TCP connection to the dongle."""
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(self.cfg.read_timeout)
-            sock.connect((self.cfg.dongle_host, self.cfg.dongle_port))
-            self._connect_time = time.time()
-            logger.info("Connected to dongle %s:%d", self.cfg.dongle_host, self.cfg.dongle_port)
-            return sock
-        except OSError as exc:
-            logger.error("Failed to connect to dongle: %s", exc)
-            return None
-
-    def _close_socket(self) -> None:
-        """Close the active socket if any."""
-        if self._sock:
-            try:
-                self._sock.close()
-            except OSError:
-                pass
-            self._sock = None
-
-    def _reader_loop(self) -> None:
-        """Main reader thread: connect, read bytes, parse frames."""
-        if self.cfg.poll_mode:
-            self._poll_loop()
-        else:
-            self._passive_loop()
-
-    def _passive_loop(self) -> None:
-        """Passive listen mode: dongle auto-broadcasts data."""
-        buffer = b""
-
-        while not self._stop.is_set():
-            if self._sock is None:
-                self._sock = self._connect()
-                if self._sock is None:
-                    self._stop.wait(self.cfg.reconnect_delay)
-                    continue
-
-            try:
-                chunk = self._sock.recv(4096)
-                if not chunk:
-                    logger.warning(
-                        "Dongle closed connection immediately (single-connection limit or inverter off)"
-                    )
-                    self._close_socket()
-                    self._stop.wait(self.cfg.reconnect_delay)
-                    continue
-
-                buffer += chunk
-
-                frames = find_frames(buffer)
-                if frames:
-                    self._frames_received += len(frames)
-                    for frame in frames:
-                        self._handle_frame(frame)
-
-                    last_frame = frames[-1]
-                    last_pos = buffer.find(last_frame.raw) + len(last_frame.raw)
-                    buffer = buffer[last_pos:]
-
-                if len(buffer) > 8192:
-                    next_a1 = buffer.find(bytes([0xA1, 0x1A]), 1)
-                    if next_a1 > 0:
-                        buffer = buffer[next_a1:]
-                    else:
-                        buffer = b""
-
-            except socket.timeout:
-                logger.warning("Socket timeout, reconnecting...")
-                self._close_socket()
-            except OSError as exc:
-                logger.error("Socket error: %s", exc)
-                self._close_socket()
-                self._stop.wait(self.cfg.reconnect_delay)
-
-    def _poll_loop(self) -> None:
-        """Active polling mode: send ReadInput requests and parse responses.
-
-        Polls all three register batches (0-39, 40-79, 80-119) in sequence
-        to get the full inverter telemetry set. Each batch is requested
-        individually, with a short gap between batches.
-
-        Uses a short read timeout so broadcast data is captured even when
-        the dongle ignores explicit poll requests (hybrid poll/passive mode).
-        """
-        if not self.cfg.datalog_serial or not self.cfg.inverter_serial:
-            logger.error(
-                "Poll mode requires LUX_DATALOG_SERIAL and LUX_INVERTER_SERIAL. "
-                "Falling back to passive mode."
-            )
-            self._passive_loop()
-            return
-
-        # Three register batches covering the full input register map
-        batches = [
-            (0, 40),    # registers 0-39:  voltages, power, daily energy
-            (40, 40),   # registers 40-79: all-time energy, temperatures, runtime
-            (80, 40),   # registers 80-119: battery status, capacity, charge params
-        ]
-
-        logger.info(
-            "Active polling mode: %d batches every %.1fs",
-            len(batches), self.cfg.poll_interval,
-        )
-
-        # Pre-build all request packets
-        requests = [
-            build_read_request(
-                datalog_serial=self.cfg.datalog_serial,
-                inverter_serial=self.cfg.inverter_serial,
-                device_function=MODBUS_READ_INPUT,
-                start_register=start,
-                count=count,
-            )
-            for start, count in batches
-        ]
-
-        batch_idx = 0
-        poll_timeout = max(1.0, self.cfg.poll_interval * 0.8)
-
-        while not self._stop.is_set():
-            if self._sock is None:
-                self._sock = self._connect()
-                if self._sock is None:
-                    self._stop.wait(self.cfg.reconnect_delay)
-                    continue
-                buffer = b""
-                # Use a short timeout for poll mode so we don't block
-                # waiting for responses the dongle may never send.
-                self._sock.settimeout(poll_timeout)
-
-            try:
-                # Send the next batch request
-                request = requests[batch_idx]
-                self._sock.sendall(request)
-                self._poll_requests += 1
-
-                # Read response (or broadcast data) with short timeout
-                chunk = self._sock.recv(4096)
-                if not chunk:
-                    logger.warning("Dongle closed connection during poll")
-                    self._close_socket()
-                    self._stop.wait(self.cfg.reconnect_delay)
-                    continue
-
-                buffer += chunk
-
-                # Parse all complete frames
-                frames = find_frames(buffer)
-                if frames:
-                    self._frames_received += len(frames)
-                    for frame in frames:
-                        self._handle_frame(frame)
-
-                    last_frame = frames[-1]
-                    last_pos = buffer.find(last_frame.raw) + len(last_frame.raw)
-                    buffer = buffer[last_pos:]
-
-                # Advance to next batch
-                batch_idx = (batch_idx + 1) % len(batches)
-
-            except socket.timeout:
-                # No response to our poll request — the dongle may be in
-                # broadcast mode. That's fine; we'll try the next batch.
-                logger.debug("Poll timeout (dongle may be broadcasting)")
-                batch_idx = (batch_idx + 1) % len(batches)
-            except OSError as exc:
-                logger.error("Socket error during poll: %s", exc)
-                self._close_socket()
-                self._stop.wait(self.cfg.reconnect_delay)
-
-    def _replay_loop(self) -> None:
-        """Replay a captured binary file for offline testing/development."""
-        path = Path(self.cfg.replay_file)
-        if not path.exists():
-            logger.error("Replay file not found: %s", path)
-            return
-
-        data = path.read_bytes()
-        logger.info("Replaying %d bytes from %s", len(data), path)
-
-        # Feed the whole capture once, simulating live arrival in chunks
-        chunk_size = 512
-        buffer = b""
-        for offset in range(0, len(data), chunk_size):
-            if self._stop.is_set():
-                break
-            buffer += data[offset:offset + chunk_size]
-
-            frames = find_frames(buffer)
-            if frames:
-                self._frames_received += len(frames)
-                for frame in frames:
-                    self._handle_frame(frame)
-                last_frame = frames[-1]
-                last_pos = buffer.find(last_frame.raw) + len(last_frame.raw)
-                buffer = buffer[last_pos:]
-
-            time.sleep(0.5)
-
-        logger.info("Replay finished (%d frames parsed)", self._frames_received)
-
-        # Keep writer alive for a while so it can write decoded snapshots
-        while not self._stop.is_set():
-            time.sleep(1)
-
-        logger.info("Replay loop exiting")
-
     def _handle_frame(self, frame: LuxFrame) -> None:
-        """Process a parsed frame."""
+        """Process a parsed frame delivered by the transport."""
         if not frame.is_translated_data:
             return
 
         if frame.is_read_input:
-            # Merge input register values into the latest snapshot.
             for i, raw_val in enumerate(frame.values):
                 reg_num = frame.register + i
                 self._latest_input_raw[reg_num] = raw_val
@@ -382,8 +224,6 @@ class PassiveCollector:
                              len(frame.values), frame.register)
 
         elif frame.is_read_hold:
-            # Holding registers are configuration/settings; keep them separate
-            # for future use but do not decode them as live telemetry.
             for i, raw_val in enumerate(frame.values):
                 reg_num = frame.register + i
                 self._latest_hold_raw[reg_num] = raw_val
@@ -401,7 +241,6 @@ class PassiveCollector:
                 logger.warning("No input data received yet, skipping write")
                 continue
 
-            # Require at least the core battery voltage register before writing
             if 4 not in self._latest_input_raw:
                 logger.warning("Input register batch incomplete, skipping write")
                 continue
@@ -424,8 +263,6 @@ class PassiveCollector:
         logger.info("Writer loop exiting")
 
     # ── Sanity clamping ──────────────────────────────────────────────
-    # Physical limits for a 6000XP inverter. Values beyond these are
-    # register decode errors (misaligned frames, CRC false-positives).
     _SANITY_LIMITS: dict[str, float] = {
         "pv1_power": 8000,
         "pv2_power": 8000,
@@ -434,10 +271,10 @@ class PassiveCollector:
         "charge_power": 5000,
         "discharge_power": 5000,
         "eps_power": 6000,
-        "battery_voltage": 65,     # 16S LiFePO4 max
-        "battery_current": 150,    # 6000XP max charge current
-        "temp_inverter": 100,      # °C
-        "temp_battery": 80,        # °C
+        "battery_voltage": 65,
+        "battery_current": 150,
+        "temp_inverter": 100,
+        "temp_battery": 80,
         "temp_radiator_1": 100,
         "temp_radiator_2": 100,
         "soc": 100,
@@ -554,7 +391,6 @@ class PassiveCollector:
 
         points = []
 
-        # Main solar point with key metrics
         point = Point("inverter")
         for key, val_info in decoded.items():
             if isinstance(val_info, dict) and "value" in val_info:
@@ -564,7 +400,6 @@ class PassiveCollector:
                     pass
         points.append(point)
 
-        # Also write individual points with units for easier Grafana queries
         for key, val_info in decoded.items():
             if isinstance(val_info, dict) and "value" in val_info:
                 p = Point("register").tag("name", key).tag("unit", val_info.get("unit", ""))
@@ -601,14 +436,12 @@ class PassiveCollector:
     @property
     def stats(self) -> dict:
         """Return current collector statistics."""
+        transport_stats = self._transport.stats() if self._transport else {}
         return {
-            "connected": self._sock is not None,
-            "frames_received": self._frames_received,
-            "poll_requests": self._poll_requests,
+            **transport_stats,
+            "last_write": self._last_write,
             "input_registers_known": len(self._latest_input_raw),
             "hold_registers_known": len(self._latest_hold_raw),
-            "last_write": self._last_write,
-            "uptime": time.time() - self._connect_time if self._connect_time else 0,
         }
 
 
@@ -632,6 +465,14 @@ def run_collector(
             if value is not None and hasattr(cfg, key):
                 setattr(cfg, key, value)
 
+    # Legacy LUX_POLL_MODE=true maps to tcp_active for backwards compatibility
+    poll_mode = os.environ.get("LUX_POLL_MODE", "").lower() in ("1", "true", "yes")
+    if poll_mode and cfg.transport == "tcp_passive":
+        cfg.transport = "tcp_active"
+        logger.warning(
+            "LUX_POLL_MODE=true is deprecated; set LUX_TRANSPORT=tcp_active instead"
+        )
+
     collector = PassiveCollector(cfg)
     collector.start()
     collector.wait()
@@ -642,7 +483,6 @@ def _load_config(cfg: CollectorConfig, path: Path) -> None:
     if not path.exists():
         return
 
-    # Simple exec-based config loader; production would use YAML/TOML
     ns = {"config": cfg}
     exec(compile(path.read_text(), str(path), "exec"), ns)
 

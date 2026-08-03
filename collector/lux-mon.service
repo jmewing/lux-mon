@@ -1,0 +1,16 @@
+[Unit]
+Description=lux-mon collector
+After=network.target mariadb.service
+Wants=mariadb.service
+
+[Service]
+Type=simple
+User=jmewing
+WorkingDirectory=/home/jmewing/src/lux-mon
+ExecStart=/home/jmewing/src/lux-mon/venv/bin/python3 -m collector
+Restart=always
+RestartSec=5
+EnvironmentFile=-/home/jmewing/src/lux-mon/.env
+
+[Install]
+WantedBy=multi-user.target
