@@ -6,9 +6,11 @@ datasources:
     access: proxy
     url: http://localhost:8086
     database: luxmon
-    user: luxmon
-    password: luxmon
     isDefault: true
     editable: true
     jsonData:
-      timeInterval: "5s"
+      version: InfluxQL
+      organization: luxmon
+      tlsSkipVerify: true
+    secureJsonData:
+      token: ${LUX_INFLUX_TOKEN}

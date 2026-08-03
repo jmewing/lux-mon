@@ -113,6 +113,13 @@ sudo mkdir -p /var/lib/grafana/dashboards/lux-mon
 # Build a 2.x-compatible datasource YAML if we have a token
 if [[ -f /tmp/influx-luxmon.token ]]; then
   TOKEN=$(cat /tmp/influx-luxmon.token)
+  # Create InfluxDB v1 DBRP mapping so the imported SolarAssistant InfluxQL dashboard works
+  BUCKET_ID=$(curl -fsS -H "Authorization: Token $TOKEN" "http://127.0.0.1:8086/api/v2/buckets?org=luxmon" 2>/dev/null | python3 -c "import json,sys; print([b['id'] for b in json.load(sys.stdin)['buckets'] if b['name']=='luxmon'][0])" || true)
+  if [[ -n "$BUCKET_ID" ]]; then
+    curl -fsS -H "Authorization: Token $TOKEN" -H "Content-Type: application/json" \
+      -X POST http://127.0.0.1:8086/api/v2/dbrps \
+      -d "{\"org\":\"luxmon\",\"bucketID\":\"$BUCKET_ID\",\"database\":\"luxmon\",\"retention_policy\":\"autogen\",\"default\":true}" >/dev/null 2>&1 || true
+  fi
   sudo tee /etc/grafana/provisioning/datasources/lux-mon.yaml >/dev/null <<EOF
 apiVersion: 1
 
@@ -121,12 +128,12 @@ datasources:
     type: influxdb
     access: proxy
     url: http://127.0.0.1:8086
+    database: luxmon
     isDefault: true
     editable: true
     jsonData:
-      version: Flux
+      version: InfluxQL
       organization: luxmon
-      defaultBucket: luxmon
       tlsSkipVerify: true
     secureJsonData:
       token: "$TOKEN"
