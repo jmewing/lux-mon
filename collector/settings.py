@@ -71,6 +71,14 @@ DEFAULTS = {
     "mqtt_ha_discovery": "true",        # Publish Home Assistant discovery configs
     "mqtt_device_name": "luxmon",
     "mqtt_device_id": "luxmon_solar",
+
+    # ── Alerts / thresholds ──
+    "alerts_enabled": "false",          # Enable alert evaluation
+    "alerts_soc_low": "20",             # Battery SOC low threshold (%)
+    "alerts_soc_critical": "10",        # Battery SOC critical threshold (%)
+    "alerts_battery_temp_high": "50",   # Battery high temp (°C)
+    "alerts_inverter_temp_high": "60",  # Inverter high temp (°C)
+    "alerts_grid_lost_threshold_sec": "30",  # Seconds before grid-loss alert fires
 }
 
 
@@ -363,6 +371,49 @@ SETTING_META = {
         "type": "text",
         "section": "mqtt",
         "hint": "Unique ID for the HA device",
+    },
+
+    # ── Alerts ──
+    "alerts_enabled": {
+        "label": "Enable Alerts",
+        "type": "checkbox",
+        "section": "alerts",
+        "hint": "Evaluate alert rules on every snapshot",
+    },
+    "alerts_soc_low": {
+        "label": "SOC Low Threshold",
+        "type": "number",
+        "section": "alerts",
+        "min": 0, "max": 100,
+        "hint": "Battery SOC % that triggers a low alert",
+    },
+    "alerts_soc_critical": {
+        "label": "SOC Critical Threshold",
+        "type": "number",
+        "section": "alerts",
+        "min": 0, "max": 100,
+        "hint": "Battery SOC % that triggers a critical alert",
+    },
+    "alerts_battery_temp_high": {
+        "label": "Battery High Temp",
+        "type": "number",
+        "section": "alerts",
+        "min": 0, "max": 100,
+        "hint": "Battery temperature (°C) that triggers a high temp alert",
+    },
+    "alerts_inverter_temp_high": {
+        "label": "Inverter High Temp",
+        "type": "number",
+        "section": "alerts",
+        "min": 0, "max": 100,
+        "hint": "Inverter heatsink temperature (°C) that triggers a high temp alert",
+    },
+    "alerts_grid_lost_threshold_sec": {
+        "label": "Grid Loss Delay",
+        "type": "number",
+        "section": "alerts",
+        "min": 0, "max": 600,
+        "hint": "Seconds grid voltage/frequency must be absent before a grid-loss alert fires",
     },
 }
 

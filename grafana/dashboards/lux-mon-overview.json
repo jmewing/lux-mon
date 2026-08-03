@@ -1,0 +1,1200 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Native lux-mon system overview dashboard",
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "PV Power",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "PV Power",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"combined\") FROM \"PV power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "yellow",
+                "value": null
+              }
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Load Power",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Load Power",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"combined\") FROM \"Load power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Grid Net",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Grid Net",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"combined\") FROM \"Grid power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Battery Net",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Battery Net",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"combined\") FROM \"Battery power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Battery SOC",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "alias": "Battery SOC",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Battery state of charge\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Battery Voltage",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 8,
+        "y": 4
+      },
+      "targets": [
+        {
+          "alias": "Battery Voltage",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Battery voltage\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "yellow",
+                "value": null
+              }
+            ]
+          },
+          "unit": "volt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Battery Current",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 8,
+        "y": 7
+      },
+      "targets": [
+        {
+          "alias": "Battery Current",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Battery current\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "yellow",
+                "value": null
+              }
+            ]
+          },
+          "unit": "amp"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Inverter Temp",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "alias": "Inverter Temp",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Inverter temperature\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 9,
+      "title": "Battery Temp",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 12,
+        "y": 7
+      },
+      "targets": [
+        {
+          "alias": "Battery Temp",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"combined\") FROM \"Battery temperature\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 10,
+      "title": "AC Output Voltage",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 16,
+        "y": 4
+      },
+      "targets": [
+        {
+          "alias": "AC Output Voltage",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"AC output voltage\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          },
+          "unit": "volt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 11,
+      "title": "AC Frequency",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 16,
+        "y": 7
+      },
+      "targets": [
+        {
+          "alias": "AC Frequency",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Grid frequency\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          },
+          "unit": "hertz"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 12,
+      "title": "PV String Power",
+      "type": "bargauge",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "targets": [
+        {
+          "alias": "PV power 1",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"PV power 1\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "PV power 2",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"PV power 2\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Auxiliary PV power",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0\") FROM \"Auxiliary PV power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "C",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "orientation": "auto",
+            "displayMode": "gradient",
+            "valueDisplayMode": "color"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "auto",
+        "displayMode": "gradient",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      }
+    },
+    {
+      "id": 13,
+      "title": "Grid Import / Export",
+      "type": "bargauge",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "targets": [
+        {
+          "alias": "Grid power",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0_in\") FROM \"Grid power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Grid power",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT last(\"inverter_0_out\") FROM \"Grid power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "orientation": "auto",
+            "displayMode": "gradient",
+            "valueDisplayMode": "color"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "auto",
+        "displayMode": "gradient",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      }
+    },
+    {
+      "id": 14,
+      "title": "Power Flow",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "targets": [
+        {
+          "alias": "PV power",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"combined\") AS \"combined\" FROM \"PV power\" WHERE $timeFilter GROUP BY time($__interval) fill(linear)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Load power",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"combined\") AS \"combined\" FROM \"Load power\" WHERE $timeFilter GROUP BY time($__interval) fill(linear)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Grid power",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"combined\") AS \"combined\" FROM \"Grid power\" WHERE $timeFilter GROUP BY time($__interval) fill(linear)",
+          "rawQuery": true,
+          "refId": "C",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Battery power",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"combined\") AS \"combined\" FROM \"Battery power\" WHERE $timeFilter GROUP BY time($__interval) fill(linear)",
+          "rawQuery": true,
+          "refId": "D",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "barAlignment": 0,
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "spanNulls": true,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "title": "SOC & Temperatures",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 23
+      },
+      "targets": [
+        {
+          "alias": "SOC",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"inverter_0\") AS \"inverter_0\" FROM \"Battery state of charge\" WHERE $timeFilter GROUP BY time($__interval) fill(linear)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Battery Temp",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"combined\") AS \"combined\" FROM \"Battery temperature\" WHERE $timeFilter GROUP BY time($__interval) fill(linear)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Inverter Temp",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"inverter_0\") AS \"inverter_0\" FROM \"Inverter temperature\" WHERE $timeFilter GROUP BY time($__interval) fill(linear)",
+          "rawQuery": true,
+          "refId": "C",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "barAlignment": 0,
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "spanNulls": true,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "title": "Battery Voltage",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 23
+      },
+      "targets": [
+        {
+          "alias": "Battery voltage",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT mean(\"inverter_0\") AS \"inverter_0\" FROM \"Battery voltage\" WHERE $timeFilter GROUP BY time($__interval) fill(linear)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "barAlignment": 0,
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "spanNulls": true,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "volt"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": [
+    "lux-mon"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "timezone": "browser",
+  "title": "lux-mon Overview",
+  "uid": "lux-mon-overview",
+  "version": 1
+}

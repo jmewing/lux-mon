@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 from urllib.parse import urlencode
 
+from collector.alerts import Alerts
+
 logger = logging.getLogger("luxmon.outputs")
 
 
@@ -112,6 +114,14 @@ class OutputConfig:
     mqtt_ha_prefix: str = "homeassistant"
     mqtt_device_name: str = "luxmon"
     mqtt_device_id: str = "luxmon_solar"
+
+    # Alerts / thresholds
+    alerts_enabled: bool = False
+    alerts_soc_low: float = 20.0
+    alerts_soc_critical: float = 10.0
+    alerts_battery_temp_high: float = 50.0
+    alerts_inverter_temp_high: float = 60.0
+    alerts_grid_lost_threshold_sec: float = 30.0
 
 
 def _sa_value(decoded: dict, key: str) -> Optional[float]:
@@ -210,7 +220,10 @@ class Outputs:
         self._influx_client: Any = None
         self._mqtt_client: Any = None
         self._mqtt_ha_announced: set[str] = set()
+        self._alerts: Optional[Alerts] = None
         self._init_backends()
+        if self.cfg.alerts_enabled:
+            self._alerts = Alerts(self.cfg, mqtt_client=self._mqtt_client, mariadb_conn=self._mariadb_conn)
 
     def _init_backends(self) -> None:
         if self.cfg.mariadb_enabled:
@@ -548,7 +561,18 @@ class Outputs:
             self._mqtt_ha_announced.add(uniq)
 
     # ── Lifecycle ─────────────────────────────────────────────────────
+    def evaluate_alerts(self, decoded: dict) -> dict:
+        """Evaluate alert thresholds if alerts are enabled."""
+        if self._alerts:
+            return self._alerts.evaluate(decoded)
+        return {}
+
     def close(self) -> None:
+        if self._alerts:
+            try:
+                self._alerts.close()
+            except Exception:
+                pass
         if self._mariadb_conn:
             try:
                 self._mariadb_conn.close()

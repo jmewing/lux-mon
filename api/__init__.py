@@ -157,6 +157,24 @@ def api_health():
     return {"status": "ok"}
 
 
+@app.get("/api/alerts")
+def api_alerts(limit: int = Query(50, ge=1, le=500, description="Number of recent alert events")):
+    """Return recent alert events from MariaDB."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, ts, alert_name, state, value, message FROM lux_alerts "
+                "ORDER BY ts DESC LIMIT %s",
+                (limit,),
+            )
+            columns = ["id", "timestamp", "alert_name", "state", "value", "message"]
+            rows = cur.fetchall()
+        return {"alerts": [_row_to_dict(row, columns) for row in rows], "count": len(rows)}
+    finally:
+        conn.close()
+
+
 @app.get("/api/summary")
 def api_summary():
     """Compact summary for dashboards — key metrics only."""
