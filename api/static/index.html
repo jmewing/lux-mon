@@ -286,6 +286,7 @@
       </div>
       <div class="card chart-card">
         <div class="label">Grid Power</div>
+        <div id="gridStatus" style="font-size:0.75rem;color:var(--muted);margin-bottom:0.3rem"></div>
         <canvas id="chart-grid"></canvas>
       </div>
       <div class="card chart-card">
@@ -615,6 +616,13 @@ function updateOverviewGauges(r) {
     gridIn > 0 ? `📥 ${fmtW(gridIn)}` : (gridOut > 0 ? `📤 ${fmtW(gridOut)}` : '0 W');
   document.getElementById('ov-grid-det').textContent =
     `${fmtV(r.grid_voltage_r?.value||0)} · ${fmtHz(r.grid_frequency?.value)}`;
+  const gridStatusHtml = [
+    `V: ${fmtV(r.grid_voltage_r?.value||0)}`,
+    `f: ${fmtHz(r.grid_frequency?.value)}`,
+    `In today: ${fmtkWh(r.grid_import_today?.value)}`,
+    `Out today: ${fmtkWh(r.grid_export_today?.value)}`,
+  ].join(' · ');
+  document.getElementById('gridStatus').textContent = gridStatusHtml;
 
   // Load gauge
   updateGauge('ov-load', Math.min((load/loadMax)*100, 100), 'var(--purple)',
