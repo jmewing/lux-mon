@@ -46,7 +46,80 @@
   }
   .card .label { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
 
-  /* ── Radial Gauges ── */
+  /* ── Overview: 4 gauge cards across top ── */
+  .overview-gauges {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.75rem; margin-bottom: 0.75rem;
+  }
+  .ov-gauge-card {
+    text-align: center; padding: 1rem 0.75rem 0.75rem;
+  }
+  .ov-gauge-card .gauge-icon {
+    font-size: 1.5rem; margin-bottom: 0.25rem;
+  }
+  .ov-gauge-card .gauge-title {
+    color: var(--muted); font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: 0.5rem;
+  }
+  .ov-gauge-card .gauge-svg {
+    width: 100%; max-width: 140px; height: auto; margin: 0 auto;
+  }
+  .ov-gauge-card .gauge-value {
+    font-size: 1.5rem; font-weight: 700; margin-top: -0.25rem;
+  }
+  .ov-gauge-card .gauge-detail {
+    color: var(--muted); font-size: 0.65rem; margin-top: 0.15rem;
+    min-height: 1em;
+  }
+
+  /* ── Overview: full-width combined chart ── */
+  .overview-chart {
+    margin-bottom: 0.75rem;
+  }
+  .overview-chart .chart-time-label {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 0.5rem;
+  }
+  .overview-chart .chart-time-label .label { margin: 0; }
+  .overview-chart .chart-time-label .time-range {
+    display: flex; gap: 0.25rem;
+  }
+  .overview-chart canvas { width: 100%; height: 300px; max-height: 300px; }
+
+  .time-btn {
+    padding: 0.25rem 0.6rem; font-size: 0.7rem; border: 1px solid var(--border);
+    background: var(--card); color: var(--muted); border-radius: 0.4rem;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .time-btn:hover { color: var(--text); border-color: var(--muted); }
+  .time-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+  /* ── Status bar ── */
+  .status-bar {
+    display: flex; gap: 1rem; flex-wrap: wrap;
+    font-size: 0.75rem; color: var(--muted);
+  }
+  .status-bar span { display: flex; align-items: center; gap: 0.25rem; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.green { background: var(--green); }
+  .dot.yellow { background: var(--yellow); }
+  .dot.red { background: var(--red); }
+
+  /* ── Charts Tab ── */
+  .chart-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem; margin-bottom: 0.75rem;
+  }
+  .chart-card canvas { width: 100%; height: 250px; max-height: 250px; }
+  @media (max-width: 700px) { .chart-row { grid-template-columns: 1fr; } }
+
+  .time-range {
+    display: flex; gap: 0.25rem; margin-bottom: 0.75rem; flex-wrap: wrap;
+  }
+
+  /* ── Battery Tab ── */
   .gauges {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -58,60 +131,12 @@
   .gauge-svg {
     width: 100%; max-width: 120px; height: auto; margin: 0 auto;
   }
-  .gauge-value {
-    font-size: 1.3rem; font-weight: 700; margin-top: -0.25rem;
-  }
   .gauge-label {
     color: var(--muted); font-size: 0.65rem; text-transform: uppercase;
     letter-spacing: 0.05em; margin-top: 0.1rem;
   }
-  .gauge-unit {
-    color: var(--muted); font-size: 0.65rem;
-  }
 
-  /* ── Flow cards ── */
-  .flow {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 0.6rem; margin-bottom: 0.75rem;
-  }
-  .flow-card { text-align: center; }
-  .flow-card .icon { font-size: 1.75rem; margin-bottom: 0.15rem; }
-  .flow-card .name { color: var(--muted); font-size: 0.75rem; }
-  .flow-card .power { font-size: 1.3rem; font-weight: 700; }
-  .flow-card .detail { color: var(--muted); font-size: 0.7rem; margin-top: 0.15rem; }
-
-  /* ── Charts ── */
-  .chart-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem; margin-bottom: 0.75rem;
-  }
-  .chart-full { grid-column: 1 / -1; }
-  .chart-card canvas { width: 100%; height: 250px; }
-  @media (max-width: 700px) { .chart-row { grid-template-columns: 1fr; } }
-
-  .time-range {
-    display: flex; gap: 0.25rem; margin-bottom: 0.75rem; flex-wrap: wrap;
-  }
-  .time-btn {
-    padding: 0.3rem 0.75rem; font-size: 0.75rem; border: 1px solid var(--border);
-    background: var(--card); color: var(--muted); border-radius: 0.4rem;
-    cursor: pointer; transition: all 0.15s;
-  }
-  .time-btn:hover { color: var(--text); border-color: var(--muted); }
-  .time-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
-
-  .status-bar {
-    display: flex; gap: 1rem; flex-wrap: wrap;
-    font-size: 0.75rem; color: var(--muted);
-  }
-  .status-bar span { display: flex; align-items: center; gap: 0.25rem; }
-  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-  .dot.green { background: var(--green); }
-  .dot.yellow { background: var(--yellow); }
-  .dot.red { background: var(--red); }
-
+  /* ── Totals Tab ── */
   .totals-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
   .totals-table th, .totals-table td {
     padding: 0.5rem 0.75rem; text-align: right;
@@ -121,12 +146,17 @@
   .totals-table th:first-child, .totals-table td:first-child { text-align: left; }
   .totals-table tr:hover td { background: rgba(255,255,255,0.03); }
 
-  @media (max-width: 600px) {
-    .gauges { grid-template-columns: repeat(2, 1fr); }
-    .tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+  /* ── Settings page ── */
+  .settings-page { max-width: 800px; }
+  .settings-section { margin-bottom: 0.75rem; }
+  .settings-section h3 {
+    font-size: 0.95rem; font-weight: 600; margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
   }
-
-  /* ── Settings form ── */
+  .settings-note {
+    color: var(--muted); font-size: 0.7rem; margin: -0.5rem 0 0.75rem;
+    font-style: italic;
+  }
   .settings-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -136,17 +166,25 @@
     display: block; font-size: 0.7rem; color: var(--muted);
     text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;
   }
-  .setting-field input {
+  .setting-field input,
+  .setting-field select {
     width: 100%; padding: 0.5rem 0.6rem;
     background: var(--bg); border: 1px solid var(--border);
     border-radius: 0.4rem; color: var(--text); font-size: 0.9rem;
     font-family: inherit; transition: border-color 0.2s;
+    appearance: none;
   }
-  .setting-field input:focus {
-    outline: none; border-color: var(--accent);
+  .setting-field select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 0.6rem center;
+    padding-right: 2rem; cursor: pointer;
   }
-  .setting-field .hint {
-    font-size: 0.65rem; color: var(--muted); margin-top: 0.15rem;
+  .setting-field select option { background: var(--card); color: var(--text); }
+  .setting-field input:focus,
+  .setting-field select:focus { outline: none; border-color: var(--accent); }
+  .setting-field .hint { font-size: 0.65rem; color: var(--muted); margin-top: 0.15rem; }
+  .settings-actions {
+    margin-top: 1rem; display: flex; gap: 0.75rem; align-items: center;
   }
   .save-btn {
     padding: 0.6rem 1.5rem; font-size: 0.85rem; font-weight: 600;
@@ -156,6 +194,18 @@
   }
   .save-btn:hover { opacity: 0.85; }
   .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  #saveStatus { font-size: 0.8rem; color: var(--muted); }
+
+  @media (max-width: 900px) {
+    .overview-gauges { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 500px) {
+    .overview-gauges { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 600px) {
+    .gauges { grid-template-columns: repeat(2, 1fr); }
+    .tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+  }
 </style>
 </head>
 <body>
@@ -173,20 +223,26 @@
     <div class="tab" data-tab="settings" style="margin-left:auto;padding:0.5rem 0.75rem;font-size:1.1rem" title="Settings">⚙️</div>
   </div>
 
-  <!-- Overview Tab -->
+  <!-- Overview Tab — SolarAssistant-inspired layout -->
   <div class="tab-content active" id="tab-overview">
-    <div class="gauges" id="gauges"></div>
-    <div class="flow" id="flow"></div>
-    <div class="chart-row">
-      <div class="card chart-card">
-        <div class="label">Power Flow</div>
-        <canvas id="chart-overview"></canvas>
+    <!-- 4 gauge cards: Solar | Grid | Load | Battery -->
+    <div class="overview-gauges" id="overviewGauges"></div>
+
+    <!-- Full-width 24h combined chart -->
+    <div class="card overview-chart">
+      <div class="chart-time-label">
+        <div class="label">Power Flow — Last 24 Hours</div>
+        <div class="time-range" id="overviewTimeRange">
+          <button class="time-btn" data-min="60">1h</button>
+          <button class="time-btn" data-min="360">6h</button>
+          <button class="time-btn" data-min="720">12h</button>
+          <button class="time-btn active" data-min="1440">24h</button>
+        </div>
       </div>
-      <div class="card chart-card">
-        <div class="label">Battery</div>
-        <canvas id="chart-batt"></canvas>
-      </div>
+      <canvas id="chart-overview-combined"></canvas>
     </div>
+
+    <!-- Status bar -->
     <div class="status-bar" id="statusBar"></div>
   </div>
 
@@ -260,22 +316,36 @@
 
   <!-- Settings Tab -->
   <div class="tab-content" id="tab-settings">
-    <div class="card" style="margin-bottom:0.75rem">
-      <div class="label">Inverter Ratings</div>
-      <p style="color:var(--muted);font-size:0.75rem;margin:0.25rem 0 0.75rem">These set the maximum values for dashboard gauges and power indicators.</p>
-      <div class="settings-grid" id="settingsRatings"></div>
-    </div>
-    <div class="card" style="margin-bottom:0.75rem">
-      <div class="label">Dashboard Preferences</div>
-      <div class="settings-grid" id="settingsDashboard"></div>
-    </div>
-    <div class="card">
-      <div class="label">Collector Tuning</div>
-      <div class="settings-grid" id="settingsCollector"></div>
-    </div>
-    <div style="margin-top:1rem;display:flex;gap:0.5rem;align-items:center">
-      <button id="saveSettings" class="save-btn">💾 Save All Settings</button>
-      <span id="saveStatus" style="font-size:0.8rem;color:var(--muted)"></span>
+    <div class="settings-page">
+      <div class="card settings-section" id="settingsSectionInverter">
+        <h3>Inverter</h3>
+        <div class="settings-grid" id="settingsInverter"></div>
+      </div>
+      <div class="card settings-section" id="settingsSectionBattery">
+        <h3>Battery</h3>
+        <div class="settings-grid" id="settingsBattery"></div>
+      </div>
+      <div class="card settings-section" id="settingsSectionGrid">
+        <h3>Grid</h3>
+        <div class="settings-grid" id="settingsGrid"></div>
+      </div>
+      <div class="card settings-section" id="settingsSectionDashboard">
+        <h3>Dashboard</h3>
+        <p class="settings-note">Values above are only visual settings for the various dashboards. They don't affect inverter operation.</p>
+        <div class="settings-grid" id="settingsDashboard"></div>
+      </div>
+      <div class="card settings-section" id="settingsSectionSystem">
+        <h3>System</h3>
+        <div class="settings-grid" id="settingsSystem"></div>
+      </div>
+      <div class="card settings-section" id="settingsSectionCollector">
+        <h3>Collector</h3>
+        <div class="settings-grid" id="settingsCollector"></div>
+      </div>
+      <div class="settings-actions">
+        <button id="saveSettings" class="save-btn">💾 Save All Settings</button>
+        <span id="saveStatus"></span>
+      </div>
     </div>
   </div>
 </div>
@@ -284,6 +354,7 @@
 // ── State ──
 let currentTab = 'overview';
 let chartRange = 360;
+let overviewChartRange = 1440;
 let gaugesBuilt = false;
 let battGaugesBuilt = false;
 const charts = {};
@@ -309,7 +380,7 @@ function gaugeColor(pct) {
 }
 
 function polarToCartesian(cx, cy, r, angleDeg) {
-  const rad = (angleDeg - 90) * Math.PI / 180;
+  const rad = angleDeg * Math.PI / 180;
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
@@ -321,7 +392,7 @@ function describeArc(cx, cy, r, startAngle, endAngle) {
 }
 
 const R = 38, STROKE = 5, CX = 50, CY = 50;
-const START_ANGLE = 135, END_ANGLE = 405, SWEEP = 270;
+const START_ANGLE = 180, END_ANGLE = 360, SWEEP = 180;
 const BG_ARC = describeArc(CX, CY, R, START_ANGLE, END_ANGLE);
 
 function fillArcPath(pct) {
@@ -354,28 +425,53 @@ function updateGauge(id, pct, color, valueText, unit) {
 }
 
 // ── Chart helpers ──
-function makeChart(id) {
-  if (charts[id]) charts[id].destroy();
-  const ctx = document.getElementById(id).getContext('2d');
+function makeChart(id, yMax) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return null;
+
+  // Reuse existing chart if present — don't destroy/recreate (causes canvas resize)
+  if (charts[id]) {
+    const c = charts[id];
+    if (yMax != null) {
+      c.options.scales.y.max = yMax;
+    }
+    return c;
+  }
+
+  const ctx = canvas.getContext('2d');
+  const yOpts = {
+    ticks: { color: '#64748b', font: {size:9} },
+    grid: { color: '#1e293b' }
+  };
+  if (yMax) yOpts.max = yMax;
   charts[id] = new Chart(ctx, {
     type: 'line',
     data: { labels: [], datasets: [] },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      responsive: true,
+      maintainAspectRatio: false,
       animation: { duration: 300 },
       interaction: { intersect: false, mode: 'index' },
-      plugins: { legend: { labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8, font: {size:10} } } },
+      plugins: {
+        legend: {
+          labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8, font: {size:10} }
+        }
+      },
       scales: {
-        x: { ticks: { color: '#64748b', maxTicksLimit: 8, font: {size:9} }, grid: { color: '#1e293b' } },
-        y: { ticks: { color: '#64748b', font: {size:9} }, grid: { color: '#1e293b' } }
+        x: {
+          ticks: { color: '#64748b', maxTicksLimit: 8, font: {size:9} },
+          grid: { color: '#1e293b' }
+        },
+        y: yOpts
       }
     }
   });
   return charts[id];
 }
 
-function setChartData(id, labels, datasets) {
-  const c = makeChart(id);
+function setChartData(id, labels, datasets, yMax) {
+  const c = makeChart(id, yMax);
+  if (!c) return;
   c.data.labels = labels;
   c.data.datasets = datasets;
   c.update('none');
@@ -388,85 +484,164 @@ function timeLabel(ts) {
 
 function extract(h, key) { return h.snapshots.map(s => s.registers[key] || 0); }
 
-// ── Build gauges once, update in-place ──
+// ── Overview: 4 gauge cards (Solar | Grid | Load | Battery) ──
+let overviewGaugesBuilt = false;
 function buildOverviewGauges() {
-  const ids = ['g-soc','g-pv','g-grid','g-load','g-chg','g-battv','g-invt','g-battt'];
-  const labels = ['Battery SOC','Solar PV','Grid Import','Load (EPS)','Charge/Discharge','Battery Voltage','Inverter Temp','Battery Temp'];
-  document.getElementById('gauges').innerHTML = ids.map((id,i) =>
-    `<div class="gauge-card card">${buildGaugeSVG(id)}<div class="gauge-label">${labels[i]}</div></div>`
-  ).join('');
-  gaugesBuilt = true;
+  document.getElementById('overviewGauges').innerHTML = `
+    <div class="ov-gauge-card card">
+      <div class="gauge-icon">☀️</div>
+      <div class="gauge-title">Solar PV</div>
+      ${buildGaugeSVG('ov-solar')}
+      <div class="gauge-value" id="ov-solar-val">—</div>
+      <div class="gauge-detail" id="ov-solar-det"></div>
+    </div>
+    <div class="ov-gauge-card card">
+      <div class="gauge-icon">🏠</div>
+      <div class="gauge-title">Grid</div>
+      ${buildGaugeSVG('ov-grid')}
+      <div class="gauge-value" id="ov-grid-val">—</div>
+      <div class="gauge-detail" id="ov-grid-det"></div>
+    </div>
+    <div class="ov-gauge-card card">
+      <div class="gauge-icon">🔌</div>
+      <div class="gauge-title">Load (EPS)</div>
+      ${buildGaugeSVG('ov-load')}
+      <div class="gauge-value" id="ov-load-val">—</div>
+      <div class="gauge-detail" id="ov-load-det"></div>
+    </div>
+    <div class="ov-gauge-card card">
+      <div class="gauge-icon">🔋</div>
+      <div class="gauge-title">Battery</div>
+      ${buildGaugeSVG('ov-batt')}
+      <div class="gauge-value" id="ov-batt-val">—</div>
+      <div class="gauge-detail" id="ov-batt-det"></div>
+    </div>
+    <div class="ov-gauge-card card">
+      <div class="gauge-icon">🌡️</div>
+      <div class="gauge-title">Battery Temp</div>
+      ${buildGaugeSVG('ov-batttemp')}
+      <div class="gauge-value" id="ov-batttemp-val">—</div>
+      <div class="gauge-detail" id="ov-batttemp-det"></div>
+    </div>
+    <div class="ov-gauge-card card">
+      <div class="gauge-icon">🔥</div>
+      <div class="gauge-title">Inverter Temp</div>
+      ${buildGaugeSVG('ov-invtemp')}
+      <div class="gauge-value" id="ov-invtemp-val">—</div>
+      <div class="gauge-detail" id="ov-invtemp-det"></div>
+    </div>`;
+  overviewGaugesBuilt = true;
 }
 
 function updateOverviewGauges(r) {
-  if (!gaugesBuilt) buildOverviewGauges();
-  const soc = r.soc?.value || 0;
+  if (!overviewGaugesBuilt) buildOverviewGauges();
+
   const pv = (r.pv1_power?.value || 0) + (r.pv2_power?.value || 0);
-  const grid = r.grid_import_power?.value || 0;
+  const gridIn = r.grid_import_power?.value || 0;
+  const gridOut = r.grid_export_power?.value || 0;
   const load = r.eps_power?.value || 0;
+  const soc = r.soc?.value || 0;
   const chg = r.charge_power?.value || 0;
   const dis = r.discharge_power?.value || 0;
   const battV = r.battery_voltage?.value || 0;
-  const invT = r.temp_inverter?.value || 0;
-  const battT = r.temp_battery?.value || 0;
-  const pvMax = window._settings?.pv_max_power || 8000;
-  const gridMax = window._settings?.grid_max_power || 6000;
-  const loadMax = window._settings?.eps_max_power || 6000;
-  const chgMax = window._settings?.charge_max_power || 5000;
-  const disMax = window._settings?.discharge_max_power || 5000;
+  const battA = r.battery_current?.value || 0;
 
-  updateGauge('g-soc', soc, gaugeColor(soc), fmtPct(soc), '');
-  updateGauge('g-pv', Math.min((pv/pvMax)*100,100), 'var(--yellow)', fmtW(pv), pvMax+'W max');
-  updateGauge('g-grid', Math.min((grid/gridMax)*100,100), 'var(--accent)', fmtW(grid), gridMax+'W max');
-  updateGauge('g-load', Math.min((load/loadMax)*100,100), 'var(--purple)', fmtW(load), loadMax+'W max');
-  if (chg > 0) {
-    updateGauge('g-chg', Math.min((chg/chgMax)*100,100), 'var(--green)', fmtW(chg), chgMax+'W max');
-    document.querySelector('#gauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Charging';
-  } else if (dis > 0) {
-    updateGauge('g-chg', Math.min((dis/disMax)*100,100), 'var(--orange)', fmtW(dis), disMax+'W max');
-    document.querySelector('#gauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Discharging';
-  } else {
-    updateGauge('g-chg', 0, 'var(--muted)', '0 W', '');
-    document.querySelector('#gauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Battery Idle';
-  }
-  updateGauge('g-battv', Math.min((battV-42)/(58-42)*100,100), 'var(--green)', fmtV(battV), '42–58V range');
-  updateGauge('g-invt', Math.min((invT/80)*100,100), invT>60?'var(--red)':(invT>45?'var(--yellow)':'var(--green)'), fmtC(invT), '80°C max');
-  updateGauge('g-battt', Math.min((battT/60)*100,100), battT>50?'var(--red)':(battT>40?'var(--yellow)':'var(--green)'), fmtC(battT), '60°C max');
+  const pvMax = Number(window._settings?.pv_max_power) || 8000;
+  const gridMax = Number(window._settings?.grid_max_power) || 6000;
+  const loadMax = Number(window._settings?.eps_max_power) || 6000;
+
+  // Solar gauge
+  updateGauge('ov-solar', Math.min((pv/pvMax)*100, 100), 'var(--yellow)',
+    fmtW(pv), '');
+  document.getElementById('ov-solar-val').textContent = fmtW(pv);
+  document.getElementById('ov-solar-det').textContent =
+    `PV1: ${fmtW(r.pv1_power?.value||0)} · PV2: ${fmtW(r.pv2_power?.value||0)}`;
+
+  // Grid gauge
+  const gridPower = gridIn > 0 ? gridIn : (gridOut > 0 ? -gridOut : 0);
+  const gridPct = Math.min((Math.abs(gridPower)/gridMax)*100, 100);
+  const gridColor = gridIn > 0 ? 'var(--accent)' : (gridOut > 0 ? 'var(--green)' : 'var(--muted)');
+  updateGauge('ov-grid', gridPct, gridColor,
+    gridIn > 0 ? fmtW(gridIn) : (gridOut > 0 ? fmtW(gridOut) : '0 W'), '');
+  document.getElementById('ov-grid-val').textContent =
+    gridIn > 0 ? `📥 ${fmtW(gridIn)}` : (gridOut > 0 ? `📤 ${fmtW(gridOut)}` : '0 W');
+  document.getElementById('ov-grid-det').textContent =
+    `${fmtV(r.grid_voltage_r?.value||0)} · ${fmtHz(r.grid_frequency?.value)}`;
+
+  // Load gauge
+  updateGauge('ov-load', Math.min((load/loadMax)*100, 100), 'var(--purple)',
+    fmtW(load), '');
+  document.getElementById('ov-load-val').textContent = fmtW(load);
+  document.getElementById('ov-load-det').textContent =
+    `Today: ${fmtkWh(r.eps_energy_today?.value||0)}`;
+
+  // Battery gauge (SOC-based)
+  updateGauge('ov-batt', soc, gaugeColor(soc), fmtPct(soc), '');
+  document.getElementById('ov-batt-val').textContent = fmtPct(soc);
+  const battStatus = chg > 0 ? `⚡ Charging ${fmtW(chg)}` :
+    (dis > 0 ? `🔽 Discharging ${fmtW(dis)}` : 'Idle');
+  document.getElementById('ov-batt-det').textContent =
+    `${battStatus} · ${fmtV(battV)} · ${fmtA(battA)}`;
+  // Battery Temp gauge (0–60°C)
+  const battTemp = r.temp_battery?.value || 0;
+  const invTemp = r.temp_inverter?.value || 0;
+  updateGauge('ov-batttemp', Math.min((battTemp/60)*100, 100),
+    battTemp>50?'var(--red)':(battTemp>40?'var(--yellow)':'var(--green)'),
+    fmtC(battTemp), '');
+  document.getElementById('ov-batttemp-val').textContent = fmtC(battTemp);
+  document.getElementById('ov-batttemp-det').textContent = 'Max 60°C';
+
+  // Inverter Temp gauge (0–80°C)
+  updateGauge('ov-invtemp', Math.min((invTemp/80)*100, 100),
+    invTemp>70?'var(--red)':(invTemp>55?'var(--yellow)':'var(--green)'),
+    fmtC(invTemp), '');
+  document.getElementById('ov-invtemp-val').textContent = fmtC(invTemp);
+  document.getElementById('ov-invtemp-det').textContent = 'Max 80°C';
 }
 
-// ── Flow cards: build once, update text in-place ──
-let flowBuilt = false;
-function buildFlowCards() {
-  document.getElementById('flow').innerHTML = `
-    <div class="flow-card card"><div class="icon">☀️</div><div class="name">Solar</div><div class="power" id="f-solar-pwr">—</div><div class="detail" id="f-solar-det">—</div></div>
-    <div class="flow-card card"><div class="icon">🔋</div><div class="name" id="f-batt-name">Battery</div><div class="power" id="f-batt-pwr">—</div><div class="detail" id="f-batt-det">—</div></div>
-    <div class="flow-card card"><div class="icon">🏠</div><div class="name">Grid</div><div class="power" id="f-grid-pwr">—</div><div class="detail" id="f-grid-det">—</div></div>
-    <div class="flow-card card"><div class="icon">🔌</div><div class="name">EPS (Backup)</div><div class="power" id="f-eps-pwr">—</div><div class="detail" id="f-eps-det">—</div></div>`;
-  flowBuilt = true;
+// ── Overview: full-width combined 24h chart ──
+function renderOverviewChart(h) {
+  const labels = h.snapshots.map(s => timeLabel(s.timestamp));
+  const c = makeChart('chart-overview-combined');
+  if (!c) return;
+  c.data.labels = labels;
+  c.data.datasets = [
+    {
+      label: 'Solar PV (W)',
+      data: h.snapshots.map(s => (s.registers.pv1_power||0) + (s.registers.pv2_power||0)),
+      borderColor: '#facc15',
+      backgroundColor: 'rgba(250,204,21,0.1)',
+      tension: 0.3, pointRadius: 0, borderWidth: 1.5, fill: true
+    },
+    {
+      label: 'Grid Import (W)',
+      data: extract(h, 'grid_import_power'),
+      borderColor: '#38bdf8',
+      tension: 0.3, pointRadius: 0, borderWidth: 1.5
+    },
+    {
+      label: 'Battery Charge (W)',
+      data: extract(h, 'charge_power'),
+      borderColor: '#4ade80',
+      tension: 0.3, pointRadius: 0, borderWidth: 1.5
+    },
+    {
+      label: 'Battery Discharge (W)',
+      data: extract(h, 'discharge_power'),
+      borderColor: '#f87171',
+      tension: 0.3, pointRadius: 0, borderWidth: 1.5
+    },
+    {
+      label: 'EPS Load (W)',
+      data: extract(h, 'eps_power'),
+      borderColor: '#c084fc',
+      tension: 0.3, pointRadius: 0, borderWidth: 1.5
+    },
+  ];
+  c.update('none');
 }
 
-function updateFlow(r) {
-  if (!flowBuilt) buildFlowCards();
-  const pv = (r.pv1_power?.value||0) + (r.pv2_power?.value||0);
-  const chg = r.charge_power?.value||0;
-  const dis = r.discharge_power?.value||0;
-  const gridIn = r.grid_import_power?.value||0;
-  const gridOut = r.grid_export_power?.value||0;
-  const eps = r.eps_power?.value||0;
-  const soc = r.soc?.value||0;
-
-  document.getElementById('f-solar-pwr').textContent = fmtW(pv);
-  document.getElementById('f-solar-det').textContent = `PV1: ${fmtW(r.pv1_power?.value||0)} · PV2: ${fmtW(r.pv2_power?.value||0)}`;
-  document.getElementById('f-batt-name').textContent = `Battery ${fmtPct(soc)}`;
-  document.getElementById('f-batt-pwr').textContent = chg>0?`⚡ ${fmtW(chg)}`:(dis>0?`🔽 ${fmtW(dis)}`:'Idle');
-  document.getElementById('f-batt-det').textContent = `${fmtV(r.battery_voltage?.value||0)} · ${fmtA(r.battery_current?.value||0)}`;
-  document.getElementById('f-grid-pwr').textContent = gridIn>0?`📥 ${fmtW(gridIn)}`:(gridOut>0?`📤 ${fmtW(gridOut)}`:'0 W');
-  document.getElementById('f-grid-det').textContent = `${fmtV(r.grid_voltage_r?.value||0)} · ${fmtHz(r.grid_frequency?.value)}`;
-  document.getElementById('f-eps-pwr').textContent = fmtW(eps);
-  document.getElementById('f-eps-det').textContent = `Today: ${fmtkWh(r.eps_energy_today?.value||0)}`;
-}
-
-// ── Status bar: build once, update in-place ──
+// ── Status bar ──
 let statusBuilt = false;
 function buildStatus() {
   document.getElementById('statusBar').innerHTML = `
@@ -500,37 +675,39 @@ function renderCharts(h) {
   setChartData('chart-pv', labels, [
     { label:'PV1 (W)', data:extract(h,'pv1_power'), borderColor:'#facc15', tension:0.3, pointRadius:0, borderWidth:1.5 },
     { label:'PV2 (W)', data:extract(h,'pv2_power'), borderColor:'#fb923c', tension:0.3, pointRadius:0, borderWidth:1.5 },
-  ]);
+  ], 8000);
 
   setChartData('chart-grid', labels, [
     { label:'Import (W)', data:extract(h,'grid_import_power'), borderColor:'#38bdf8', tension:0.3, pointRadius:0, borderWidth:1.5 },
     { label:'Export (W)', data:extract(h,'grid_export_power'), borderColor:'#4ade80', tension:0.3, pointRadius:0, borderWidth:1.5 },
-  ]);
+  ], 6000);
 
   setChartData('chart-battpower', labels, [
     { label:'Charge (W)', data:extract(h,'charge_power'), borderColor:'#4ade80', tension:0.3, pointRadius:0, borderWidth:1.5 },
     { label:'Discharge (W)', data:extract(h,'discharge_power'), borderColor:'#f87171', tension:0.3, pointRadius:0, borderWidth:1.5 },
-  ]);
+  ], 5000);
 
   const c4 = makeChart('chart-battvsoc');
-  c4.data.labels = labels;
-  c4.data.datasets = [
-    { label:'Voltage (V)', data:extract(h,'battery_voltage'), borderColor:'#38bdf8', tension:0.3, pointRadius:0, borderWidth:1.5, yAxisID:'y' },
-    { label:'SOC (%)', data:extract(h,'soc'), borderColor:'#c084fc', tension:0.3, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
-  ];
-  c4.options.scales.y = { ticks:{color:'#64748b',font:{size:9}}, grid:{color:'#1e293b'}, title:{display:true,text:'Volts',color:'#64748b'} };
-  c4.options.scales.y1 = { position:'right', min:0, max:100, ticks:{color:'#64748b',callback:v=>v+'%',font:{size:9}}, grid:{display:false}, title:{display:true,text:'SOC %',color:'#64748b'} };
-  c4.update('none');
+  if (c4) {
+    c4.data.labels = labels;
+    c4.data.datasets = [
+      { label:'Voltage (V)', data:extract(h,'battery_voltage'), borderColor:'#38bdf8', tension:0.3, pointRadius:0, borderWidth:1.5, yAxisID:'y' },
+      { label:'SOC (%)', data:extract(h,'soc'), borderColor:'#c084fc', tension:0.3, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
+    ];
+    c4.options.scales.y = { ticks:{color:'#64748b',font:{size:9}}, grid:{color:'#1e293b'}, title:{display:true,text:'Volts',color:'#64748b'} };
+    c4.options.scales.y1 = { position:'right', min:0, max:100, ticks:{color:'#64748b',callback:v=>v+'%',font:{size:9}}, grid:{display:false}, title:{display:true,text:'SOC %',color:'#64748b'} };
+    c4.update('none');
+  }
 
   setChartData('chart-load', labels, [
     { label:'EPS Load (W)', data:extract(h,'eps_power'), borderColor:'#facc15', tension:0.3, pointRadius:0, borderWidth:1.5 },
-  ]);
+  ], 6000);
 
   setChartData('chart-temps', labels, [
     { label:'Inverter (°C)', data:extract(h,'temp_inverter'), borderColor:'#f87171', tension:0.3, pointRadius:0, borderWidth:1.5 },
     { label:'Battery (°C)', data:extract(h,'temp_battery'), borderColor:'#38bdf8', tension:0.3, pointRadius:0, borderWidth:1.5 },
     { label:'Radiator 1 (°C)', data:extract(h,'temp_radiator_1'), borderColor:'#fb923c', tension:0.3, pointRadius:0, borderWidth:1.5 },
-  ]);
+  ], 100);
 }
 
 // ── Battery Tab ──
@@ -554,8 +731,8 @@ function updateBattGauges(r) {
   const cap = r.battery_capacity?.value || 200;
   const cycles = r.cycle_count?.value || 0;
   const battT = r.temp_battery?.value || 0;
-  const chgMax = window._settings?.charge_max_power || 5000;
-  const disMax = window._settings?.discharge_max_power || 5000;
+  const chgMax = Number(window._settings?.charge_max_power) || 5000;
+  const disMax = Number(window._settings?.discharge_max_power) || 5000;
 
   updateGauge('bg-soc', soc, gaugeColor(soc), fmtPct(soc), '');
   updateGauge('bg-soh', soh, soh>=90?'var(--green)':(soh>=70?'var(--yellow)':'var(--red)'), fmtPct(soh), '');
@@ -579,7 +756,6 @@ function updateBattGauges(r) {
 function renderBattery(r) {
   updateBattGauges(r);
 
-  // Cell voltages
   const cellLabels = [];
   const cellVolts = [];
   for (let i = 1; i <= 16; i++) {
@@ -592,7 +768,6 @@ function renderBattery(r) {
     ]);
   }
 
-  // Cell temps
   const ctLabels = [];
   const ctData = [];
   for (let i = 1; i <= 16; i++) {
@@ -605,7 +780,6 @@ function renderBattery(r) {
     ]);
   }
 
-  // BMS status
   const bmsKeys = ['bms_status_0','bms_status_1','bms_status_2','bms_status_3','bms_status_4','bms_status_5','bms_status_6','bms_status_7','bms_status_8','bms_status_9'];
   const bmsHtml = bmsKeys.map(k => {
     const v = r[k]; return v ? `<span style="margin-right:1rem">${k.replace('bms_','')}: <strong>${v.value}</strong></span>` : '';
@@ -663,45 +837,36 @@ function renderTotals(r) {
 // ── Data fetching ──
 async function refresh() {
   try {
-    const [statusRes, histRes] = await Promise.all([
-      fetch(API + '/api/summary'),
-      fetch(API + `/api/history?minutes=${chartRange}&fields=pv1_power,pv2_power,charge_power,discharge_power,grid_import_power,grid_export_power,soc,battery_voltage,battery_current,eps_power,temp_inverter,temp_battery,temp_radiator_1`)
-    ]);
+    // Fetch summary first (fast) to render gauges immediately
+    const statusRes = await fetch(API + '/api/summary');
     const status = await statusRes.json();
-    const history = await histRes.json();
     const r = status.registers;
-    const labels = history.snapshots.map(s => timeLabel(s.timestamp));
 
-    // Overview — update in-place, no DOM rebuild
+    // Render gauges + status immediately — don't wait for history
     updateOverviewGauges(r);
-    updateFlow(r);
     updateStatus(r);
-    setChartData('chart-overview', labels, [
-      { label:'PV (W)', data:extract(history,'pv1_power'), borderColor:'#facc15', tension:0.3, pointRadius:0, borderWidth:1.5 },
-      { label:'Charge (W)', data:extract(history,'charge_power'), borderColor:'#4ade80', tension:0.3, pointRadius:0, borderWidth:1.5 },
-      { label:'Grid (W)', data:extract(history,'grid_import_power'), borderColor:'#38bdf8', tension:0.3, pointRadius:0, borderWidth:1.5 },
-    ]);
-    const cb = makeChart('chart-batt');
-    cb.data.labels = labels;
-    cb.data.datasets = [
-      { label:'Voltage (V)', data:extract(history,'battery_voltage'), borderColor:'#38bdf8', tension:0.3, pointRadius:0, borderWidth:1.5, yAxisID:'y' },
-      { label:'SOC (%)', data:extract(history,'soc'), borderColor:'#c084fc', tension:0.3, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
-    ];
-    cb.options.scales.y = { ticks:{color:'#64748b',font:{size:9}}, grid:{color:'#1e293b'}, title:{display:true,text:'Volts',color:'#64748b'} };
-    cb.options.scales.y1 = { position:'right', min:0, max:100, ticks:{color:'#64748b',callback:v=>v+'%',font:{size:9}}, grid:{display:false}, title:{display:true,text:'SOC %',color:'#64748b'} };
-    cb.update('none');
-
-    // Charts tab
-    renderCharts(history);
-
-    // Battery tab
     renderBattery(r);
-
-    // Totals tab
     renderTotals(r);
 
     const ts = status.timestamp;
     document.getElementById('updated').textContent = 'Updated: ' + ts.substring(ts.indexOf('T')+1, ts.indexOf('T')+9);
+
+    // Fetch history in parallel (slower) for charts
+    const fetches = [
+      fetch(API + `/api/history?minutes=${overviewChartRange}&fields=pv1_power,pv2_power,charge_power,discharge_power,grid_import_power,grid_export_power,soc,battery_voltage,battery_current,eps_power,temp_inverter,temp_battery,temp_radiator_1`)
+    ];
+    if (currentTab === 'charts') {
+      fetches.push(fetch(API + `/api/history?minutes=${chartRange}&fields=pv1_power,pv2_power,charge_power,discharge_power,grid_import_power,grid_export_power,soc,battery_voltage,battery_current,eps_power,temp_inverter,temp_battery,temp_radiator_1`));
+    }
+
+    const results = await Promise.all(fetches);
+    const overviewHistory = await results[0].json();
+    renderOverviewChart(overviewHistory);
+
+    if (currentTab === 'charts' && results[1]) {
+      const chartsHistory = await results[1].json();
+      renderCharts(chartsHistory);
+    }
   } catch(e) { console.error('Refresh failed:', e); }
 }
 
@@ -710,7 +875,11 @@ async function loadSettingsForGauges() {
   try {
     const res = await fetch(API + '/api/settings');
     const data = await res.json();
-    window._settings = data.settings;
+    const flat = {};
+    for (const [k, v] of Object.entries(data.settings)) {
+      flat[k] = v.value;
+    }
+    window._settings = flat;
   } catch(e) { /* use defaults */ }
 }
 
@@ -726,12 +895,22 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// ── Time range buttons ──
-document.querySelectorAll('.time-btn').forEach(btn => {
+// ── Time range buttons (Charts tab) ──
+document.querySelectorAll('#chartTimeRange .time-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#chartTimeRange .time-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     chartRange = parseInt(btn.dataset.min);
+    refresh();
+  });
+});
+
+// ── Time range buttons (Overview chart) ──
+document.querySelectorAll('#overviewTimeRange .time-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#overviewTimeRange .time-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    overviewChartRange = parseInt(btn.dataset.min);
     refresh();
   });
 });
@@ -740,42 +919,72 @@ loadSettingsForGauges().then(() => refresh());
 setInterval(refresh, 5000);
 
 // ── Settings Page ──
-const SETTINGS_DEFS = [
-  { key:'pv_max_power', label:'Max PV Power', hint:'Watts — gauge ceiling for solar input', group:'ratings' },
-  { key:'battery_capacity', label:'Battery Capacity', hint:'Amp-hours — gauge ceiling for battery', group:'ratings' },
-  { key:'grid_max_power', label:'Max Grid Power', hint:'Watts — max grid pass-through', group:'ratings' },
-  { key:'eps_max_power', label:'Max EPS Power', hint:'Watts — max backup output', group:'ratings' },
-  { key:'charge_max_power', label:'Max Charge Power', hint:'Watts — max battery charge rate', group:'ratings' },
-  { key:'discharge_max_power', label:'Max Discharge Power', hint:'Watts — max battery discharge rate', group:'ratings' },
-  { key:'dashboard_refresh_sec', label:'Refresh Interval', hint:'Seconds between dashboard updates', group:'dashboard' },
-  { key:'chart_default_hours', label:'Default Chart Range', hint:'Hours shown on initial chart load', group:'dashboard' },
-  { key:'write_interval_sec', label:'Write Interval', hint:'Seconds between MariaDB writes', group:'collector' },
-];
+const SETTINGS_SECTIONS = ['inverter', 'battery', 'grid', 'dashboard', 'system', 'collector'];
+const SECTION_IDS = {
+  inverter: 'settingsInverter',
+  battery: 'settingsBattery',
+  grid: 'settingsGrid',
+  dashboard: 'settingsDashboard',
+  system: 'settingsSystem',
+  collector: 'settingsCollector',
+};
 
 async function loadSettings() {
   try {
     const res = await fetch(API + '/api/settings');
     const data = await res.json();
-    const s = data.settings;
-    window._settings = s;
+    const all = data.settings;
 
-    document.getElementById('settingsRatings').innerHTML = SETTINGS_DEFS
-      .filter(d => d.group === 'ratings')
-      .map(d => settingField(d, s[d.key] || '')).join('');
-    document.getElementById('settingsDashboard').innerHTML = SETTINGS_DEFS
-      .filter(d => d.group === 'dashboard')
-      .map(d => settingField(d, s[d.key] || '')).join('');
-    document.getElementById('settingsCollector').innerHTML = SETTINGS_DEFS
-      .filter(d => d.group === 'collector')
-      .map(d => settingField(d, s[d.key] || '')).join('');
+    const flat = {};
+    for (const [k, v] of Object.entries(all)) {
+      flat[k] = v.value;
+    }
+    window._settings = flat;
+
+    const bySection = {};
+    for (const sec of SETTINGS_SECTIONS) bySection[sec] = [];
+    for (const [key, meta] of Object.entries(all)) {
+      const sec = meta.section || 'general';
+      if (!bySection[sec]) bySection[sec] = [];
+      bySection[sec].push({ key, ...meta });
+    }
+
+    for (const sec of SETTINGS_SECTIONS) {
+      const el = document.getElementById(SECTION_IDS[sec]);
+      if (!el) continue;
+      const fields = bySection[sec] || [];
+      if (fields.length === 0) {
+        const sectionCard = document.getElementById('settingsSection' + sec.charAt(0).toUpperCase() + sec.slice(1));
+        if (sectionCard) sectionCard.style.display = 'none';
+        continue;
+      }
+      el.innerHTML = fields.map(f => settingField(f)).join('');
+    }
   } catch(e) { console.error('Settings load failed:', e); }
 }
 
-function settingField(def, value) {
+function settingField(def) {
+  const id = 'set-' + def.key;
+  let inputHtml = '';
+
+  if (def.type === 'select' && def.options) {
+    inputHtml = `<select id="${id}" data-key="${def.key}">${def.options.map(o => {
+      const selected = String(o[0]) === String(def.value) ? ' selected' : '';
+      return `<option value="${o[0]}"${selected}>${o[1]}</option>`;
+    }).join('')}</select>`;
+  } else if (def.type === 'number') {
+    const min = def.min != null ? ` min="${def.min}"` : '';
+    const max = def.max != null ? ` max="${def.max}"` : '';
+    const step = def.step != null ? ` step="${def.step}"` : '';
+    inputHtml = `<input type="number" id="${id}" value="${def.value}" data-key="${def.key}"${min}${max}${step}>`;
+  } else {
+    inputHtml = `<input type="text" id="${id}" value="${def.value}" data-key="${def.key}">`;
+  }
+
   return `<div class="setting-field">
-    <label for="set-${def.key}">${def.label}</label>
-    <input type="text" id="set-${def.key}" value="${value}" data-key="${def.key}">
-    <div class="hint">${def.hint}</div>
+    <label for="${id}">${def.label}</label>
+    ${inputHtml}
+    ${def.hint ? `<div class="hint">${def.hint}</div>` : ''}
   </div>`;
 }
 
@@ -784,8 +993,9 @@ async function saveSettings() {
   const status = document.getElementById('saveStatus');
   btn.disabled = true;
   status.textContent = 'Saving…';
+  status.style.color = 'var(--muted)';
 
-  const inputs = document.querySelectorAll('#tab-settings input[data-key]');
+  const inputs = document.querySelectorAll('#tab-settings [data-key]');
   let ok = 0, fail = 0;
 
   for (const input of inputs) {

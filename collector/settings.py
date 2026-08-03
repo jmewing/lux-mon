@@ -2,6 +2,15 @@
 Key-value settings stored in MariaDB.
 
 Read by the collector and API at runtime — no config files, no restarts.
+
+Settings are organized into sections matching the SolarAssistant layout:
+  - Inverter: model, ratings
+  - Battery: type, capacity, metric
+  - Grid: provider
+  - Dashboard: visual preferences, gauge max values
+  - System: localization, timezone, temperature unit
+  - MQTT: broker config (future)
+  - Collector: write interval, tuning
 """
 
 import logging
@@ -12,20 +21,214 @@ logger = logging.getLogger("luxmon.settings")
 # Default settings with their initial values.
 # These are inserted on first run if the row doesn't exist.
 DEFAULTS = {
-    # Inverter ratings (used for gauge max values in dashboard)
-    "pv_max_power": "8000",         # Max PV input power (W)
-    "battery_capacity": "200",      # Battery capacity (Ah)
-    "grid_max_power": "6000",       # Max grid pass-through (W)
-    "eps_max_power": "6000",        # Max EPS output (W)
-    "charge_max_power": "5000",     # Max charge power (W)
-    "discharge_max_power": "5000",  # Max discharge power (W)
+    # ── Inverter ──
+    "inverter_model": "eg4_6000xp",     # Inverter model identifier
+    "pv_max_power": "8000",             # Max PV input power (W)
+    "grid_max_power": "6000",           # Max grid pass-through (W)
+    "eps_max_power": "6000",            # Max EPS output (W)
+    "charge_max_power": "5000",         # Max charge power (W)
+    "discharge_max_power": "5000",      # Max discharge power (W)
 
-    # Dashboard preferences
-    "dashboard_refresh_sec": "5",   # Dashboard auto-refresh interval
-    "chart_default_hours": "6",     # Default chart time range
+    # ── Battery ──
+    "battery_type": "inverter",         # Battery data source: inverter, emulated, modbus, etc.
+    "battery_capacity": "200",          # Battery capacity (Ah)
+    "battery_metric": "soc",            # Battery display metric: soc, voltage, both
 
-    # Collector tuning
-    "write_interval_sec": "5",      # Seconds between MariaDB writes
+    # ── Grid ──
+    "grid_provider": "default",         # Grid provider: default, eskom, epex, nordpool
+
+    # ── Dashboard ──
+    "dashboard_refresh_sec": "5",       # Dashboard auto-refresh interval
+    "chart_default_hours": "6",         # Default chart time range
+
+    # ── System ──
+    "timezone": "America/Chicago",      # IANA timezone
+    "temperature_unit": "fahrenheit",   # celsius or fahrenheit
+
+    # ── Collector ──
+    "write_interval_sec": "5",          # Seconds between MariaDB writes
+    "dongle_host": "192.168.12.224",    # WiFi dongle IP
+    "dongle_port": "8000",              # WiFi dongle port
+}
+
+
+# ── Setting metadata for the UI ──
+
+# Each setting's display info for the settings page form
+SETTING_META = {
+    "inverter_model": {
+        "label": "Model",
+        "type": "select",
+        "section": "inverter",
+        "options": [
+            ("eg4_6000xp", "EG4 6000XP"),
+            ("eg4_3000ehv", "EG4 3000EHV"),
+            ("eg4_6500ex", "EG4 6500EX"),
+            ("luxpower_12k", "Luxpower 12K"),
+            ("luxpower_sna", "Luxpower SNA"),
+            ("voltronic_axpert", "Voltronic / Axpert / MPP"),
+            ("growatt", "Growatt"),
+            ("solis", "Solis"),
+            ("sungrow", "Sungrow"),
+            ("goodwe", "GoodWe"),
+            ("huawei", "Huawei"),
+            ("sunsynk", "Deye / SunSynk / Sol-Ark"),
+        ],
+        "hint": "Inverter model for protocol selection",
+    },
+    "pv_max_power": {
+        "label": "Max Solar PV Power",
+        "type": "number",
+        "section": "inverter",
+        "min": 10, "max": 1000000,
+        "hint": "Watts — gauge ceiling for solar input",
+    },
+    "grid_max_power": {
+        "label": "Max Grid Power",
+        "type": "number",
+        "section": "inverter",
+        "min": 10, "max": 1000000,
+        "hint": "Watts — max grid pass-through",
+    },
+    "eps_max_power": {
+        "label": "Max EPS Power",
+        "type": "number",
+        "section": "inverter",
+        "min": 10, "max": 1000000,
+        "hint": "Watts — max backup output",
+    },
+    "charge_max_power": {
+        "label": "Max Charge Power",
+        "type": "number",
+        "section": "inverter",
+        "min": 10, "max": 1000000,
+        "hint": "Watts — max battery charge rate",
+    },
+    "discharge_max_power": {
+        "label": "Max Discharge Power",
+        "type": "number",
+        "section": "inverter",
+        "min": 10, "max": 1000000,
+        "hint": "Watts — max battery discharge rate",
+    },
+    "battery_type": {
+        "label": "Battery",
+        "type": "select",
+        "section": "battery",
+        "options": [
+            ("inverter", "Use inverter values"),
+            ("emulated", "Emulated BMS"),
+            ("daly", "USB Daly UART/RS485"),
+            ("jbd", "USB JBD RS485"),
+            ("jk", "USB JK RS485"),
+            ("modbus", "USB Modbus RS232/485"),
+            ("narada", "USB Narada RS485"),
+            ("pylontech", "USB PylonTech/Pytes console"),
+            ("serial", "USB Serial RS232/485"),
+            ("voltronic_lib", "USB Voltronic LIB RS485"),
+            ("ve_direct", "USB Victron VE.Direct"),
+            ("can", "USB CAN bus"),
+        ],
+        "hint": "Battery data source / BMS driver",
+    },
+    "battery_capacity": {
+        "label": "Capacity",
+        "type": "number",
+        "section": "battery",
+        "min": 0.1, "max": 100000, "step": 0.1,
+        "hint": "Amp-hours — rated battery capacity",
+    },
+    "battery_metric": {
+        "label": "Battery Metric",
+        "type": "select",
+        "section": "battery",
+        "options": [
+            ("soc", "State of Charge"),
+            ("voltage", "Voltage"),
+            ("both", "Both"),
+        ],
+        "hint": "Primary battery display metric on dashboard",
+    },
+    "grid_provider": {
+        "label": "Provider",
+        "type": "select",
+        "section": "grid",
+        "options": [
+            ("default", "Default"),
+            ("eskom", "South Africa — Eskom"),
+            ("epex", "Europe — EPEX"),
+            ("nordpool", "Europe — NordPool"),
+        ],
+        "hint": "Grid provider for regional settings",
+    },
+    "dashboard_refresh_sec": {
+        "label": "Refresh Interval",
+        "type": "number",
+        "section": "dashboard",
+        "min": 1, "max": 60,
+        "hint": "Seconds between dashboard updates",
+    },
+    "chart_default_hours": {
+        "label": "Default Chart Range",
+        "type": "number",
+        "section": "dashboard",
+        "min": 1, "max": 168,
+        "hint": "Hours shown on initial chart load",
+    },
+    "timezone": {
+        "label": "Timezone",
+        "type": "select",
+        "section": "system",
+        "options": [
+            ("America/Chicago", "America/Chicago"),
+            ("America/New_York", "America/New_York"),
+            ("America/Denver", "America/Denver"),
+            ("America/Los_Angeles", "America/Los_Angeles"),
+            ("America/Phoenix", "America/Phoenix"),
+            ("America/Anchorage", "America/Anchorage"),
+            ("Pacific/Honolulu", "Pacific/Honolulu"),
+            ("Europe/London", "Europe/London"),
+            ("Europe/Berlin", "Europe/Berlin"),
+            ("Europe/Paris", "Europe/Paris"),
+            ("Asia/Tokyo", "Asia/Tokyo"),
+            ("Asia/Shanghai", "Asia/Shanghai"),
+            ("Asia/Kolkata", "Asia/Kolkata"),
+            ("Australia/Sydney", "Australia/Sydney"),
+            ("Pacific/Auckland", "Pacific/Auckland"),
+            ("UTC", "UTC"),
+        ],
+        "hint": "IANA timezone for timestamps and scheduling",
+    },
+    "temperature_unit": {
+        "label": "Temperature Unit",
+        "type": "select",
+        "section": "system",
+        "options": [
+            ("fahrenheit", "°Fahrenheit"),
+            ("celsius", "°Celsius"),
+        ],
+        "hint": "Temperature display unit throughout dashboard",
+    },
+    "write_interval_sec": {
+        "label": "Write Interval",
+        "type": "number",
+        "section": "collector",
+        "min": 1, "max": 300,
+        "hint": "Seconds between MariaDB writes",
+    },
+    "dongle_host": {
+        "label": "Dongle Host",
+        "type": "text",
+        "section": "collector",
+        "hint": "IP address of the WiFi dongle",
+    },
+    "dongle_port": {
+        "label": "Dongle Port",
+        "type": "number",
+        "section": "collector",
+        "min": 1, "max": 65535,
+        "hint": "TCP port of the WiFi dongle",
+    },
 }
 
 
