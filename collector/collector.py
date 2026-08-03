@@ -123,6 +123,13 @@ def config_from_env() -> CollectorConfig:
             mqtt_ha_prefix=_env_or("LUX_MQTT_HA_PREFIX", "homeassistant"),
             mqtt_device_name=_env_or("LUX_MQTT_DEVICE_NAME", "luxmon"),
             mqtt_device_id=_env_or("LUX_MQTT_DEVICE_ID", "luxmon_solar"),
+
+            alerts_enabled=_env_bool("LUX_ALERTS_ENABLED"),
+            alerts_soc_low=_env_or("LUX_ALERTS_SOC_LOW", 20.0, float),
+            alerts_soc_critical=_env_or("LUX_ALERTS_SOC_CRITICAL", 10.0, float),
+            alerts_battery_temp_high=_env_or("LUX_ALERTS_BATTERY_TEMP_HIGH", 50.0, float),
+            alerts_inverter_temp_high=_env_or("LUX_ALERTS_INVERTER_TEMP_HIGH", 60.0, float),
+            alerts_grid_lost_threshold_sec=_env_or("LUX_ALERTS_GRID_LOST_THRESHOLD_SEC", 30.0, float),
         ),
         transport_options=_load_transport_options(),
     )
@@ -216,6 +223,13 @@ def _load_db_output_settings(cfg: CollectorConfig) -> None:
             out.mqtt_ha_discovery = _override("mqtt_ha_discovery", out.mqtt_ha_discovery, bool)
             out.mqtt_device_name = _override("mqtt_device_name", out.mqtt_device_name)
             out.mqtt_device_id = _override("mqtt_device_id", out.mqtt_device_id)
+
+            out.alerts_enabled = _override("alerts_enabled", out.alerts_enabled, bool)
+            out.alerts_soc_low = _override("alerts_soc_low", out.alerts_soc_low, float)
+            out.alerts_soc_critical = _override("alerts_soc_critical", out.alerts_soc_critical, float)
+            out.alerts_battery_temp_high = _override("alerts_battery_temp_high", out.alerts_battery_temp_high, float)
+            out.alerts_inverter_temp_high = _override("alerts_inverter_temp_high", out.alerts_inverter_temp_high, float)
+            out.alerts_grid_lost_threshold_sec = _override("alerts_grid_lost_threshold_sec", out.alerts_grid_lost_threshold_sec, float)
         finally:
             conn.close()
     except Exception:
@@ -358,6 +372,7 @@ class PassiveCollector:
                 self._clamp_values(self._latest_decoded)
                 if self._outputs:
                     self._outputs.write(self._latest_decoded, self._latest_input_raw)
+                    self._outputs.evaluate_alerts(self._latest_decoded)
                 self._last_write = time.time()
 
                 if self._on_snapshot:
