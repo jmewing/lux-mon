@@ -174,6 +174,23 @@
     font-family: inherit; transition: border-color 0.2s;
     appearance: none;
   }
+  .setting-field input[type="checkbox"] { width: auto; }
+  .switch {
+    position: relative; display: inline-block; width: 42px; height: 24px;
+  }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background-color: var(--border); border-radius: 24px;
+    transition: 0.2s;
+  }
+  .slider:before {
+    position: absolute; content: ""; height: 18px; width: 18px;
+    left: 3px; bottom: 3px; background-color: white; border-radius: 50%;
+    transition: 0.2s;
+  }
+  .switch input:checked + .slider { background-color: var(--accent); }
+  .switch input:checked + .slider:before { transform: translateX(18px); }
   .setting-field select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 0.6rem center;
@@ -341,6 +358,16 @@
       <div class="card settings-section" id="settingsSectionCollector">
         <h3>Collector</h3>
         <div class="settings-grid" id="settingsCollector"></div>
+      </div>
+      <div class="card settings-section" id="settingsSectionInfluxdb">
+        <h3>InfluxDB Output</h3>
+        <p class="settings-note">Publishes SolarAssistant-compatible measurements to InfluxDB for Grafana dashboards.</p>
+        <div class="settings-grid" id="settingsInfluxdb"></div>
+      </div>
+      <div class="card settings-section" id="settingsSectionMqtt">
+        <h3>MQTT / Home Assistant</h3>
+        <p class="settings-note">Publishes state and Home Assistant MQTT discovery configs.</p>
+        <div class="settings-grid" id="settingsMqtt"></div>
       </div>
       <div class="settings-actions">
         <button id="saveSettings" class="save-btn">💾 Save All Settings</button>
@@ -919,7 +946,7 @@ loadSettingsForGauges().then(() => refresh());
 setInterval(refresh, 5000);
 
 // ── Settings Page ──
-const SETTINGS_SECTIONS = ['inverter', 'battery', 'grid', 'dashboard', 'system', 'collector'];
+const SETTINGS_SECTIONS = ['inverter', 'battery', 'grid', 'dashboard', 'system', 'collector', 'influxdb', 'mqtt'];
 const SECTION_IDS = {
   inverter: 'settingsInverter',
   battery: 'settingsBattery',
@@ -927,6 +954,8 @@ const SECTION_IDS = {
   dashboard: 'settingsDashboard',
   system: 'settingsSystem',
   collector: 'settingsCollector',
+  influxdb: 'settingsInfluxdb',
+  mqtt: 'settingsMqtt',
 };
 
 async function loadSettings() {
@@ -977,6 +1006,11 @@ function settingField(def) {
     const max = def.max != null ? ` max="${def.max}"` : '';
     const step = def.step != null ? ` step="${def.step}"` : '';
     inputHtml = `<input type="number" id="${id}" value="${def.value}" data-key="${def.key}"${min}${max}${step}>`;
+  } else if (def.type === 'checkbox') {
+    const checked = String(def.value).toLowerCase() === 'true' ? ' checked' : '';
+    inputHtml = `<label class="switch"><input type="checkbox" id="${id}" data-key="${def.key}"${checked}><span class="slider"></span></label>`;
+  } else if (def.type === 'password') {
+    inputHtml = `<input type="password" id="${id}" value="${def.value}" data-key="${def.key}">`;
   } else {
     inputHtml = `<input type="text" id="${id}" value="${def.value}" data-key="${def.key}">`;
   }
@@ -1000,10 +1034,11 @@ async function saveSettings() {
 
   for (const input of inputs) {
     try {
+      const value = input.type === 'checkbox' ? String(input.checked) : input.value;
       const res = await fetch(API + '/api/settings/' + input.dataset.key, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: input.value }),
+        body: JSON.stringify({ value: value }),
       });
       if (res.ok) ok++; else fail++;
     } catch(e) { fail++; }

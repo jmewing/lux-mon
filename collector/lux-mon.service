@@ -1,7 +1,7 @@
 [Unit]
 Description=lux-mon collector
-After=network.target mariadb.service
-Wants=mariadb.service
+After=network.target mariadb.service influxdb.service mosquitto.service
+Wants=mariadb.service influxdb.service mosquitto.service
 
 [Service]
 Type=simple

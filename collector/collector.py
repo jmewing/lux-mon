@@ -2,13 +2,18 @@
 lux-mon collector.
 
 Connects to an inverter or dongle via a pluggable transport, decodes incoming
-Modbus register frames, and writes snapshots to MariaDB or InfluxDB on a
-configurable interval.
+Modbus register frames, and writes snapshots to one or more output backends on
+a configurable interval.
 
 Supported transports:
     tcp_passive   - listen to a LuxPower/EG4 WiFi dongle broadcast stream
     tcp_active    - actively poll via the dongle's Modbus TCP gateway mode
     replay        - replay a captured binary file for offline testing
+
+Supported output backends (can be enabled together):
+    mariadb       - existing relational snapshots + hourly rollups
+    influxdb      - SolarAssistant-compatible InfluxDB 1.x/2.x line protocol
+    mqtt          - Home Assistant auto-discovery + raw state topic
 
 Future transports:
     rtu_serial    - Modbus RTU over RS485 (USB adapter)
@@ -20,14 +25,14 @@ import time
 import logging
 import signal
 import sys
-import json
 from dataclasses import dataclass, field
-from typing import Optional, Callable
+from typing import Dict, Optional, Callable
 from threading import Thread, Event
 from pathlib import Path
 
 from .protocol import LuxFrame
 from .registers import decode_registers
+from .outputs import Outputs, OutputConfig
 
 
 def _env_or(key: str, default=None, cast=None):
@@ -35,6 +40,11 @@ def _env_or(key: str, default=None, cast=None):
     if val is None:
         return default
     return cast(val) if cast else val
+
+
+def _env_bool(key: str, default: bool = False) -> bool:
+    val = os.environ.get(key, "").lower()
+    return val in ("1", "true", "yes") if val else default
 
 
 logger = logging.getLogger("luxmon.collector")
@@ -62,22 +72,8 @@ class CollectorConfig:
     datalog_serial: str = ""
     inverter_serial: str = ""
 
-    # Storage backend selection: "mariadb" or "influxdb"
-    storage_type: str = "mariadb"
-
-    # InfluxDB settings (used when storage_type == "influxdb")
-    influx_url: str = "http://localhost:8086"
-    influx_token: str = "lux-mon-token"
-    influx_org: str = "luxmon"
-    influx_bucket: str = "solar"
-
-    # MariaDB settings (used when storage_type == "mariadb")
-    mariadb_host: str = "localhost"
-    mariadb_port: int = 3306
-    mariadb_user: str = "luxmon"
-    mariadb_password: str = "luxmon"
-    mariadb_database: str = "luxmon"
-    mariadb_table_prefix: str = "lux_"
+    # Output backends (multiple can be enabled)
+    outputs: OutputConfig = field(default_factory=OutputConfig)
 
     # Extra transport options passed through to transport constructors
     transport_options: dict = field(default_factory=dict)
@@ -98,17 +94,36 @@ def config_from_env() -> CollectorConfig:
         poll_register_count=_env_or("LUX_POLL_REG_COUNT", 40, int),
         datalog_serial=_env_or("LUX_DATALOG_SERIAL", ""),
         inverter_serial=_env_or("LUX_INVERTER_SERIAL", ""),
-        storage_type=_env_or("LUX_STORAGE_TYPE", "mariadb"),
-        influx_url=_env_or("LUX_INFLUX_URL", "http://localhost:8086"),
-        influx_token=_env_or("LUX_INFLUX_TOKEN", "lux-mon-token"),
-        influx_org=_env_or("LUX_INFLUX_ORG", "luxmon"),
-        influx_bucket=_env_or("LUX_INFLUX_BUCKET", "solar"),
-        mariadb_host=_env_or("LUX_MARIADB_HOST", "localhost"),
-        mariadb_port=_env_or("LUX_MARIADB_PORT", 3306, int),
-        mariadb_user=_env_or("LUX_MARIADB_USER", "luxmon"),
-        mariadb_password=_env_or("LUX_MARIADB_PASSWORD", "luxmon"),
-        mariadb_database=_env_or("LUX_MARIADB_DATABASE", "luxmon"),
-        mariadb_table_prefix=_env_or("LUX_MARIADB_TABLE_PREFIX", "lux_"),
+        outputs=OutputConfig(
+            # Legacy LUX_STORAGE_TYPE=influxdb maps to enabling InfluxDB
+            mariadb_enabled=not (_env_or("LUX_STORAGE_TYPE") == "influxdb"),
+            mariadb_host=_env_or("LUX_MARIADB_HOST", "localhost"),
+            mariadb_port=_env_or("LUX_MARIADB_PORT", 3306, int),
+            mariadb_user=_env_or("LUX_MARIADB_USER", "luxmon"),
+            mariadb_password=_env_or("LUX_MARIADB_PASSWORD", "luxmon"),
+            mariadb_database=_env_or("LUX_MARIADB_DATABASE", "luxmon"),
+            mariadb_table_prefix=_env_or("LUX_MARIADB_TABLE_PREFIX", "lux_"),
+
+            influx_enabled=_env_bool("LUX_INFLUX_ENABLED", _env_or("LUX_STORAGE_TYPE") == "influxdb"),
+            influx_url=_env_or("LUX_INFLUX_URL", "http://localhost:8086"),
+            influx_token=_env_or("LUX_INFLUX_TOKEN", ""),
+            influx_org=_env_or("LUX_INFLUX_ORG", "luxmon"),
+            influx_bucket=_env_or("LUX_INFLUX_BUCKET", "solar"),
+            influx_username=_env_or("LUX_INFLUX_USERNAME", ""),
+            influx_password=_env_or("LUX_INFLUX_PASSWORD", ""),
+            influx_database=_env_or("LUX_INFLUX_DATABASE", "luxmon"),
+
+            mqtt_enabled=_env_bool("LUX_MQTT_ENABLED"),
+            mqtt_host=_env_or("LUX_MQTT_HOST", "localhost"),
+            mqtt_port=_env_or("LUX_MQTT_PORT", 1883, int),
+            mqtt_username=_env_or("LUX_MQTT_USERNAME", ""),
+            mqtt_password=_env_or("LUX_MQTT_PASSWORD", ""),
+            mqtt_topic_prefix=_env_or("LUX_MQTT_TOPIC_PREFIX", "luxmon"),
+            mqtt_ha_discovery=_env_bool("LUX_MQTT_HA_DISCOVERY", True),
+            mqtt_ha_prefix=_env_or("LUX_MQTT_HA_PREFIX", "homeassistant"),
+            mqtt_device_name=_env_or("LUX_MQTT_DEVICE_NAME", "luxmon"),
+            mqtt_device_id=_env_or("LUX_MQTT_DEVICE_ID", "luxmon_solar"),
+        ),
         transport_options=_load_transport_options(),
     )
 
@@ -130,11 +145,11 @@ def _load_db_serials(cfg: CollectorConfig) -> None:
         from .settings import get
 
         conn = pymysql.connect(
-            host=cfg.mariadb_host,
-            port=cfg.mariadb_port,
-            user=cfg.mariadb_user,
-            password=cfg.mariadb_password,
-            database=cfg.mariadb_database,
+            host=cfg.outputs.mariadb_host,
+            port=cfg.outputs.mariadb_port,
+            user=cfg.outputs.mariadb_user,
+            password=cfg.outputs.mariadb_password,
+            database=cfg.outputs.mariadb_database,
             autocommit=True,
         )
         try:
@@ -146,6 +161,65 @@ def _load_db_serials(cfg: CollectorConfig) -> None:
             conn.close()
     except Exception:
         logger.exception("Failed to load serials from MariaDB settings")
+
+
+def _load_db_output_settings(cfg: CollectorConfig) -> None:
+    """Fill output backend settings from MariaDB if env didn't set them.
+
+    Only fills keys that are empty/default in the environment so that .env
+    continues to override the database.
+    """
+    out = cfg.outputs
+    try:
+        import pymysql
+        from .settings import get
+
+        conn = pymysql.connect(
+            host=out.mariadb_host,
+            port=out.mariadb_port,
+            user=out.mariadb_user,
+            password=out.mariadb_password,
+            database=out.mariadb_database,
+            autocommit=True,
+        )
+        try:
+            def _override(key: str, current, cast=None):
+                if current is True or (isinstance(current, str) and current):
+                    return current
+                db_val = get(conn, key)
+                if db_val is None:
+                    return current
+                if cast == bool:
+                    return str(db_val).lower() in ("1", "true", "yes")
+                if cast == int:
+                    try:
+                        return int(db_val)
+                    except ValueError:
+                        return current
+                return str(db_val) if db_val is not None else current
+
+            out.mariadb_enabled = _override("mariadb_enabled", out.mariadb_enabled, bool)
+            out.influx_enabled = _override("influx_enabled", out.influx_enabled, bool)
+            out.influx_url = _override("influx_url", out.influx_url)
+            out.influx_database = _override("influx_database", out.influx_database)
+            out.influx_token = _override("influx_token", out.influx_token)
+            out.influx_org = _override("influx_org", out.influx_org)
+            out.influx_username = _override("influx_username", out.influx_username)
+            out.influx_password = _override("influx_password", out.influx_password)
+
+            out.mqtt_enabled = _override("mqtt_enabled", out.mqtt_enabled, bool)
+            out.mqtt_host = _override("mqtt_host", out.mqtt_host)
+            out.mqtt_port = _override("mqtt_port", out.mqtt_port, int)
+            out.mqtt_username = _override("mqtt_username", out.mqtt_username)
+            out.mqtt_password = _override("mqtt_password", out.mqtt_password)
+            out.mqtt_topic_prefix = _override("mqtt_topic_prefix", out.mqtt_topic_prefix)
+            out.mqtt_ha_discovery = _override("mqtt_ha_discovery", out.mqtt_ha_discovery, bool)
+            out.mqtt_device_name = _override("mqtt_device_name", out.mqtt_device_name)
+            out.mqtt_device_id = _override("mqtt_device_id", out.mqtt_device_id)
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("Failed to load output settings from MariaDB")
 
 
 def _create_transport(cfg: CollectorConfig, on_frame: Callable[[LuxFrame], None]):
@@ -193,15 +267,16 @@ class PassiveCollector:
     """Collector that receives frames from a transport and writes snapshots."""
 
     def __init__(self, config: CollectorConfig,
-                 on_snapshot: Optional[Callable[[dict], None]] = None):
+                 on_snapshot: Optional[Callable[[Dict], None]] = None):
         self.cfg = config
         self._on_snapshot = on_snapshot
         self._stop = Event()
         self._transport = None
         self._writer: Optional[Thread] = None
-        self._latest_input_raw: dict[int, int] = {}
-        self._latest_hold_raw: dict[int, int] = {}
-        self._latest_decoded: dict = {}
+        self._outputs: Optional[Outputs] = None
+        self._latest_input_raw: Dict = {}
+        self._latest_hold_raw: Dict = {}
+        self._latest_decoded: Dict = {}
         self._last_write = 0.0
 
         # Register handler for graceful shutdown
@@ -221,6 +296,10 @@ class PassiveCollector:
             logger.info("Starting lux-mon collector (transport=%s, %s:%d)",
                         self.cfg.transport, self.cfg.dongle_host, self.cfg.dongle_port)
 
+        # Wire outputs before transport starts so callbacks are ready.
+        self.cfg.outputs._write_interval = float(self.cfg.write_interval)
+        self._outputs = Outputs(self.cfg.outputs, tz_name="UTC")
+
         self._transport = _create_transport(self.cfg, self._handle_frame)
         self._transport.start()
 
@@ -232,6 +311,8 @@ class PassiveCollector:
         self._stop.set()
         if self._transport:
             self._transport.stop()
+        if self._outputs:
+            self._outputs.close()
 
     def wait(self) -> None:
         """Block until the collector stops."""
@@ -263,8 +344,6 @@ class PassiveCollector:
 
     def _writer_loop(self) -> None:
         """Periodic writer thread: decode registers and write to storage."""
-        writer = self._create_writer()
-
         while not self._stop.wait(self.cfg.write_interval):
             if not self._latest_input_raw:
                 logger.warning("No input data received yet, skipping write")
@@ -277,7 +356,8 @@ class PassiveCollector:
             try:
                 self._latest_decoded = decode_registers(self._latest_input_raw)
                 self._clamp_values(self._latest_decoded)
-                self._write_snapshot(writer, self._latest_decoded)
+                if self._outputs:
+                    self._outputs.write(self._latest_decoded, self._latest_input_raw)
                 self._last_write = time.time()
 
                 if self._on_snapshot:
@@ -292,7 +372,7 @@ class PassiveCollector:
         logger.info("Writer loop exiting")
 
     # ── Sanity clamping ──────────────────────────────────────────────
-    _SANITY_LIMITS: dict[str, float] = {
+    _SANITY_LIMITS: Dict = {
         "pv1_power": 8000,
         "pv2_power": 8000,
         "grid_import_power": 6000,
@@ -324,144 +404,6 @@ class PassiveCollector:
                     )
                     decoded[key]["value"] = limit
 
-    def _create_writer(self):
-        """Create and return a storage writer based on storage_type."""
-        if self.cfg.storage_type == "influxdb":
-            return self._create_influx_writer()
-        elif self.cfg.storage_type == "mariadb":
-            return self._create_mariadb_writer()
-        else:
-            logger.error("Unknown storage_type: %s", self.cfg.storage_type)
-            return None
-
-    def _create_influx_writer(self):
-        """Create and return an InfluxDB write client."""
-        try:
-            from influxdb_client import InfluxDBClient
-            from influxdb_client.client.write_api import SYNCHRONOUS
-
-            client = InfluxDBClient(
-                url=self.cfg.influx_url,
-                token=self.cfg.influx_token,
-                org=self.cfg.influx_org,
-            )
-            return client.write_api(write_options=SYNCHRONOUS)
-        except ImportError:
-            logger.error("influxdb_client not installed; cannot write to InfluxDB")
-            return None
-
-    def _create_mariadb_writer(self):
-        """Create and return a MariaDB connection."""
-        try:
-            import pymysql
-
-            conn = pymysql.connect(
-                host=self.cfg.mariadb_host,
-                port=self.cfg.mariadb_port,
-                user=self.cfg.mariadb_user,
-                password=self.cfg.mariadb_password,
-                database=self.cfg.mariadb_database,
-                autocommit=True,
-            )
-            self._init_mariadb_schema(conn)
-            return conn
-        except Exception:
-            logger.exception("Failed to connect to MariaDB")
-            return None
-
-    def _init_mariadb_schema(self, conn) -> None:
-        """Create MariaDB tables if they do not exist."""
-        prefix = self.cfg.mariadb_table_prefix
-        with conn.cursor() as cur:
-            cur.execute(f"""
-                CREATE TABLE IF NOT EXISTS {prefix}snapshots (
-                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                    ts DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-                    raw_registers JSON,
-                    KEY idx_ts (ts)
-                ) ENGINE=InnoDB
-            """)
-            cur.execute(f"""
-                CREATE TABLE IF NOT EXISTS {prefix}registers (
-                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                    snapshot_id BIGINT NOT NULL,
-                    name VARCHAR(64) NOT NULL,
-                    value DOUBLE NOT NULL,
-                    unit VARCHAR(16),
-                    ts DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-                    KEY idx_ts_name (ts, name),
-                    KEY idx_snapshot (snapshot_id),
-                    CONSTRAINT fk_{prefix}snapshot
-                        FOREIGN KEY (snapshot_id) REFERENCES {prefix}snapshots(id)
-                        ON DELETE CASCADE
-                ) ENGINE=InnoDB
-            """)
-            cur.execute(f"""
-                CREATE TABLE IF NOT EXISTS {prefix}settings (
-                    name VARCHAR(64) PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-                        ON UPDATE CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB
-            """)
-
-    def _write_snapshot(self, writer, decoded: dict) -> None:
-        """Write a decoded register snapshot to the configured store."""
-        if writer is None:
-            return
-        if self.cfg.storage_type == "influxdb":
-            self._write_influxdb(writer, decoded)
-        elif self.cfg.storage_type == "mariadb":
-            self._write_mariadb(writer, decoded)
-
-    def _write_influxdb(self, write_api, decoded: dict) -> None:
-        """Write a decoded register snapshot to InfluxDB."""
-        from influxdb_client import Point
-
-        points = []
-
-        point = Point("inverter")
-        for key, val_info in decoded.items():
-            if isinstance(val_info, dict) and "value" in val_info:
-                try:
-                    point = point.field(key, float(val_info["value"]))
-                except (TypeError, ValueError):
-                    pass
-        points.append(point)
-
-        for key, val_info in decoded.items():
-            if isinstance(val_info, dict) and "value" in val_info:
-                p = Point("register").tag("name", key).tag("unit", val_info.get("unit", ""))
-                p = p.field("value", float(val_info["value"]))
-                points.append(p)
-
-        write_api.write(bucket=self.cfg.influx_bucket, record=points)
-        logger.info("Wrote %d points to InfluxDB (%d fields)", len(points), len(decoded))
-
-    def _write_mariadb(self, conn, decoded: dict) -> None:
-        """Write a decoded register snapshot to MariaDB."""
-        import pymysql
-
-        prefix = self.cfg.mariadb_table_prefix
-        raw_json = json.dumps(self._latest_input_raw)
-
-        with conn.cursor() as cur:
-            cur.execute(
-                f"INSERT INTO {prefix}snapshots (ts, raw_registers) VALUES (NOW(3), %s)",
-                (raw_json,),
-            )
-            snapshot_id = cur.lastrowid
-            rows = [
-                (snapshot_id, key, float(info["value"]), info.get("unit", ""))
-                for key, info in decoded.items()
-                if isinstance(info, dict) and "value" in info
-            ]
-            cur.executemany(
-                f"INSERT INTO {prefix}registers (snapshot_id, name, value, unit) VALUES (%s, %s, %s, %s)",
-                rows,
-            )
-        logger.info("Wrote MariaDB snapshot %d with %d registers", snapshot_id, len(rows))
-
     @property
     def stats(self) -> dict:
         """Return current collector statistics."""
@@ -477,7 +419,7 @@ class PassiveCollector:
 def run_collector(
     config_path: Optional[str] = None,
     log_level: str = "INFO",
-    overrides: Optional[dict] = None,
+    overrides: Optional[Dict] = None,
 ) -> None:
     """CLI entrypoint: load config and run the collector."""
     logging.basicConfig(
@@ -494,8 +436,9 @@ def run_collector(
             if value is not None and hasattr(cfg, key):
                 setattr(cfg, key, value)
 
-    # Fill serials from DB if not provided by environment.
+    # Fill serials and output settings from DB if not provided by environment.
     _load_db_serials(cfg)
+    _load_db_output_settings(cfg)
 
     # Legacy LUX_POLL_MODE=true maps to tcp_active for backwards compatibility
     poll_mode = os.environ.get("LUX_POLL_MODE", "").lower() in ("1", "true", "yes")
