@@ -1,36 +1,66 @@
 #!/bin/bash
-# Install InfluxDB 1.x, Mosquitto, and Grafana on Debian/Ubuntu (e.g. Raspberry Pi)
+# Install/configure InfluxDB 2.x, Mosquitto, and Grafana on Debian/Ubuntu (e.g. Raspberry Pi)
 set -e
 
-echo "==> lux-mon Grafana/MQTT/InfluxDB stack installer"
+ALPHA_USER=$(whoami)
+echo "==> lux-mon Grafana/MQTT/InfluxDB stack installer (InfluxDB 2.x aware)"
 
-# ── InfluxDB 1.x ─────────────────────────────────────────────────────────
+# ── InfluxDB 2.x ───────────────────────────────────────────────────────
 if ! command -v influxd >/dev/null 2>&1; then
-  echo "==> Installing InfluxDB 1.x..."
-  # InfluxData archive key + repo (Debian 12 / Ubuntu 24.04 compatible)
+  echo "==> Installing InfluxDB 2.x..."
   curl -fsSL https://repos.influxdata.com/influxdata-archive_compat.key | sudo gpg --dearmor -o /usr/share/keyrings/influxdata-archive_compat.gpg
   echo "deb [signed-by=/usr/share/keyrings/influxdata-archive_compat.gpg] https://repos.influxdata.com/debian stable main" | sudo tee /etc/apt/sources.list.d/influxdata.list
   sudo apt-get update
-  sudo apt-get install -y influxdb
-  sudo systemctl enable influxdb
-  sudo systemctl start influxdb
+  sudo apt-get install -y influxdb2
 else
   echo "==> InfluxDB already installed"
 fi
 
-# Create luxmon database and user if not present
-echo "==> Configuring InfluxDB database..."
-if ! influx -execute "SHOW DATABASES" | grep -q "^luxmon$"; then
-  influx -execute "CREATE DATABASE luxmon"
-fi
-influx -execute "CREATE USER luxmon WITH PASSWORD 'luxmon' WITH ALL PRIVILEGES" || true
-influx -execute "GRANT ALL ON luxmon TO luxmon" || true
+sudo systemctl enable influxdb || true
+sudo systemctl start influxdb || true
 
-# Bind to localhost only for security
-if ! grep -q "^bind-address = \"127.0.0.1:8086\"" /etc/influxdb/influxdb.conf 2>/dev/null; then
-  sudo sed -i 's/^# bind-address = \"127.0.0.1:8086\"/bind-address = \"127.0.0.1:8086\"/' /etc/influxdb/influxdb.conf || true
-  sudo sed -i 's/^bind-address = \":8086\"/bind-address = \"127.0.0.1:8086\"/' /etc/influxdb/influxdb.conf || true
-  sudo systemctl restart influxdb
+# Wait for HTTP API
+for i in {1..30}; do
+  if curl -fsS http://127.0.0.1:8086/api/v2/setup >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+# Bootstrap if not already set up
+if curl -fsS http://127.0.0.1:8086/api/v2/setup 2>/dev/null | grep -q '"allowed":true'; then
+  echo "==> Bootstrapping InfluxDB 2.x..."
+  curl -fsS -X POST http://127.0.0.1:8086/api/v2/setup \
+    -H "Content-Type: application/json" \
+    -d '{"username":"luxmon","password":"luxmon","org":"luxmon","bucket":"luxmon","retentionRules":[{"type":"expire","everySeconds":0}]}' \
+    >/tmp/influx-setup.json
+  echo "Bootstrap response saved to /tmp/influx-setup.json"
+fi
+
+# Create an all-access token for lux-mon if one doesn't exist
+INFLUX_TOKEN=$(curl -fsS -u luxmon:luxmon http://127.0.0.1:8086/api/v2/authorizations 2>/dev/null | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for a in data.get('authorizations', []):
+    if a.get('description') == 'lux-mon':
+        print(a.get('token'))
+        break
+" || true)
+
+if [[ -z "$INFLUX_TOKEN" ]]; then
+  echo "==> Creating lux-mon API token..."
+  ORG_ID=$(curl -fsS -u luxmon:luxmon http://127.0.0.1:8086/api/v2/orgs 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['orgs'][0]['id'])")
+  USER_ID=$(curl -fsS -u luxmon:luxmon http://127.0.0.1:8086/api/v2/me 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+  TOKEN_RESP=$(curl -fsS -u luxmon:luxmon -X POST http://127.0.0.1:8086/api/v2/authorizations \
+    -H "Content-Type: application/json" \
+    -d "{\"description\":\"lux-mon\",\"orgID\":\"$ORG_ID\",\"userID\":\"$USER_ID\",\"permissions\":[{\"action\":\"read\",\"resource\":{\"type\":\"buckets\"}},{\"action\":\"write\",\"resource\":{\"type\":\"buckets\"}}]}")
+  INFLUX_TOKEN=$(echo "$TOKEN_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))")
+  echo "$TOKEN_RESP" >/tmp/influx-token.json
+fi
+
+if [[ -n "$INFLUX_TOKEN" ]]; then
+  echo "==> lux-mon InfluxDB token: $INFLUX_TOKEN"
+  echo "$INFLUX_TOKEN" > /tmp/influx-luxmon.token
 fi
 
 # ── Mosquitto MQTT ───────────────────────────────────────────────────────
@@ -42,10 +72,9 @@ else
   echo "==> Mosquitto already installed"
 fi
 
-# Allow anonymous local access for Home Assistant / lux-mon on same host
 if ! grep -q "^allow_anonymous true" /etc/mosquitto/conf.d/local.conf 2>/dev/null; then
   echo "==> Configuring Mosquitto for anonymous localhost access..."
-  sudo tee /etc/mosquitto/conf.d/local.conf > /dev/null <<'EOF'
+  sudo tee /etc/mosquitto/conf.d/local.conf >/dev/null <<'EOF'
 allow_anonymous true
 listener 1883 127.0.0.1
 EOF
@@ -56,8 +85,9 @@ fi
 if ! command -v grafana-server >/dev/null 2>&1; then
   echo "==> Installing Grafana..."
   sudo apt-get install -y apt-transport-https software-properties-common wget
-  wget -q -O /usr/share/keyrings/grafana.key https://apt.grafana.com/gpg.key
-  echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+  sudo mkdir -p /etc/apt/keyrings/
+  wget -q -O - https://apt.grafana.com/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
   sudo apt-get update
   sudo apt-get install -y grafana
   sudo systemctl enable grafana-server
@@ -65,22 +95,51 @@ else
   echo "==> Grafana already installed"
 fi
 
-# Provision lux-mon datasource + dashboards
-echo "==> Provisioning Grafana for lux-mon..."
+# Provision datasource + dashboards
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+echo "==> Provisioning Grafana for lux-mon from $REPO_DIR..."
 sudo mkdir -p /etc/grafana/provisioning/datasources
 sudo mkdir -p /etc/grafana/provisioning/dashboards
 sudo mkdir -p /var/lib/grafana/dashboards/lux-mon
 
-sudo cp "$(dirname "$0")/../grafana/provisioning/datasources/influxdb.yaml" /etc/grafana/provisioning/datasources/lux-mon.yaml
-sudo cp "$(dirname "$0")/../grafana/provisioning/dashboards/dashboards.yaml" /etc/grafana/provisioning/dashboards/lux-mon.yaml
-sudo cp "$(dirname "$0")/../grafana/dashboards/lux-mon-charts.json" /var/lib/grafana/dashboards/lux-mon/
+# Build a 2.x-compatible datasource YAML if we have a token
+if [[ -f /tmp/influx-luxmon.token ]]; then
+  TOKEN=$(cat /tmp/influx-luxmon.token)
+  sudo tee /etc/grafana/provisioning/datasources/lux-mon.yaml >/dev/null <<EOF
+apiVersion: 1
 
-# Bind Grafana to localhost only; it will be exposed via the same Apache reverse proxy as lux-mon
-sudo sed -i 's/^;\?http_addr =.*/http_addr = 127.0.0.1/' /etc/grafana/grafana.conf 2>/dev/null || true
+datasources:
+  - name: lux-mon
+    type: influxdb
+    access: proxy
+    url: http://127.0.0.1:8086
+    isDefault: true
+    editable: true
+    jsonData:
+      version: Flux
+      organization: luxmon
+      defaultBucket: luxmon
+      tlsSkipVerify: true
+    secureJsonData:
+      token: "$TOKEN"
+EOF
+else
+  # Fallback: assume 1.x InfluxDB compatibility mode (not used by default)
+  sudo cp "$REPO_DIR/grafana/provisioning/datasources/influxdb.yaml" /etc/grafana/provisioning/datasources/lux-mon.yaml
+fi
+
+sudo cp "$REPO_DIR/grafana/provisioning/dashboards/dashboards.yaml" /etc/grafana/provisioning/dashboards/lux-mon.yaml
+sudo cp "$REPO_DIR/grafana/dashboards/lux-mon-charts.json" /var/lib/grafana/dashboards/lux-mon/
+
+# Bind Grafana to localhost only
 sudo sed -i 's/^;\?http_addr =.*/http_addr = 127.0.0.1/' /etc/grafana/grafana.ini 2>/dev/null || true
 
 sudo systemctl restart grafana-server
 
-echo "==> Done. Grafana dashboards at http://127.0.0.1:3000/grafana/d/lux-mon-charts/lux-mon-charts"
-echo "==> InfluxDB at http://127.0.0.1:8086 (db: luxmon)"
-echo "==> MQTT at 127.0.0.1:1883"
+echo "==> Done."
+echo "==> InfluxDB 2.x: http://127.0.0.1:8086 (org: luxmon, bucket: luxmon)"
+echo "==> MQTT: 127.0.0.1:1883"
+echo "==> Grafana: http://127.0.0.1:3000/grafana/d/lux-mon-charts/lux-mon-charts"
+if [[ -f /tmp/influx-luxmon.token ]]; then
+  echo "==> API token saved to /tmp/influx-luxmon.token and printed above"
+fi
