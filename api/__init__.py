@@ -213,6 +213,7 @@ def api_summary():
                 "bms_charge_voltage_ref", "bms_discharge_cut_voltage",
                 "bms_max_charge_current", "bms_max_discharge_current",
                 "bms_fault_code", "bms_warning_code",
+                "eps_voltage_r", "eps_voltage_s", "eps_voltage_t",
             ]
             placeholders = ",".join(["%s"] * len(keys))
             cur.execute(
@@ -224,6 +225,16 @@ def api_summary():
                 row[0]: {"value": float(row[1]), "unit": row[2]}
                 for row in cur.fetchall()
             }
+            # Compute derived AC output voltage if raw phase voltages are present
+            eps_r = registers.get("eps_voltage_r", {}).get("value")
+            eps_s = registers.get("eps_voltage_s", {}).get("value")
+            eps_t = registers.get("eps_voltage_t", {}).get("value")
+            eps_values = [v for v in (eps_r, eps_s, eps_t) if v is not None]
+            if eps_values:
+                registers["ac_output_voltage"] = {
+                    "value": round(sum(eps_values) / len(eps_values), 1),
+                    "unit": "V"
+                }
 
         return {
             "snapshot_id": snap_id,
