@@ -1,0 +1,640 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "lux-mon daily/weekly/monthly energy totals",
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 8272465363105090530,
+      "title": "PV Energy",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "PV",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"PV power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kWh"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 4958271722337323500,
+      "title": "Load Energy",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Load",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"Load power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kWh"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 9029199141856607762,
+      "title": "Grid Import",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Grid Import",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"Grid power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kWh"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3065781022187415869,
+      "title": "Grid Export",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "alias": "Grid Export",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"to_grid\",1h) FROM \"Grid power\" WHERE $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kWh"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {},
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2667715844156357289,
+      "title": "Daily PV / Load",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "alias": "PV",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"PV power\" WHERE time > now() - 7d GROUP BY time(1d) fill(null)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Load",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"Load power\" WHERE time > now() - 7d GROUP BY time(1d) fill(null)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kWh"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 7761131499225508948,
+      "title": "Daily Grid In / Out",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "alias": "Import",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"Grid power\" WHERE time > now() - 7d GROUP BY time(1d) fill(null)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Export",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"to_grid\",1h) FROM \"Grid power\" WHERE time > now() - 7d GROUP BY time(1d) fill(null)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kWh"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8381080750985470865,
+      "title": "Weekly PV / Load",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 11
+      },
+      "targets": [
+        {
+          "alias": "PV",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"PV power\" WHERE time > now() - 56d GROUP BY time(7d) fill(null)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Load",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"Load power\" WHERE time > now() - 56d GROUP BY time(7d) fill(null)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kWh"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 5103355558705603826,
+      "title": "Weekly Grid In / Out",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 11
+      },
+      "targets": [
+        {
+          "alias": "Import",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"Grid power\" WHERE time > now() - 56d GROUP BY time(7d) fill(null)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Export",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"to_grid\",1h) FROM \"Grid power\" WHERE time > now() - 56d GROUP BY time(7d) fill(null)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kWh"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 9132092759872455659,
+      "title": "Monthly PV / Load",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "targets": [
+        {
+          "alias": "PV",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"PV power\" WHERE time > now() - 180d GROUP BY time(30d) fill(null)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Load",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"Load power\" WHERE time > now() - 180d GROUP BY time(30d) fill(null)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kWh"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 1386133387990488989,
+      "title": "Monthly Grid In / Out",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "targets": [
+        {
+          "alias": "Import",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"combined\",1h) FROM \"Grid power\" WHERE time > now() - 180d GROUP BY time(30d) fill(null)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "Export",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon"
+          },
+          "policy": "default",
+          "query": "SELECT integral(\"to_grid\",1h) FROM \"Grid power\" WHERE time > now() - 180d GROUP BY time(30d) fill(null)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kWh"
+        },
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": [
+    "lux-mon",
+    "energy"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now/d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "lux-mon Energy",
+  "uid": "lux-mon-energy",
+  "version": 1
+}

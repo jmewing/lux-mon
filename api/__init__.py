@@ -234,6 +234,85 @@ def api_summary():
         conn.close()
 
 
+# ── energy totals ───────────────────────────────────────────────────────────
+
+@app.get("/api/energy")
+def api_energy(
+    range_: str = Query("daily", alias="range", regex="^(daily|weekly|monthly)$"),
+    periods: int = Query(30, ge=1, le=365, description="Number of periods to return"),
+):
+    """Return daily/weekly/monthly energy totals from MariaDB hourly rollups.
+
+    Aggregates `lux_hourly_energy` rows into kWh values.
+    """
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            if range_ == "daily":
+                cur.execute(
+                    """
+                    SELECT DATE(hour) AS period, name,
+                           ROUND(SUM(value_in) / 1000, 3) AS in_kwh,
+                           ROUND(SUM(value_out) / 1000, 3) AS out_kwh
+                    FROM lux_hourly_energy
+                    WHERE hour >= DATE(NOW()) - INTERVAL %s DAY
+                    GROUP BY period, name
+                    ORDER BY period ASC
+                    """,
+                    (periods,),
+                )
+            elif range_ == "weekly":
+                cur.execute(
+                    """
+                    SELECT CONCAT(YEAR(hour), '-W', LPAD(WEEK(hour, 1), 2, '0')) AS period,
+                           name,
+                           ROUND(SUM(value_in) / 1000, 3) AS in_kwh,
+                           ROUND(SUM(value_out) / 1000, 3) AS out_kwh
+                    FROM lux_hourly_energy
+                    WHERE hour >= DATE(NOW()) - INTERVAL %s WEEK
+                    GROUP BY period, name
+                    ORDER BY period ASC
+                    """,
+                    (periods,),
+                )
+            else:  # monthly
+                cur.execute(
+                    """
+                    SELECT DATE_FORMAT(hour, '%%Y-%%m') AS period,
+                           name,
+                           ROUND(SUM(value_in) / 1000, 3) AS in_kwh,
+                           ROUND(SUM(value_out) / 1000, 3) AS out_kwh
+                    FROM lux_hourly_energy
+                    WHERE hour >= DATE(NOW()) - INTERVAL %s MONTH
+                    GROUP BY period, name
+                    ORDER BY period ASC
+                    """,
+                    (periods,),
+                )
+            rows = cur.fetchall()
+
+        # Pivot to {period: {name: {in_kwh, out_kwh}}}
+        data: dict[str, dict[str, dict[str, float]]] = {}
+        for period, name, in_kwh, out_kwh in rows:
+            data.setdefault(period, {})[name] = {
+                "in_kwh": float(in_kwh or 0),
+                "out_kwh": float(out_kwh or 0),
+            }
+
+        # Ensure all requested periods exist, even if empty
+        # (simpler to leave sparse and let the frontend fill)
+        return {
+            "range": range_,
+            "periods": periods,
+            "unit": "kWh",
+            "data": data,
+            "count": len(data),
+        }
+    finally:
+        conn.close()
+
+
+
 # ── settings ────────────────────────────────────────────────────────────────
 
 class SettingUpdate(BaseModel):
