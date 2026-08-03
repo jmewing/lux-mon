@@ -44,6 +44,7 @@ echo "==> Installing system dependencies..."
 $SUDO apt-get install -y \
   git \
   curl \
+  rsync \
   python3 \
   python3-venv \
   python3-pip \
