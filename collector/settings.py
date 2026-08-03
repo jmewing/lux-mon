@@ -51,6 +51,26 @@ DEFAULTS = {
     "dongle_port": "8000",              # WiFi dongle port
     "datalog_serial": "",               # WiFi dongle / datalog serial number
     "inverter_serial": "",              # Inverter serial number
+
+    # ── InfluxDB ──
+    "influx_enabled": "false",          # Enable InfluxDB output
+    "influx_url": "http://localhost:8086",
+    "influx_database": "luxmon",        # InfluxDB v1 database / v2 bucket
+    "influx_token": "",                 # InfluxDB v2 token (v1 leaves empty)
+    "influx_org": "luxmon",             # InfluxDB v2 org
+    "influx_username": "",              # InfluxDB v1 username
+    "influx_password": "",              # InfluxDB v1 password
+
+    # ── MQTT / Home Assistant ──
+    "mqtt_enabled": "false",            # Enable MQTT output
+    "mqtt_host": "localhost",
+    "mqtt_port": "1883",
+    "mqtt_username": "",
+    "mqtt_password": "",
+    "mqtt_topic_prefix": "luxmon",
+    "mqtt_ha_discovery": "true",        # Publish Home Assistant discovery configs
+    "mqtt_device_name": "luxmon",
+    "mqtt_device_id": "luxmon_solar",
 }
 
 
@@ -242,6 +262,107 @@ SETTING_META = {
         "type": "text",
         "section": "collector",
         "hint": "Inverter serial number (required for active polling)",
+    },
+
+    # ── InfluxDB ──
+    "influx_enabled": {
+        "label": "Enable InfluxDB",
+        "type": "checkbox",
+        "section": "influxdb",
+        "hint": "Write SolarAssistant-compatible measurements to InfluxDB",
+    },
+    "influx_url": {
+        "label": "InfluxDB URL",
+        "type": "text",
+        "section": "influxdb",
+        "hint": "e.g. http://localhost:8086",
+    },
+    "influx_database": {
+        "label": "Database / Bucket",
+        "type": "text",
+        "section": "influxdb",
+        "hint": "InfluxDB v1 database name or v2 bucket",
+    },
+    "influx_token": {
+        "label": "InfluxDB Token",
+        "type": "password",
+        "section": "influxdb",
+        "hint": "InfluxDB v2 token (leave blank for v1)",
+    },
+    "influx_org": {
+        "label": "InfluxDB Org",
+        "type": "text",
+        "section": "influxdb",
+        "hint": "InfluxDB v2 organization",
+    },
+    "influx_username": {
+        "label": "InfluxDB Username",
+        "type": "text",
+        "section": "influxdb",
+        "hint": "InfluxDB v1 username (optional)",
+    },
+    "influx_password": {
+        "label": "InfluxDB Password",
+        "type": "password",
+        "section": "influxdb",
+        "hint": "InfluxDB v1 password (optional)",
+    },
+
+    # ── MQTT ──
+    "mqtt_enabled": {
+        "label": "Enable MQTT",
+        "type": "checkbox",
+        "section": "mqtt",
+        "hint": "Publish state and Home Assistant discovery configs",
+    },
+    "mqtt_host": {
+        "label": "MQTT Host",
+        "type": "text",
+        "section": "mqtt",
+        "hint": "Broker hostname or IP",
+    },
+    "mqtt_port": {
+        "label": "MQTT Port",
+        "type": "number",
+        "section": "mqtt",
+        "min": 1, "max": 65535,
+        "hint": "Broker port (usually 1883)",
+    },
+    "mqtt_username": {
+        "label": "MQTT Username",
+        "type": "text",
+        "section": "mqtt",
+        "hint": "Leave blank for anonymous",
+    },
+    "mqtt_password": {
+        "label": "MQTT Password",
+        "type": "password",
+        "section": "mqtt",
+        "hint": "Leave blank for anonymous",
+    },
+    "mqtt_topic_prefix": {
+        "label": "Topic Prefix",
+        "type": "text",
+        "section": "mqtt",
+        "hint": "e.g. luxmon",
+    },
+    "mqtt_ha_discovery": {
+        "label": "Home Assistant Discovery",
+        "type": "checkbox",
+        "section": "mqtt",
+        "hint": "Publish MQTT discovery configs for Home Assistant",
+    },
+    "mqtt_device_name": {
+        "label": "Device Name",
+        "type": "text",
+        "section": "mqtt",
+        "hint": "Friendly name shown in Home Assistant",
+    },
+    "mqtt_device_id": {
+        "label": "Device ID",
+        "type": "text",
+        "section": "mqtt",
+        "hint": "Unique ID for the HA device",
     },
 }
 

@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from collector.collector import PassiveCollector, CollectorConfig
+from collector.outputs import OutputConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,7 +48,11 @@ if __name__ == "__main__":
         dongle_host="192.168.1.100",
         dongle_port=8000,
         write_interval=10,  # short interval for testing
-        influx_url="http://disabled:9999",  # disable InfluxDB writes in this test
+        outputs=OutputConfig(
+            mariadb_enabled=False,
+            influx_enabled=False,
+            mqtt_enabled=False,
+        ),
     )
 
     collector = PassiveCollector(cfg, on_snapshot=snapshot_printer)
