@@ -30,16 +30,21 @@ done
 # Bootstrap if not already set up
 SETUP_ALLOWED=$(curl -fsS http://127.0.0.1:8086/api/v2/setup 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('allowed', False))")
 if [[ "$SETUP_ALLOWED" == "True" ]]; then
+  if [[ -z "${LUX_INFLUX_ADMIN_PASSWORD:-}" ]]; then
+    echo "ERROR: InfluxDB needs bootstrapping. Set LUX_INFLUX_ADMIN_PASSWORD before running this script."
+    echo "Example: LUX_INFLUX_ADMIN_PASSWORD='your-secure-password' bash scripts/setup-grafana-stack.sh"
+    exit 1
+  fi
   echo "==> Bootstrapping InfluxDB 2.x..."
   curl -fsS -X POST http://127.0.0.1:8086/api/v2/setup \
     -H "Content-Type: application/json" \
-    -d '{"username":"luxmon","password":"luxmon","org":"luxmon","bucket":"luxmon","retentionRules":[{"type":"expire","everySeconds":0}]}' \
+    -d "{\"username\":\"luxmon\",\"password\":\"$LUX_INFLUX_ADMIN_PASSWORD\",\"org\":\"luxmon\",\"bucket\":\"luxmon\",\"retentionRules\":[{\"type\":\"expire\",\"everySeconds\":0}]}" \
     >/tmp/influx-setup.json
   echo "Bootstrap response saved to /tmp/influx-setup.json"
 fi
 
 # Create an all-access token for lux-mon if one doesn't exist
-INFLUX_TOKEN=$(curl -fsS -u luxmon:luxmon http://127.0.0.1:8086/api/v2/authorizations 2>/dev/null | python3 -c "
+INFLUX_TOKEN=$(curl -fsS -u "luxmon:$LUX_INFLUX_ADMIN_PASSWORD" http://127.0.0.1:8086/api/v2/authorizations 2>/dev/null | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 for a in data.get('authorizations', []):
@@ -50,10 +55,10 @@ for a in data.get('authorizations', []):
 
 if [[ -z "$INFLUX_TOKEN" ]]; then
   echo "==> Creating lux-mon API token..."
-  ORG_ID=$(curl -fsS -u luxmon:luxmon http://127.0.0.1:8086/api/v2/orgs 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('orgs',[{}])[0].get('id',''))" || true)
-  USER_ID=$(curl -fsS -u luxmon:luxmon http://127.0.0.1:8086/api/v2/me 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" || true)
+  ORG_ID=$(curl -fsS -u "luxmon:$LUX_INFLUX_ADMIN_PASSWORD" http://127.0.0.1:8086/api/v2/orgs 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('orgs',[{}])[0].get('id',''))" || true)
+  USER_ID=$(curl -fsS -u "luxmon:$LUX_INFLUX_ADMIN_PASSWORD" http://127.0.0.1:8086/api/v2/me 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" || true)
   if [[ -n "$ORG_ID" && -n "$USER_ID" ]]; then
-    TOKEN_RESP=$(curl -fsS -u luxmon:luxmon -X POST http://127.0.0.1:8086/api/v2/authorizations \
+    TOKEN_RESP=$(curl -fsS -u "luxmon:$LUX_INFLUX_ADMIN_PASSWORD" -X POST http://127.0.0.1:8086/api/v2/authorizations \
       -H "Content-Type: application/json" \
       -d "{\"description\":\"lux-mon\",\"orgID\":\"$ORG_ID\",\"userID\":\"$USER_ID\",\"permissions\":[{\"action\":\"read\",\"resource\":{\"type\":\"buckets\"}},{\"action\":\"write\",\"resource\":{\"type\":\"buckets\"}}]}")
     INFLUX_TOKEN=$(echo "$TOKEN_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" || true)
