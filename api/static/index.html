@@ -839,6 +839,16 @@ function renderBattery(r) {
     const v = r[k]; return v ? `<span style="margin-right:1rem">${k.replace('bms_','')}: <strong>${v.value} ${v.unit}</strong></span>` : '';
   }).join('');
   if (extraHtml) document.getElementById('bmsStatus').innerHTML += `<br><br>${extraHtml}`;
+
+  const vmin = r.cell_voltage_min?.value, vmax = r.cell_voltage_max?.value;
+  const tmin = r.cell_temp_min?.value, tmax = r.cell_temp_max?.value;
+  if (vmin != null || vmax != null || tmin != null || tmax != null) {
+    const spreadHtml = [
+      vmin != null && vmax != null ? `Cell V spread: <strong>${fmt(vmax-vmin,3)} V</strong> (${fmt(vmin,3)}–${fmt(vmax,3)} V)` : '',
+      tmin != null && tmax != null ? `Cell temp spread: <strong>${fmt(tmax-tmin,1)} °C</strong> (${fmt(tmin,1)}–${fmt(tmax,1)} °C)` : ''
+    ].filter(Boolean).join(' <span style="margin:0 0.5rem">|</span> ');
+    if (spreadHtml) document.getElementById('bmsStatus').innerHTML += `<br><br>${spreadHtml}`;
+  }
 }
 
 // ── Totals Tab ──
