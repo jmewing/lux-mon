@@ -224,13 +224,29 @@ class SettingUpdate(BaseModel):
 
 @app.get("/api/settings")
 def api_settings():
-    """Return all settings (defaults + overrides from DB)."""
-    from collector.settings import get_all, seed_defaults
+    """Return all settings (defaults + overrides from DB) with metadata."""
+    from collector.settings import get_all, seed_defaults, SETTING_META
 
     conn = _get_conn()
     try:
         seed_defaults(conn)
-        return {"settings": get_all(conn)}
+        settings = get_all(conn)
+        # Attach metadata for each setting
+        enriched = {}
+        for key, value in settings.items():
+            meta = SETTING_META.get(key, {})
+            enriched[key] = {
+                "value": value,
+                "label": meta.get("label", key),
+                "type": meta.get("type", "text"),
+                "section": meta.get("section", "general"),
+                "options": meta.get("options"),
+                "hint": meta.get("hint", ""),
+                "min": meta.get("min"),
+                "max": meta.get("max"),
+                "step": meta.get("step"),
+            }
+        return {"settings": enriched}
     finally:
         conn.close()
 

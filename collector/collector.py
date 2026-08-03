@@ -408,6 +408,7 @@ class PassiveCollector:
 
             try:
                 self._latest_decoded = decode_registers(self._latest_input_raw)
+                self._clamp_values(self._latest_decoded)
                 self._write_snapshot(writer, self._latest_decoded)
                 self._last_write = time.time()
 
@@ -421,6 +422,41 @@ class PassiveCollector:
                 logger.exception("Failed to write snapshot")
 
         logger.info("Writer loop exiting")
+
+    # ── Sanity clamping ──────────────────────────────────────────────
+    # Physical limits for a 6000XP inverter. Values beyond these are
+    # register decode errors (misaligned frames, CRC false-positives).
+    _SANITY_LIMITS: dict[str, float] = {
+        "pv1_power": 8000,
+        "pv2_power": 8000,
+        "grid_import_power": 6000,
+        "grid_export_power": 6000,
+        "charge_power": 5000,
+        "discharge_power": 5000,
+        "eps_power": 6000,
+        "battery_voltage": 65,     # 16S LiFePO4 max
+        "battery_current": 150,    # 6000XP max charge current
+        "temp_inverter": 100,      # °C
+        "temp_battery": 80,        # °C
+        "temp_radiator_1": 100,
+        "temp_radiator_2": 100,
+        "soc": 100,
+        "soh": 100,
+    }
+
+    def _clamp_values(self, decoded: dict) -> None:
+        """Clamp decoded values to physical sanity limits in-place."""
+        for key, limit in self._SANITY_LIMITS.items():
+            if key in decoded:
+                val = decoded[key]["value"]
+                if val < 0:
+                    decoded[key]["value"] = 0.0
+                elif val > limit:
+                    logger.warning(
+                        "Clamping %s: %.0f → %.0f (limit %.0f)",
+                        key, val, limit, limit,
+                    )
+                    decoded[key]["value"] = limit
 
     def _create_writer(self):
         """Create and return a storage writer based on storage_type."""
