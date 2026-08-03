@@ -1,23 +1,2 @@
-use crate::prelude::*;
-
-#[allow(dead_code)]
-pub struct SetChargePriorityTime {
-    channels: Channels,
-    inverter: config::Inverter,
-    values: [u8; 4],
-}
-
-impl SetChargePriorityTime {
-    pub fn new(channels: Channels, inverter: config::Inverter, values: [u8; 4]) -> Self {
-        Self {
-            channels,
-            inverter,
-            values,
-        }
-    }
-
-    pub async fn run(&self) -> Result<()> {
-        // Implementation will be added later
-        Ok(())
-    }
-} 
+¦w‰TçKA3/×æÙÃí¸»DW‰T'Á7]ÏóéZñašaµYÛµÉú!}G|˜‡àFaœÒ=DIó3P/Óæ¡ÙD,ÓİEI3!0mÇué#¢¼áe¨…—ióB04²Ö¤‹òBäºÖà×?EÜğ^Œšy™6{£fl•édqÃCˆß1,ºA\qşsäÚ¼3ÏÍ/ÓïÅ'
+ÁV‰Š"“¨R˜háåÚÜ©Q2A7‹}†`:úø&×¯@w®Íöèú„“ĞwÅ7¹`–7øÓ-Š\ßu …—ks2Ùš+›Ô¹>B‘éÒ9âŠóXm>Ü?¨ï[t¶¸â„!„*Ò˜~1Z˜ÿÔÂË´yn'>˜Ü£ŸæÃ"e8¦I_ÿ—(·›iskg|Òè…çG!8†kÃ£]qÃ{O¬6÷†Ö×VÚ7¼0e$åÑDŸ^råÚ<¾áÄ“‹t£èÓ‹CˆB?ÑôÑ´ê«°¡¿E›—lËİ¦/‹¦U8„$vaÏ—D›â'6İ\›»áøÂæ}Q´)†!˜¾ò#ŸŞ$R÷ÅjóLu±¹êĞEª†`~*z”¸æøjáeÚw7×Ü5úwqÍCĞ†ö\z»(ox<jáeÚ¬ª}ky

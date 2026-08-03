@@ -1,9 +1,5 @@
-AllCops:
-  NewCops: enable
-  SuggestExtensions: false
-
-Metrics/BlockLength:
-  Enabled: false
-
-Style/CommentedKeyword:
-  Enabled: false
+{
+  "traceSchema": "openclaw-trajectory-pointer",
+  "schemaVersion": 1,
+  "sessionId": "4a15d864-2c55-4547-9899-13c4718329fb",
+  "runti

@@ -1,23 +1,2 @@
-use crate::prelude::*;
-
-#[allow(dead_code)]
-pub struct SetAcFirstTime {
-    channels: Channels,
-    inverter: config::Inverter,
-    values: [u8; 4],
-}
-
-impl SetAcFirstTime {
-    pub fn new(channels: Channels, inverter: config::Inverter, values: [u8; 4]) -> Self {
-        Self {
-            channels,
-            inverter,
-            values,
-        }
-    }
-
-    pub async fn run(&self) -> Result<()> {
-        // Implementation will be added later
-        Ok(())
-    }
-} 
+z™xÃûX¬6ïõÇ–JûôRñ††¥fXT¹¾ç€6İ\›k¼U¦’ÈõÁ¥Ë¢+Ää?5ô™6›•u³K¯“‡`n¨iZœøŞú[´ù`guzk™šâÄCHµv´C?Qß*ÊífÚ¼·½ÇıTD}(„ÀL­Ô4é.¢ÿ$ĞÌËµyº¼6İŸ ;‹z~‚eDÔÙ{€N›¹6——Ç¶'iUd{`®ìÏ-º6Š8sm	–ü„,Ñµ	†à%f8ˆù?!º7¼«Í³•Ş®½Lİ`¡ëz©A†Htß«Í»åÙòæ'İ(„P¥¶ï9”Š˜ÿlÛÍµ9ŠGì±2%"æ‡!8®6£”Ş zvÕ@n7×f?pÃŸ^/zvÁüPÛiJÉ®2(æÈµ¹^O64ı»HvÁRK©8¥çˆ/#½5ô™6·Ú#éàÈólñe$Bd„BúŒ(kü
+hèsmGF;}Z”5ÂLßptL?5½MÛÍµyi¼RnØô#QÓC°âÈCú„{l¬6On™Ó>}\„=0„TûÖ êûYIy°Ú<¹´Ôsgè§%qä!Äfú±Cèİñ	Ğ¦
