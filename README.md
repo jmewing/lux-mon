@@ -45,12 +45,36 @@ EG4/LuxPower Inverter → WiFi Dongle (TCP :8000)
 
 ## Quick Start
 
+### One-command install (Debian / Ubuntu / Raspberry Pi OS)
+
+The installer sets up everything: MariaDB, Python venv, InfluxDB, Mosquitto, Grafana,
+and systemd services for the collector and API.
+
+```bash
+git clone https://github.com/jmewing/lux-mon.git
+cd lux-mon
+
+LUX_INSTALL_DIR=/opt/lux-mon \
+LUX_USER=$(whoami) \
+LUX_MARIADB_PASSWORD='luxmon' \
+LUX_INFLUX_ADMIN_PASSWORD='choose-a-password' \
+LUX_DONGLE_HOST=192.168.12.224 \
+bash scripts/install.sh
+```
+
+After install:
+- API: http://your-host:8080/api/status
+- Grafana: http://your-host:3000/grafana/d/lux-mon-charts/lux-mon-charts
+- Add an Apache/Nginx reverse proxy on port 80 if desired.
+
+### Manual install
+
 ```bash
 # Clone
 git clone https://github.com/jmewing/lux-mon.git
 cd lux-mon
 
-# Install
+# Install Python deps
 pip install -r docker/requirements.txt
 
 # Configure via environment (copy example and edit)
@@ -58,7 +82,7 @@ cp .env.example .env
 # edit .env with your DB credentials, dongle IP, InfluxDB/MQTT options
 
 # Optional: install InfluxDB + Mosquitto + Grafana (Debian/Ubuntu)
-bash scripts/setup-grafana-stack.sh
+LUX_INFLUX_ADMIN_PASSWORD='choose-a-password' bash scripts/setup-grafana-stack.sh
 
 # Run the collector
 python -m collector
