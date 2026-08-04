@@ -121,6 +121,9 @@ class OutputConfig:
     mqtt_device_name: str = "luxmon"
     mqtt_device_id: str = "luxmon_solar"
 
+    # Display
+    temperature_unit: str = "celsius"  # celsius or fahrenheit
+
     # Alerts / thresholds
     alerts_enabled: bool = False
     alerts_soc_low: float = 20.0
