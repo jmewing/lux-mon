@@ -209,6 +209,31 @@ def _build_computed(decoded: dict) -> Dict[str, float]:
             if v is not None and p is not None and v > 0:
                 computed[c_key] = p / v
 
+    # Energy totals for Home Assistant energy dashboard
+    pv_energy_total = (
+        (_sa_value(decoded, "pv1_energy_total") or 0.0)
+        + (_sa_value(decoded, "pv2_energy_total") or 0.0)
+        + (_sa_value(decoded, "pv3_energy_total") or 0.0)
+    )
+    if pv_energy_total > 0 or any(_sa_value(decoded, k) is not None for k in ("pv1_energy_total", "pv2_energy_total", "pv3_energy_total")):
+        computed["pv_energy_total"] = pv_energy_total
+
+    charge_total = _sa_value(decoded, "charge_energy_total")
+    if charge_total is not None:
+        computed["battery_in_energy_total"] = charge_total
+
+    discharge_total = _sa_value(decoded, "discharge_energy_total")
+    if discharge_total is not None:
+        computed["battery_out_energy_total"] = discharge_total
+
+    grid_import_total = _sa_value(decoded, "grid_import_total")
+    if grid_import_total is not None:
+        computed["grid_import_energy_total"] = grid_import_total
+
+    grid_export_total = _sa_value(decoded, "grid_export_total")
+    if grid_export_total is not None:
+        computed["grid_export_energy_total"] = grid_export_total
+
     return computed
 
 
@@ -605,6 +630,35 @@ class Outputs:
                 "value_template": f"{{{{ value_json.{key} }}}}",
                 "unit_of_measurement": unit,
                 "device_class": dev_class,
+                "icon": f"mdi:{icon}",
+                "device": device_info,
+            }
+            self._mqtt_client.publish(config_topic, json.dumps(config), qos=1, retain=True)
+            self._mqtt_ha_announced.add(uniq)
+
+        # Energy sensors (state_class: total_increasing) for Home Assistant energy dashboard
+        energy_sensors = [
+            ("pv_energy_total", "PV Energy Total", "energy", "kWh", "solar-power", "total_increasing"),
+            ("grid_import_energy_total", "Grid Import Energy Total", "energy", "kWh", "transmission-tower", "total_increasing"),
+            ("grid_export_energy_total", "Grid Export Energy Total", "energy", "kWh", "transmission-tower", "total_increasing"),
+            ("battery_in_energy_total", "Battery Charge Energy Total", "energy", "kWh", "battery-charging", "total_increasing"),
+            ("battery_out_energy_total", "Battery Discharge Energy Total", "energy", "kWh", "battery", "total_increasing"),
+        ]
+        for key, name, dev_class, unit, icon, state_class in energy_sensors:
+            if key not in decoded and key not in computed:
+                continue
+            uniq = f"{self.cfg.mqtt_device_id}_{key}"
+            if uniq in self._mqtt_ha_announced:
+                continue
+            config_topic = f"{self.cfg.mqtt_ha_prefix}/sensor/{uniq}/config"
+            config = {
+                "name": name,
+                "unique_id": uniq,
+                "state_topic": state_topic,
+                "value_template": f"{{{{ value_json.{key} }}}}",
+                "unit_of_measurement": unit,
+                "device_class": dev_class,
+                "state_class": state_class,
                 "icon": f"mdi:{icon}",
                 "device": device_info,
             }
