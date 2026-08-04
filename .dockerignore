@@ -1,0 +1,34 @@
+# Git / environment
+.git
+.gitignore
+.env
+.env.example
+docker/.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation / temporary
+*.md
+!docker/README.md
+tmp/
+temp/
+
+# Local build artefacts
+dist/
+build/

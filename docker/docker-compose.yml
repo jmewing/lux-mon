@@ -1,6 +1,79 @@
 version: "3.8"
 
+# -----------------------------------------------------------------------------
+# One-command lux-mon stack (Docker Compose)
+#
+# 1. Copy docker/.env.example to .env in the repository root and fill it in.
+# 2. From the repository root run:
+#        docker compose -f docker/docker-compose.yml up -d
+# 3. Dashboards:
+#      Web UI/API: http://<host>:8080/
+#      Grafana:    http://<host>:3000/
+# -----------------------------------------------------------------------------
+
+x-lux-env: &lux-env
+  LUX_DONGLE_HOST: ${LUX_DONGLE_HOST}
+  LUX_DONGLE_PORT: ${LUX_DONGLE_PORT:-8000}
+  LUX_TRANSPORT: ${LUX_TRANSPORT:-tcp_active}
+  LUX_INVERTER_MODEL: ${LUX_INVERTER_MODEL:-eg4_6000xp}
+  LUX_WRITE_INTERVAL: ${LUX_WRITE_INTERVAL:-5}
+
+  # MariaDB
+  LUX_MARIADB_HOST: mariadb
+  LUX_MARIADB_PORT: 3306
+  LUX_MARIADB_USER: ${LUX_MARIADB_USER:-luxmon}
+  LUX_MARIADB_PASSWORD: ${LUX_MARIADB_PASSWORD}
+  LUX_MARIADB_DATABASE: ${LUX_MARIADB_DATABASE:-luxmon}
+
+  # InfluxDB v2
+  LUX_INFLUX_ENABLED: ${LUX_INFLUX_ENABLED:-true}
+  LUX_INFLUX_URL: http://influxdb:8086
+  LUX_INFLUX_TOKEN: ${LUX_INFLUX_TOKEN}
+  LUX_INFLUX_ORG: ${LUX_INFLUX_ORG:-luxmon}
+  LUX_INFLUX_BUCKET: ${LUX_INFLUX_BUCKET:-luxmon}
+
+  # MQTT
+  LUX_MQTT_ENABLED: ${LUX_MQTT_ENABLED:-true}
+  LUX_MQTT_HOST: mosquitto
+  LUX_MQTT_PORT: 1883
+  LUX_MQTT_USERNAME: ${LUX_MQTT_USERNAME}
+  LUX_MQTT_PASSWORD: ${LUX_MQTT_PASSWORD}
+  LUX_MQTT_TOPIC_PREFIX: ${LUX_MQTT_TOPIC_PREFIX:-luxmon}
+  LUX_MQTT_HA_DISCOVERY: ${LUX_MQTT_HA_DISCOVERY:-true}
+  LUX_MQTT_HA_PREFIX: ${LUX_MQTT_HA_PREFIX:-homeassistant}
+  LUX_MQTT_DEVICE_NAME: ${LUX_MQTT_DEVICE_NAME:-luxmon}
+  LUX_MQTT_DEVICE_ID: ${LUX_MQTT_DEVICE_ID:-luxmon_solar}
+
+  # Alerts
+  LUX_ALERTS_ENABLED: ${LUX_ALERTS_ENABLED:-false}
+  LUX_ALERTS_SOC_LOW: ${LUX_ALERTS_SOC_LOW:-20}
+  LUX_ALERTS_SOC_CRITICAL: ${LUX_ALERTS_SOC_CRITICAL:-10}
+  LUX_ALERTS_BATTERY_TEMP_HIGH: ${LUX_ALERTS_BATTERY_TEMP_HIGH:-45}
+  LUX_ALERTS_INVERTER_TEMP_HIGH: ${LUX_ALERTS_INVERTER_TEMP_HIGH:-65}
+  LUX_ALERTS_GRID_LOSS_DELAY: ${LUX_ALERTS_GRID_LOSS_DELAY:-30}
+
 services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: lux-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${LUX_MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${LUX_MARIADB_DATABASE:-luxmon}
+      MARIADB_USER: ${LUX_MARIADB_USER:-luxmon}
+      MARIADB_PASSWORD: ${LUX_MARIADB_PASSWORD}
+    volumes:
+      - lux-mariadb-data:/var/lib/mysql
+    networks:
+      - lux-mon-net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'mysqladmin ping -uroot -p"$${MARIADB_ROOT_PASSWORD}" | grep "mysqld is alive"'
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   influxdb:
     image: influxdb:2.7
     container_name: lux-influxdb
@@ -9,15 +82,122 @@ services:
       - "8086:8086"
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
-      DOCKER_INFLUXDB_INIT_USERNAME: luxmon
-      DOCKER_INFLUXDB_INIT_PASSWORD: lux-mon-password
-      DOCKER_INFLUXDB_INIT_ORG: luxmon
-      DOCKER_INFLUXDB_INIT_BUCKET: solar
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: lux-mon-token
+      DOCKER_INFLUXDB_INIT_USERNAME: ${LUX_INFLUX_USERNAME:-luxmon}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${LUX_INFLUX_ADMIN_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ORG: ${LUX_INFLUX_ORG:-luxmon}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${LUX_INFLUX_BUCKET:-luxmon}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${LUX_INFLUX_TOKEN}
     volumes:
-      - influxdb-data:/var/lib/influxdb2
+      - lux-influxdb-data:/var/lib/influxdb2
     networks:
-      - lux-net
+      - lux-mon-net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "influx ping || exit 1"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  influxdb-init:
+    image: influxdb:2.7
+    container_name: lux-influxdb-init
+    environment:
+      INFLUX_HOST: http://influxdb:8086
+      INFLUX_ORG: ${LUX_INFLUX_ORG:-luxmon}
+      INFLUX_TOKEN: ${LUX_INFLUX_TOKEN}
+    volumes:
+      - ./influxdb-init.sh:/init.sh:ro
+    networks:
+      - lux-mon-net
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    restart: "no"
+    command: ["/init.sh"]
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: lux-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - lux-mosquitto-data:/mosquitto/data
+      - lux-mosquitto-logs:/mosquitto/log
+    networks:
+      - lux-mon-net
+
+  collector:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: lux-collector
+    restart: unless-stopped
+    environment:
+      <<: *lux-env
+    networks:
+      - lux-mon-net
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+      influxdb-init:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: lux-api
+    restart: unless-stopped
+    command: ["python", "-m", "api"]
+    environment:
+      <<: *lux-env
+      LUX_API_HOST: 0.0.0.0
+      LUX_API_PORT: 8080
+    ports:
+      - "8080:8080"
+    networks:
+      - lux-mon-net
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      collector:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "curl -fsS http://127.0.0.1:8080/api/health || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana-init:
+    image: alpine:latest
+    container_name: lux-grafana-init
+    environment:
+      LUX_INFLUX_TOKEN: ${LUX_INFLUX_TOKEN}
+    volumes:
+      - ../grafana/provisioning:/src/provisioning:ro
+      - ../grafana/dashboards:/src/dashboards:ro
+      - lux-grafana-provisioning:/dst/provisioning
+      - lux-grafana-dashboards:/dst/dashboards
+    networks:
+      - lux-mon-net
+    restart: "no"
+    command: >
+      sh -c "apk add --no-cache gettext &&
+             mkdir -p /dst/provisioning/datasources /dst/provisioning/dashboards /dst/dashboards/lux-mon &&
+             cp /src/dashboards/* /dst/dashboards/lux-mon/ &&
+             envsubst < /src/provisioning/datasources/influxdb.yaml > /dst/provisioning/datasources/influxdb.yaml &&
+             sed -i 's|http://localhost:8086|http://influxdb:8086|g' /dst/provisioning/datasources/influxdb.yaml &&
+             cp /src/provisioning/dashboards/dashboards.yaml /dst/provisioning/dashboards/dashboards.yaml &&
+             echo Grafana provisioning prepared"
 
   grafana:
     image: grafana/grafana:latest
@@ -26,40 +206,32 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: luxmon
-      GF_SECURITY_ADMIN_PASSWORD: lux-mon-password
-      GF_INSTALL_PLUGINS: ""
+      GF_SECURITY_ADMIN_USER: ${LUX_GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${LUX_GRAFANA_ADMIN_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_NAME: "Main Org."
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
     volumes:
-      - grafana-data:/var/lib/grafana
-      - ./dashboard/provisioning:/etc/grafana/provisioning
+      - lux-grafana-provisioning:/etc/grafana/provisioning
+      - lux-grafana-dashboards:/var/lib/grafana/dashboards
+      - lux-grafana-data:/var/lib/grafana
     networks:
-      - lux-net
+      - lux-mon-net
     depends_on:
-      - influxdb
-
-  collector:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.collector
-    container_name: lux-collector
-    restart: unless-stopped
-    environment:
-      LUX_DONGLE_HOST: 192.168.1.100
-      LUX_DONGLE_PORT: 8000
-      LUX_INFLUX_URL: http://influxdb:8086
-      LUX_INFLUX_TOKEN: lux-mon-token
-      LUX_INFLUX_ORG: luxmon
-      LUX_INFLUX_BUCKET: solar
-      LUX_WRITE_INTERVAL: 30
-    networks:
-      - lux-net
-    depends_on:
-      - influxdb
+      influxdb:
+        condition: service_healthy
+      grafana-init:
+        condition: service_completed_successfully
 
 volumes:
-  influxdb-data:
-  grafana-data:
+  lux-mariadb-data:
+  lux-influxdb-data:
+  lux-mosquitto-data:
+  lux-mosquitto-logs:
+  lux-grafana-data:
+  lux-grafana-provisioning:
+  lux-grafana-dashboards:
 
 networks:
-  lux-net:
+  lux-mon-net:
     driver: bridge

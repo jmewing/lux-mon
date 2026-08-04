@@ -69,6 +69,20 @@ After install:
 - Grafana: http://your-host:3000/grafana/d/lux-mon-charts/lux-mon-charts
 - Add an Apache/Nginx reverse proxy on port 80 if desired.
 
+### Docker Compose (full stack)
+
+If you prefer containers, copy `docker/.env.example` to `.env`, fill in your
+dongle IP and passwords, then run:
+
+```bash
+cp docker/.env.example .env
+# edit .env
+docker compose -f docker/docker-compose.yml up -d
+```
+
+This starts MariaDB, InfluxDB, Mosquitto, collector, API, and Grafana with
+pre-loaded dashboards. See `docker/README.md` for details.
+
 ### Manual install
 
 ```bash
