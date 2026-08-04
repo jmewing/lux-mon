@@ -273,6 +273,37 @@ luxmon/luxmon_solar/error
 When Home Assistant discovery is enabled, controllable settings appear as
 `number` entities under `homeassistant/number/luxmon_*`.
 
+### Backup, prune, and storage
+
+A built-in backup script dumps MariaDB, `.env`, and settings to a timestamped
+tarball in `/var/backups/lux-mon`:
+
+```bash
+bash scripts/backup.sh
+```
+
+Prune old detail data while keeping hourly energy rollups:
+
+```bash
+bash scripts/prune.sh
+```
+
+Both are also exposed through the REST API:
+
+```bash
+# Create a backup
+curl -X POST http://your-server/api/backup
+
+# List backups
+curl http://your-server/api/backups
+
+# Prune old detail data
+curl -X POST http://your-server/api/prune
+
+# Show DB table sizes and disk usage
+curl http://your-server/api/storage
+```
+
 ## Updating
 
 lux-mon is under active development. To pull the latest changes:
