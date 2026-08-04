@@ -439,7 +439,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -498,7 +500,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",

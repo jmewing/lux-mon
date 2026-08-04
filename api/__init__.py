@@ -232,6 +232,18 @@ def api_summary():
                     "value": round(eps_r, 1),
                     "unit": "V"
                 }
+            # Convert temperatures for display if configured in Fahrenheit
+            cur.execute("SELECT value FROM lux_settings WHERE name = 'temperature_unit'")
+            row = cur.fetchone()
+            temp_unit = row[0] if row else "celsius"
+            if temp_unit == "fahrenheit":
+                for tkey in ("temp_inverter", "temp_battery", "temp_radiator_1", "temp_radiator_2"):
+                    if tkey in registers:
+                        c = registers[tkey]["value"]
+                        registers[tkey] = {
+                            "value": round(c * 9.0 / 5.0 + 32.0, 1),
+                            "unit": "°F",
+                        }
 
         return {
             "snapshot_id": snap_id,

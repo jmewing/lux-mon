@@ -415,6 +415,15 @@ function fmtW(w) { const n = Number(w); if (Math.abs(n) >= 1000) return (n/1000)
 function fmtV(v) { return Number(v).toFixed(1)+' V'; }
 function fmtA(a) { return Number(a).toFixed(1)+' A'; }
 function fmtC(c) { return Number(c).toFixed(0)+'°C'; }
+function fmtF(c) { const f = Number(c) * 9/5 + 32; return f.toFixed(0)+'°F'; }
+function fmtTemp(c) {
+  if (c == null) return '—';
+  const unit = window._settings?.temperature_unit || 'celsius';
+  return unit === 'fahrenheit' ? fmtF(c) : fmtC(c);
+}
+function tempUnitLabel() {
+  return (window._settings?.temperature_unit || 'celsius') === 'fahrenheit' ? '°F' : '°C';
+}
 function fmtPct(p) { return Number(p).toFixed(0)+'%'; }
 function fmtkWh(k) { return Number(k).toFixed(1)+' kWh'; }
 function fmtDays(s) { return Math.round(Number(s)/86400)+' days'; }
@@ -643,15 +652,15 @@ function updateOverviewGauges(r) {
   const invTemp = r.temp_inverter?.value || 0;
   updateGauge('ov-batttemp', Math.min((battTemp/60)*100, 100),
     battTemp>50?'var(--red)':(battTemp>40?'var(--yellow)':'var(--green)'),
-    fmtC(battTemp), '');
-  document.getElementById('ov-batttemp-val').textContent = fmtC(battTemp);
+    fmtTemp(battTemp), '');
+  document.getElementById('ov-batttemp-val').textContent = fmtTemp(battTemp);
   document.getElementById('ov-batttemp-det').textContent = 'Max 60°C';
 
   // Inverter Temp gauge (0–80°C)
   updateGauge('ov-invtemp', Math.min((invTemp/80)*100, 100),
     invTemp>70?'var(--red)':(invTemp>55?'var(--yellow)':'var(--green)'),
-    fmtC(invTemp), '');
-  document.getElementById('ov-invtemp-val').textContent = fmtC(invTemp);
+    fmtTemp(invTemp), '');
+  document.getElementById('ov-invtemp-val').textContent = fmtTemp(invTemp);
   document.getElementById('ov-invtemp-det').textContent = 'Max 80°C';
 }
 
@@ -724,7 +733,7 @@ function updateStatus(r) {
   document.getElementById('s-cycles').textContent = r.cycle_count?.value||0;
   document.getElementById('s-runtime').textContent = fmtDays(r.runtime?.value||0);
   document.getElementById('s-state').textContent = r.state?.value||0;
-  document.getElementById('s-invtemp').textContent = fmtC(r.temp_inverter?.value);
+  document.getElementById('s-invtemp').textContent = fmtTemp(r.temp_inverter?.value);
   document.getElementById('s-acvolt').textContent = fmtV(r.ac_output_voltage?.value||0);
 }
 
@@ -764,9 +773,9 @@ function renderCharts(h) {
   ], 6000);
 
   setChartData('chart-temps', labels, [
-    { label:'Inverter (°C)', data:extract(h,'temp_inverter'), borderColor:'#f87171', tension:0.3, pointRadius:0, borderWidth:1.5 },
-    { label:'Battery (°C)', data:extract(h,'temp_battery'), borderColor:'#38bdf8', tension:0.3, pointRadius:0, borderWidth:1.5 },
-    { label:'Radiator 1 (°C)', data:extract(h,'temp_radiator_1'), borderColor:'#fb923c', tension:0.3, pointRadius:0, borderWidth:1.5 },
+    { label:`Inverter (${tempUnitLabel()})`, data:extract(h,'temp_inverter'), borderColor:'#f87171', tension:0.3, pointRadius:0, borderWidth:1.5 },
+    { label:`Battery (${tempUnitLabel()})`, data:extract(h,'temp_battery'), borderColor:'#38bdf8', tension:0.3, pointRadius:0, borderWidth:1.5 },
+    { label:`Radiator 1 (${tempUnitLabel()})`, data:extract(h,'temp_radiator_1'), borderColor:'#fb923c', tension:0.3, pointRadius:0, borderWidth:1.5 },
   ], 100);
 }
 
@@ -810,7 +819,7 @@ function updateBattGauges(r) {
   }
   updateGauge('bg-cap', Math.min((cap/300)*100,100), 'var(--accent)', fmt(cap,0)+' Ah', '300Ah max');
   updateGauge('bg-cyc', Math.min((cycles/6000)*100,100), 'var(--purple)', fmt(cycles,0), '6000 rated');
-  updateGauge('bg-temp', Math.min((battT/60)*100,100), battT>50?'var(--red)':(battT>40?'var(--yellow)':'var(--green)'), fmtC(battT), '60°C max');
+  updateGauge('bg-temp', Math.min((battT/60)*100,100), battT>50?'var(--red)':(battT>40?'var(--yellow)':'var(--green)'), fmtTemp(battT), `60${tempUnitLabel()} max`);
 }
 
 function renderBattery(r) {
@@ -836,7 +845,7 @@ function renderBattery(r) {
   }
   if (ctLabels.length) {
     setChartData('chart-celltemps', ctLabels, [
-      { label:'Temp (°C)', data:ctData, borderColor:'#fb923c', backgroundColor:'rgba(251,146,60,0.3)', tension:0.2, pointRadius:3, borderWidth:1.5, fill:true },
+      { label:`Temp (${tempUnitLabel()})`, data:ctData, borderColor:'#fb923c', backgroundColor:'rgba(251,146,60,0.3)', tension:0.2, pointRadius:3, borderWidth:1.5, fill:true },
     ]);
   }
 
