@@ -9,6 +9,7 @@ Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi don
 - **Passively listens** to your inverter's WiFi dongle — zero bus contention
 - **Stores** time-series data in **MariaDB/MySQL** (InfluxDB optional)
 - **Exposes** a **REST API** for scripting, morning briefings, Home Assistant, etc.
+- **Streams live snapshots** over a **WebSocket** (`/ws`) so the web dashboard updates instantly
 - **Runs anywhere** — your Mac, a Raspberry Pi, a Docker container
 - **Dashboard-ready** — works with Grafana or any SQL-based visualization tool
 

@@ -981,19 +981,11 @@ async function loadEnergyHistory(range, periods) {
 // ── Data fetching ──
 async function refresh() {
   try {
-    // Fetch summary first (fast) to render gauges immediately
-    const statusRes = await fetch(API + '/api/summary');
-    const status = await statusRes.json();
-    const r = status.registers;
-
-    // Render gauges + status immediately — don't wait for history
-    updateOverviewGauges(r);
-    updateStatus(r);
-    renderBattery(r);
-    renderTotals(r);
-
-    const ts = status.timestamp;
-    document.getElementById('updated').textContent = 'Updated: ' + ts.substring(ts.indexOf('T')+1, ts.indexOf('T')+9);
+    // Use WebSocket summary if connected, otherwise fall back to HTTP
+    if (!window._wsConnected) {
+      const statusRes = await fetch(API + '/api/summary');
+      applySummary(await statusRes.json());
+    }
 
     // Fetch history in parallel (slower) for charts
     const fetches = [
@@ -1060,9 +1052,54 @@ document.querySelectorAll('#overviewTimeRange .time-btn').forEach(btn => {
   });
 });
 
+function applySummary(status) {
+  const r = status.registers;
+  updateOverviewGauges(r);
+  updateStatus(r);
+  renderBattery(r);
+  renderTotals(r);
+  const ts = status.timestamp;
+  document.getElementById('updated').textContent = 'Updated: ' + ts.substring(ts.indexOf('T')+1, ts.indexOf('T')+9);
+}
+
+// ── WebSocket live feed ──
+function connectWebSocket() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${proto}//${window.location.host}/ws`;
+  const ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    window._wsConnected = true;
+    console.log('WebSocket connected');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'snapshot') {
+        applySummary(msg.data);
+      }
+    } catch(e) {
+      console.error('WebSocket message parse failed:', e);
+    }
+  };
+
+  ws.onerror = (e) => {
+    console.error('WebSocket error:', e);
+    window._wsConnected = false;
+  };
+
+  ws.onclose = () => {
+    window._wsConnected = false;
+    // Retry after a short delay
+    setTimeout(connectWebSocket, 3000);
+  };
+}
+
 loadSettingsForGauges().then(() => {
   refresh();
   loadEnergyHistory('daily', 14);
+  connectWebSocket();
 });
 setInterval(refresh, 5000);
 
