@@ -10,6 +10,7 @@ Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi don
 - **Stores** time-series data in **MariaDB/MySQL** (InfluxDB optional)
 - **Exposes** a **REST API** for scripting, morning briefings, Home Assistant, etc.
 - **Streams live snapshots** over a **WebSocket** (`/ws`) so the web dashboard updates instantly
+- **Home Assistant energy dashboard** ready — publishes MQTT sensors with `state_class: total_increasing` for solar, grid, and battery flows
 - **Runs anywhere** — your Mac, a Raspberry Pi, a Docker container
 - **Dashboard-ready** — works with Grafana or any SQL-based visualization tool
 
@@ -108,6 +109,8 @@ The API server runs on port 8080 and provides:
 The API also serves a built-in web dashboard at `/` with real-time gauges, power flow, historic charts, battery details, energy totals, and runtime settings.
 
 A pre-built Grafana dashboard is included in `grafana/dashboards/lux-mon-charts.json` and provisioned automatically by `scripts/setup-grafana-stack.sh`. It uses a SolarAssistant-compatible InfluxDB schema so existing SolarAssistant dashboards import directly.
+
+For Home Assistant users, see [`docs/home-assistant-energy.md`](docs/home-assistant-energy.md).
 
 ```bash
 # Start the API server
