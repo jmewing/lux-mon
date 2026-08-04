@@ -1,0 +1,13 @@
+[Unit]
+Description=lux-mon backup
+After=network.target mariadb.service influxdb.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/jmewing/src/lux-mon
+Environment=LUX_SRC_DIR=/home/jmewing/src/lux-mon
+Environment=LUX_BACKUP_DIR=/var/backups/lux-mon
+Environment=LUX_BACKUP_KEEP_DAYS=30
+EnvironmentFile=-/home/jmewing/src/lux-mon/.env
+ExecStart=/home/jmewing/src/lux-mon/scripts/backup.sh
