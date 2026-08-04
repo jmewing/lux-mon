@@ -1,34 +1,38 @@
-# Git / environment
+# Git
 .git
 .gitignore
-.env
-.env.example
-docker/.env.example
 
 # Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.so
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+venv/
+.env
 
-# Editors
+# Editor / OS
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
 .DS_Store
-Thumbs.db
 
-# Documentation / temporary
+# Docker itself
+docker/.env
+docker-compose.override.yml
+
+# Local runtime data (should never end up in image)
+data/
+*.db
+*.sqlite3
+
+# Documentation build artifacts
 *.md
-!docker/README.md
-tmp/
-temp/
+!README.md
+!grafana/README.md
 
-# Local build artefacts
-dist/
-build/
+# Scripts and tests (not needed in runtime image)
+scripts/
+tests/
