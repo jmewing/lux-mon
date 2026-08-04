@@ -249,6 +249,30 @@ INSERT INTO lux_settings (name, value) VALUES ('pv_max_power', '10000')
   ON DUPLICATE KEY UPDATE value = '10000';
 ```
 
+### MQTT setting control
+
+lux-mon also accepts setting changes over MQTT. The collector subscribes to:
+
+```
+luxmon/luxmon_solar/set/<setting>
+```
+
+and writes valid values to MariaDB immediately. Example:
+
+```bash
+mosquitto_pub -h 192.168.1.100 -t luxmon/luxmon_solar/set/alerts_soc_low -m 25
+```
+
+Acknowledgments and errors are published on:
+
+```
+luxmon/luxmon_solar/ack
+luxmon/luxmon_solar/error
+```
+
+When Home Assistant discovery is enabled, controllable settings appear as
+`number` entities under `homeassistant/number/luxmon_*`.
+
 ## Updating
 
 lux-mon is under active development. To pull the latest changes:

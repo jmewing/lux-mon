@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Any
 from urllib.parse import urlencode
 
 from collector.alerts import Alerts
+from collector.mqtt_commands import MqttCommands, CONTROLLABLE_SETTINGS
 
 logger = logging.getLogger("luxmon.outputs")
 
@@ -220,6 +221,7 @@ class Outputs:
         self._mariadb_conn: Any = None
         self._influx_client: Any = None
         self._mqtt_client: Any = None
+        self._mqtt_commands: Any = None
         self._mqtt_ha_announced: set[str] = set()
         self._alerts: Optional[Alerts] = None
         self._init_backends()
@@ -332,9 +334,22 @@ class Outputs:
             client.loop_start()
             self._mqtt_client = client
             logger.info("MQTT writer connected to %s:%d", self.cfg.mqtt_host, self.cfg.mqtt_port)
+            self._mqtt_commands = MqttCommands(
+                self._mqtt_client,
+                prefix=self.cfg.mqtt_topic_prefix,
+                device_id=self.cfg.mqtt_device_id,
+                db_host=self.cfg.mariadb_host,
+                db_port=self.cfg.mariadb_port,
+                db_user=self.cfg.mariadb_user,
+                db_password=self.cfg.mariadb_password,
+                db_name=self.cfg.mariadb_database,
+                table_prefix=self.cfg.mariadb_table_prefix,
+                cfg=self.cfg,
+            )
         except Exception:
             logger.exception("Failed to connect to MQTT broker")
             self._mqtt_client = None
+            self._mqtt_commands = None
 
     # ── Public write entrypoint ─────────────────────────────────────
     def write(self, decoded: dict, raw_registers: dict[int, int]) -> None:
@@ -531,9 +546,13 @@ class Outputs:
         state_topic = f"{base}/{device}/state"
         self._mqtt_client.publish(state_topic, json.dumps(state_payload), qos=0, retain=False)
 
+        # Publish current values of MQTT-controllable settings so HA number entities sync
+        self._publish_settings_state()
+
         # Home Assistant auto-discovery for key sensors
         if self.cfg.mqtt_ha_discovery:
             self._ha_announce(decoded, computed, state_topic)
+            self._publish_ha_number_discovery()
 
         logger.info("Published MQTT state to %s (%d fields)", state_topic, len(state_payload))
 
@@ -592,6 +611,58 @@ class Outputs:
             self._mqtt_client.publish(config_topic, json.dumps(config), qos=1, retain=True)
             self._mqtt_ha_announced.add(uniq)
 
+    def _publish_settings_state(self) -> None:
+        """Publish current values of MQTT-controllable settings."""
+        if not self._mariadb_conn:
+            return
+        try:
+            from collector.settings import get_all
+            settings = get_all(self._mariadb_conn)
+            for name in CONTROLLABLE_SETTINGS:
+                value = settings.get(name)
+                if value is None:
+                    continue
+                topic = f"{self.cfg.mqtt_topic_prefix}/{self.cfg.mqtt_device_id}/settings/{name}"
+                self._mqtt_client.publish(topic, str(value), qos=0, retain=False)
+        except Exception:
+            logger.exception("Failed to publish settings state to MQTT")
+
+    def _publish_ha_number_discovery(self) -> None:
+        """Publish Home Assistant `number` discovery configs for controllable settings."""
+        from collector.settings import SETTING_META
+        device_info = {
+            "identifiers": [self.cfg.mqtt_device_id],
+            "name": self.cfg.mqtt_device_name,
+            "model": "lux-mon",
+            "manufacturer": "lux-mon",
+            "sw_version": "0.5.0",
+        }
+        for name in CONTROLLABLE_SETTINGS:
+            meta = SETTING_META.get(name)
+            if not meta:
+                continue
+            uniq = f"{self.cfg.mqtt_device_id}_set_{name}"
+            if uniq in self._mqtt_ha_announced:
+                continue
+            config_topic = f"{self.cfg.mqtt_ha_prefix}/number/{uniq}/config"
+            state_topic = f"{self.cfg.mqtt_topic_prefix}/{self.cfg.mqtt_device_id}/settings/{name}"
+            command_topic = f"{self.cfg.mqtt_topic_prefix}/{self.cfg.mqtt_device_id}/set/{name}"
+            unit = meta.get("unit") or meta.get("hint", "").split()[-1] if meta.get("hint") else ""
+            config: dict[str, Any] = {
+                "name": meta.get("label", name),
+                "unique_id": uniq,
+                "state_topic": state_topic,
+                "command_topic": command_topic,
+                "min": meta.get("min", 0),
+                "max": meta.get("max", 65535),
+                "step": meta.get("step", 1),
+                "device": device_info,
+            }
+            if unit:
+                config["unit_of_measurement"] = unit
+            self._mqtt_client.publish(config_topic, json.dumps(config), qos=1, retain=True)
+            self._mqtt_ha_announced.add(uniq)
+
     # ── Lifecycle ─────────────────────────────────────────────────────
     def evaluate_alerts(self, decoded: dict) -> dict:
         """Evaluate alert thresholds if alerts are enabled."""
@@ -610,6 +681,13 @@ class Outputs:
                 self._mariadb_conn.close()
             except Exception:
                 pass
+        if self._mqtt_commands:
+            try:
+                self._mqtt_commands.client.loop_stop()
+                self._mqtt_commands.client.disconnect()
+            except Exception:
+                pass
+            self._mqtt_commands = None
         if self._mqtt_client:
             try:
                 self._mqtt_client.loop_stop()
