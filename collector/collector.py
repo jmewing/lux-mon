@@ -132,6 +132,17 @@ def config_from_env() -> CollectorConfig:
             alerts_battery_temp_high=_env_or("LUX_ALERTS_BATTERY_TEMP_HIGH", 50.0, float),
             alerts_inverter_temp_high=_env_or("LUX_ALERTS_INVERTER_TEMP_HIGH", 60.0, float),
             alerts_grid_lost_threshold_sec=_env_or("LUX_ALERTS_GRID_LOST_THRESHOLD_SEC", 30.0, float),
+
+            alerts_email_enabled=_env_bool("LUX_ALERTS_EMAIL_ENABLED"),
+            alerts_email_smtp_host=_env_or("LUX_ALERTS_EMAIL_SMTP_HOST", ""),
+            alerts_email_smtp_port=_env_or("LUX_ALERTS_EMAIL_SMTP_PORT", 587, int),
+            alerts_email_username=_env_or("LUX_ALERTS_EMAIL_USERNAME", ""),
+            alerts_email_password=_env_or("LUX_ALERTS_EMAIL_PASSWORD", ""),
+            alerts_email_from=_env_or("LUX_ALERTS_EMAIL_FROM", ""),
+            alerts_email_to=_env_or("LUX_ALERTS_EMAIL_TO", ""),
+            alerts_email_tls=_env_bool("LUX_ALERTS_EMAIL_TLS", True),
+            alerts_webhook_enabled=_env_bool("LUX_ALERTS_WEBHOOK_ENABLED"),
+            alerts_webhook_url=_env_or("LUX_ALERTS_WEBHOOK_URL", ""),
         ),
         transport_options=_load_transport_options(),
     )
@@ -249,6 +260,17 @@ def _load_db_output_settings(cfg: CollectorConfig) -> None:
             out.alerts_battery_temp_high = _override("alerts_battery_temp_high", out.alerts_battery_temp_high, float)
             out.alerts_inverter_temp_high = _override("alerts_inverter_temp_high", out.alerts_inverter_temp_high, float)
             out.alerts_grid_lost_threshold_sec = _override("alerts_grid_lost_threshold_sec", out.alerts_grid_lost_threshold_sec, float)
+
+            out.alerts_email_enabled = _override("alerts_email_enabled", out.alerts_email_enabled, bool)
+            out.alerts_email_smtp_host = _override("alerts_email_smtp_host", out.alerts_email_smtp_host)
+            out.alerts_email_smtp_port = _override("alerts_email_smtp_port", out.alerts_email_smtp_port, int)
+            out.alerts_email_username = _override("alerts_email_username", out.alerts_email_username)
+            out.alerts_email_password = _override("alerts_email_password", out.alerts_email_password)
+            out.alerts_email_from = _override("alerts_email_from", out.alerts_email_from)
+            out.alerts_email_to = _override("alerts_email_to", out.alerts_email_to)
+            out.alerts_email_tls = _override("alerts_email_tls", out.alerts_email_tls, bool)
+            out.alerts_webhook_enabled = _override("alerts_webhook_enabled", out.alerts_webhook_enabled, bool)
+            out.alerts_webhook_url = _override("alerts_webhook_url", out.alerts_webhook_url)
         finally:
             conn.close()
     except Exception:
