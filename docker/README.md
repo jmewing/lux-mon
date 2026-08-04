@@ -24,10 +24,17 @@ The included `docker-compose.yml` runs the entire lux-mon stack in one command:
    - `LUX_INFLUX_ADMIN_PASSWORD`
    - `LUX_GRAFANA_ADMIN_PASSWORD`
 
-3. From the repository root, start the stack:
+3. From the repository root, start the stack. By default this pulls the
+   published multi-arch image (`ghcr.io/jmewing/lux-mon:v1.0`).
 
    ```bash
    docker compose -f docker/docker-compose.yml up -d
+   ```
+
+   To build the image from source instead:
+
+   ```bash
+   docker compose -f docker/docker-compose.yml -f docker/docker-compose.build.yml up -d --build
    ```
 
 4. Open the dashboards after ~30 seconds (MariaDB/InfluxDB need a moment to initialise):
@@ -41,11 +48,21 @@ The included `docker-compose.yml` runs the entire lux-mon stack in one command:
 | Service          | Image                     | Port  | Notes                                          |
 |------------------|---------------------------|-------|------------------------------------------------|
 | lux-mariadb      | `mariadb:10.11`           | 3306  | Auto-creates `luxmon` DB and user              |
-| lux-influxdb     | `influxdb:2.7`            | 8086  | Auto-creates org/bucket/admin token              |
+| lux-influxdb     | `influxdb:2.7`            | 8086  | Auto-creates org/bucket/admin token            |
 | lux-mosquitto    | `eclipse-mosquitto:2`     | 1883  | Anonymous MQTT enabled                         |
-| lux-collector    | built from repo           | —     | Reads dongle every `LUX_WRITE_INTERVAL` seconds |
-| lux-api          | built from repo           | 8080  | Serves REST API and static dashboard             |
+| lux-collector    | `ghcr.io/jmewing/lux-mon:v1.0` | — | Reads dongle every `LUX_WRITE_INTERVAL` seconds |
+| lux-api          | `ghcr.io/jmewing/lux-mon:v1.0` | 8080 | Serves REST API and static dashboard          |
 | lux-grafana      | `grafana/grafana:latest`  | 3000  | Pre-loaded lux-mon datasources + dashboards    |
+
+## Automated image builds
+
+`.github/workflows/docker-publish.yml` builds and pushes multi-arch
+(`linux/amd64`, `linux/arm64`) images on tag pushes and on demand via
+`workflow_dispatch`.
+
+- GitHub Container Registry image: `ghcr.io/jmewing/lux-mon:v1.0`
+- Docker Hub image (optional): add `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`
+  secrets to the GitHub repository.
 
 ## Stopping
 
@@ -63,5 +80,5 @@ docker compose -f docker/docker-compose.yml down -v
 
 ```bash
 git pull
-docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f docker/docker-compose.yml up -d
 ```

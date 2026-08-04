@@ -80,8 +80,12 @@ cp docker/.env.example .env
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-This starts MariaDB, InfluxDB, Mosquitto, collector, API, and Grafana with
-pre-loaded dashboards. See `docker/README.md` for details.
+This pulls the published image (`ghcr.io/jmewing/lux-mon:v1.0`) and starts
+MariaDB, InfluxDB, Mosquitto, collector, API, and Grafana with pre-loaded
+dashboards. To build from source instead, add
+`-f docker/docker-compose.build.yml --build`.
+
+See `docker/README.md` for details.
 
 ### Manual install
 

@@ -130,9 +130,7 @@ services:
       - lux-mon-net
 
   collector:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    image: ${LUX_IMAGE:-ghcr.io/jmewing/lux-mon:v1.0}
     container_name: lux-collector
     restart: unless-stopped
     environment:
@@ -150,9 +148,7 @@ services:
         condition: service_started
 
   api:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    image: ${LUX_IMAGE:-ghcr.io/jmewing/lux-mon:v1.0}
     container_name: lux-api
     restart: unless-stopped
     command: ["python", "-m", "api"]
