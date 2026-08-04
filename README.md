@@ -158,6 +158,7 @@ All config can be set via env vars:
 | `LUX_INFLUX_ORG` | `luxmon` | InfluxDB org (optional) |
 | `LUX_INFLUX_BUCKET` | `solar` | InfluxDB bucket (optional) |
 | `LUX_REPLAY_FILE` | — | Replay a capture instead of live TCP |
+| `LUX_INVERTER_MODEL` | `eg4_6000xp` | Inverter / BMS model driver |
 | `LUX_API_HOST` | `0.0.0.0` | API bind address |
 | `LUX_API_PORT` | `8080` | API port |
 
