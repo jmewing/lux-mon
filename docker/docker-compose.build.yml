@@ -1,0 +1,16 @@
+# Build the lux-mon image locally from source instead of pulling from a registry.
+# Usage (from repo root):
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.build.yml up -d
+
+services:
+  collector:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ~
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ~
