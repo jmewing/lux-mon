@@ -288,6 +288,52 @@ INSERT INTO lux_settings (name, value) VALUES ('pv_max_power', '10000')
   ON DUPLICATE KEY UPDATE value = '10000';
 ```
 
+## Backup and Restore
+
+`scripts/backup.sh` creates a single compressed archive containing everything
+needed to rebuild your lux-mon system on new hardware:
+
+- MariaDB dump (`luxmon` database)
+- InfluxDB v2 bucket backup
+- Grafana provisioning files and dashboard JSON
+- `.env` configuration
+- Runtime settings from `/api/settings`
+
+Run manually:
+
+```bash
+# Must run as root to read Grafana provisioning files
+sudo bash scripts/backup.sh
+```
+
+Configure via `.env`:
+
+```bash
+LUX_BACKUP_DIR=/var/backups/lux-mon
+LUX_BACKUP_KEEP_DAYS=30
+# Optional off-device copy:
+LUX_BACKUP_REMOTE=user@nas:/backups/lux-mon
+```
+
+The included systemd timer runs the backup automatically every night at 02:00:
+
+```bash
+sudo cp scripts/lux-mon-backup.service /etc/systemd/system/
+sudo cp scripts/lux-mon-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now lux-mon-backup.timer
+```
+
+Restore from an archive on a fresh install:
+
+```bash
+sudo LUX_BACKUP=/var/backups/lux-mon/luxmon-backup-YYYYMMDD-HHMMSS.tar.gz bash scripts/restore.sh
+```
+
+`scripts/prune.sh` deletes detail data older than 90 days while keeping hourly
+energy rollups for one year, keeping the MariaDB database small.
+
+
 ### MQTT setting control
 
 lux-mon also accepts setting changes over MQTT. The collector subscribes to:
