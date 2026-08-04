@@ -82,8 +82,24 @@ docker compose -f docker/docker-compose.yml up -d --build
 
 This builds the lux-mon image from source, then starts MariaDB, InfluxDB,
 Mosquitto, collector, API, and Grafana with pre-loaded dashboards. To use a
-pre-built image instead, set `LUX_IMAGE` in `.env` (e.g. `ghcr.io/jmewing/lux-mon:v1.0`)
-and omit `--build`.
+pre-built image instead, set `LUX_IMAGE` in `.env` and omit `--build`.
+
+Pre-built multi-arch images (amd64 + arm64) are published to:
+
+- **Docker Hub:** `jmewing/lux-mon:v1.0.1`
+- **GitHub Container Registry:** `ghcr.io/jmewing/lux-mon:v1.0.1`
+
+Example `.env`:
+
+```bash
+LUX_IMAGE=jmewing/lux-mon:v1.0.1
+```
+
+Then run:
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
 
 See `docker/README.md` for details.
 
