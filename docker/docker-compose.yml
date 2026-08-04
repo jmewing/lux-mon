@@ -126,7 +126,7 @@ services:
       INFLUX_ORG: ${LUX_INFLUX_ORG:-luxmon}
       INFLUX_TOKEN: ${LUX_INFLUX_TOKEN}
     volumes:
-      - ./docker/influxdb-init.sh:/init.sh:ro
+      - ./influxdb-init.sh:/init.sh:ro
     networks:
       - lux-mon-net
     depends_on:
@@ -142,7 +142,7 @@ services:
     ports:
       - "1883:1883"
     volumes:
-      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - lux-mosquitto-data:/mosquitto/data
       - lux-mosquitto-logs:/mosquitto/log
     networks:
