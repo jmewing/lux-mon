@@ -31,7 +31,8 @@ from threading import Thread, Event
 from pathlib import Path
 
 from .protocol import LuxFrame
-from .registers import decode_registers
+from .drivers import ModelDriver
+from .drivers.registry import get_driver, DEFAULT_MODEL
 from .outputs import Outputs, OutputConfig
 
 
@@ -170,6 +171,22 @@ def _load_db_serials(cfg: CollectorConfig) -> None:
         logger.exception("Failed to load serials from MariaDB settings")
 
 
+def _load_db_setting(name: str) -> Optional[str]:
+    """Load a single setting value from MariaDB, or None if unavailable."""
+    try:
+        from .settings import get
+        conn = _get_db_conn()
+        if conn is None:
+            return None
+        try:
+            return get(conn, name)
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("Failed to load setting %s from MariaDB", name)
+    return None
+
+
 def _load_db_output_settings(cfg: CollectorConfig) -> None:
     """Fill output backend settings from MariaDB if env didn't set them.
 
@@ -236,7 +253,7 @@ def _load_db_output_settings(cfg: CollectorConfig) -> None:
         logger.exception("Failed to load output settings from MariaDB")
 
 
-def _create_transport(cfg: CollectorConfig, on_frame: Callable[[LuxFrame], None]):
+def _create_transport(cfg: CollectorConfig, on_frame: Callable[[LuxFrame], None], driver: ModelDriver):
     """Instantiate the configured transport."""
     transport = cfg.transport.lower()
 
@@ -272,6 +289,7 @@ def _create_transport(cfg: CollectorConfig, on_frame: Callable[[LuxFrame], None]
             reconnect_delay=cfg.reconnect_delay,
             read_timeout=cfg.read_timeout,
             poll_interval=cfg.poll_interval,
+            batches=driver.batches,
         )
 
     raise ValueError(f"Unknown transport: {cfg.transport}")
@@ -281,8 +299,10 @@ class PassiveCollector:
     """Collector that receives frames from a transport and writes snapshots."""
 
     def __init__(self, config: CollectorConfig,
-                 on_snapshot: Optional[Callable[[Dict], None]] = None):
+                 on_snapshot: Optional[Callable[[Dict], None]] = None,
+                 driver: Optional[ModelDriver] = None):
         self.cfg = config
+        self.driver = driver or get_driver(DEFAULT_MODEL)
         self._on_snapshot = on_snapshot
         self._stop = Event()
         self._transport = None
@@ -314,7 +334,7 @@ class PassiveCollector:
         self.cfg.outputs._write_interval = float(self.cfg.write_interval)
         self._outputs = Outputs(self.cfg.outputs, tz_name="UTC")
 
-        self._transport = _create_transport(self.cfg, self._handle_frame)
+        self._transport = _create_transport(self.cfg, self._handle_frame, self.driver)
         self._transport.start()
 
         self._writer = Thread(target=self._writer_loop, name="lux-writer", daemon=True)
@@ -368,7 +388,7 @@ class PassiveCollector:
                 continue
 
             try:
-                self._latest_decoded = decode_registers(self._latest_input_raw)
+                self._latest_decoded = self.driver.decode(self._latest_input_raw)
                 self._clamp_values(self._latest_decoded)
                 if self._outputs:
                     self._outputs.write(self._latest_decoded, self._latest_input_raw)
@@ -463,7 +483,15 @@ def run_collector(
             "LUX_POLL_MODE=true is deprecated; set LUX_TRANSPORT=tcp_active instead"
         )
 
-    collector = PassiveCollector(cfg)
+    inverter_model = _env_or("LUX_INVERTER_MODEL") or _load_db_setting("inverter_model") or DEFAULT_MODEL
+    try:
+        driver = get_driver(inverter_model)
+        logger.info("Using inverter driver: %s", driver.label)
+    except ValueError as exc:
+        logger.error("%s; falling back to %s", exc, DEFAULT_MODEL)
+        driver = get_driver(DEFAULT_MODEL)
+
+    collector = PassiveCollector(cfg, driver=driver)
     collector.start()
     collector.wait()
 

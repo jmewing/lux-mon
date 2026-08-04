@@ -168,19 +168,24 @@ INPUT_REGISTERS: dict[int, RegisterDef] = {
 SOH_REGISTER = RegisterDef("soh", "%", 1.0, "Battery SOH", bitmask=0xFF00, bitshift=8)
 
 
-def decode_registers(reg_values: dict[int, int]) -> dict:
+def decode_registers(reg_values: dict[int, int], register_map: dict[int, RegisterDef] = None) -> dict:
     """
     Decode a dict of {register_number: raw_value} into named/scaled values.
 
     Handles 32-bit pairs, packed registers, and signed values.
-    Returns a dict of {name: {"value": float, "unit": str, "raw": int}}
+    Returns a dict of {name: {"value": float, "unit": str, "raw": int}}.
+
+    An optional register_map overrides the global INPUT_REGISTERS, which is
+    used by model drivers to supply their own register definitions.
     """
+    if register_map is None:
+        register_map = INPUT_REGISTERS
     result = {}
 
     # First pass: decode simple registers
     for reg_num, raw_val in reg_values.items():
-        if reg_num in INPUT_REGISTERS:
-            reg_def = INPUT_REGISTERS[reg_num]
+        if reg_num in register_map:
+            reg_def = register_map[reg_num]
             if reg_def.pair_high is not None:
                 continue  # Skip low words, handled in second pass
             val = reg_def.decode(raw_val)
