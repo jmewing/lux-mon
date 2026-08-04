@@ -16,6 +16,8 @@ x-lux-env: &lux-env
   LUX_DONGLE_PORT: ${LUX_DONGLE_PORT:-8000}
   LUX_TRANSPORT: ${LUX_TRANSPORT:-tcp_active}
   LUX_INVERTER_MODEL: ${LUX_INVERTER_MODEL:-eg4_6000xp}
+  LUX_DATALOG_SERIAL: ${LUX_DATALOG_SERIAL}
+  LUX_INVERTER_SERIAL: ${LUX_INVERTER_SERIAL}
   LUX_WRITE_INTERVAL: ${LUX_WRITE_INTERVAL:-5}
 
   # MariaDB
@@ -234,9 +236,13 @@ services:
       sh -c "apk add --no-cache gettext &&
              mkdir -p /dst/provisioning/datasources /dst/provisioning/dashboards /dst/dashboards/lux-mon &&
              cp /src/dashboards/* /dst/dashboards/lux-mon/ &&
+             chown -R 472:472 /dst/provisioning /dst/dashboards &&
+             chmod -R u+rw /dst/provisioning /dst/dashboards &&
              envsubst < /src/provisioning/datasources/influxdb.yaml > /dst/provisioning/datasources/influxdb.yaml &&
              sed -i 's|http://localhost:8086|http://influxdb:8086|g' /dst/provisioning/datasources/influxdb.yaml &&
              cp /src/provisioning/dashboards/dashboards.yaml /dst/provisioning/dashboards/dashboards.yaml &&
+             chown -R 472:472 /dst/provisioning /dst/dashboards &&
+             chmod -R u+rw /dst/provisioning /dst/dashboards &&
              echo Grafana provisioning prepared"
 
   grafana:
