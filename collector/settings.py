@@ -79,6 +79,18 @@ DEFAULTS = {
     "alerts_battery_temp_high": "50",   # Battery high temp (°C)
     "alerts_inverter_temp_high": "60",  # Inverter high temp (°C)
     "alerts_grid_lost_threshold_sec": "30",  # Seconds before grid-loss alert fires
+
+    # ── Alert notifications ──
+    "alerts_email_enabled": "false",        # Enable SMTP email alerts
+    "alerts_email_smtp_host": "",           # SMTP relay host (e.g. smtp.gmail.com)
+    "alerts_email_smtp_port": "587",        # SMTP port (587 for STARTTLS, 465 for SSL)
+    "alerts_email_username": "",            # SMTP username
+    "alerts_email_password": "",            # SMTP password or app token
+    "alerts_email_from": "",                # From address
+    "alerts_email_to": "",                  # To address(es), comma-separated
+    "alerts_email_tls": "true",             # Use TLS/STARTTLS (required)
+    "alerts_webhook_enabled": "false",      # Enable webhook alerts
+    "alerts_webhook_url": "",               # Webhook URL for POST JSON alerts
 }
 
 
@@ -414,6 +426,67 @@ SETTING_META = {
         "section": "alerts",
         "min": 0, "max": 600,
         "hint": "Seconds grid voltage/frequency must be absent before a grid-loss alert fires",
+    },
+    "alerts_email_enabled": {
+        "label": "Enable Email Alerts",
+        "type": "checkbox",
+        "section": "alerts",
+        "hint": "Send alert state changes via authenticated SMTP relay",
+    },
+    "alerts_email_smtp_host": {
+        "label": "SMTP Host",
+        "type": "text",
+        "section": "alerts",
+        "hint": "e.g. smtp.gmail.com — authenticated relay only, never direct delivery",
+    },
+    "alerts_email_smtp_port": {
+        "label": "SMTP Port",
+        "type": "number",
+        "section": "alerts",
+        "min": 1, "max": 65535,
+        "hint": "587 for STARTTLS, 465 for SSL/TLS",
+    },
+    "alerts_email_username": {
+        "label": "SMTP Username",
+        "type": "text",
+        "section": "alerts",
+        "hint": "Usually the full email address",
+    },
+    "alerts_email_password": {
+        "label": "SMTP Password / App Token",
+        "type": "password",
+        "section": "alerts",
+        "hint": "Use an app-specific password for Gmail / Outlook",
+    },
+    "alerts_email_from": {
+        "label": "From Address",
+        "type": "text",
+        "section": "alerts",
+        "hint": "Sender email address",
+    },
+    "alerts_email_to": {
+        "label": "To Address(es)",
+        "type": "text",
+        "section": "alerts",
+        "hint": "Comma-separated recipient addresses",
+    },
+    "alerts_email_tls": {
+        "label": "Use TLS",
+        "type": "checkbox",
+        "section": "alerts",
+        "hint": "Always enable TLS/STARTTLS for SMTP relay",
+    },
+    "alerts_webhook_enabled": {
+        "label": "Enable Webhook Alerts",
+        "type": "checkbox",
+        "section": "alerts",
+        "hint": "POST JSON alert events to a custom URL",
+    },
+    "alerts_webhook_url": {
+        "label": "Webhook URL",
+        "type": "text",
+        "section": "alerts",
+        "hint": "HTTPS endpoint that receives POST JSON payloads",
     },
 }
 

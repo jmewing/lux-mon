@@ -9,6 +9,8 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
+from collector import notifiers
+
 logger = logging.getLogger("luxmon.alerts")
 
 
@@ -19,6 +21,7 @@ class Alerts:
         self.cfg = cfg
         self._mqtt_client = mqtt_client
         self._mariadb_conn = mariadb_conn
+        self._notifiers = notifiers.from_config(cfg)
         self._state: Dict[str, bool] = {}
         self._grid_lost_since: Optional[float] = None
         self._ha_announced: set = set()
@@ -151,6 +154,7 @@ class Alerts:
             }
             if is_active != was_active:
                 self._publish(name, is_active, value, message)
+                self._notifiers.send(name, is_active, value, message)
 
         return active
 

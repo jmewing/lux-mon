@@ -132,6 +132,18 @@ class OutputConfig:
     alerts_inverter_temp_high: float = 60.0
     alerts_grid_lost_threshold_sec: float = 30.0
 
+    # Alert notifications
+    alerts_email_enabled: bool = False
+    alerts_email_smtp_host: str = ""
+    alerts_email_smtp_port: int = 587
+    alerts_email_username: str = ""
+    alerts_email_password: str = ""
+    alerts_email_from: str = ""
+    alerts_email_to: str = ""
+    alerts_email_tls: bool = True
+    alerts_webhook_enabled: bool = False
+    alerts_webhook_url: str = ""
+
 
 def _sa_value(decoded: dict, key: str) -> Optional[float]:
     """Safely pull a numeric value from decoded registers."""

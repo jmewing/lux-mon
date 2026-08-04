@@ -42,6 +42,16 @@ CONTROLLABLE_SETTINGS = {
     "alerts_battery_temp_high",
     "alerts_inverter_temp_high",
     "alerts_grid_lost_threshold_sec",
+    "alerts_email_enabled",
+    "alerts_email_smtp_host",
+    "alerts_email_smtp_port",
+    "alerts_email_username",
+    "alerts_email_password",
+    "alerts_email_from",
+    "alerts_email_to",
+    "alerts_email_tls",
+    "alerts_webhook_enabled",
+    "alerts_webhook_url",
 }
 
 # Inverter-side parameters that require Modbus writes. Not implemented yet.
