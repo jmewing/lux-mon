@@ -391,6 +391,20 @@
         <p class="settings-note">Threshold-based alerts published to MQTT and stored in MariaDB.</p>
         <div class="settings-grid" id="settingsAlerts"></div>
       </div>
+      <div class="card settings-section" id="settingsSectionMaintenance">
+        <h3>Maintenance</h3>
+        <p class="settings-note">Backup MariaDB + settings, prune old detail data, and check storage.</p>
+        <div class="settings-grid">
+          <div class="setting-row" style="grid-column: 1 / -1; display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <button id="btnBackup" class="save-btn">💾 Backup Now</button>
+            <button id="btnPrune" class="save-btn">🧹 Prune Old Data</button>
+            <button id="btnRefreshStorage" class="save-btn">📊 Refresh Storage</button>
+            <span id="maintenanceStatus"></span>
+          </div>
+          <pre id="storageInfo" style="grid-column: 1 / -1; background:#0f172a; padding:0.75rem; border-radius:0.5rem; font-size:0.8rem; overflow:auto;">Click Refresh Storage to load usage.</pre>
+          <div id="backupsList" style="grid-column: 1 / -1;"></div>
+        </div>
+      </div>
       <div class="settings-actions">
         <button id="saveSettings" class="save-btn">💾 Save All Settings</button>
         <span id="saveStatus"></span>
@@ -1169,6 +1183,66 @@ const settingsTab = document.querySelector('.tab[data-tab="settings"]');
 if (settingsTab) {
   settingsTab.addEventListener('click', loadSettings, { once: false });
 }
+
+// ── Maintenance buttons ──
+document.getElementById('btnBackup')?.addEventListener('click', async () => {
+  const status = document.getElementById('maintenanceStatus');
+  status.textContent = 'Backing up…';
+  try {
+    const r = await fetch(`${API}/api/backup`, {method: 'POST'});
+    const j = await r.json();
+    status.textContent = 'Backup created: ' + j.backup_path;
+    loadBackups();
+  } catch (e) {
+    status.textContent = 'Backup failed: ' + e.message;
+  }
+});
+
+document.getElementById('btnPrune')?.addEventListener('click', async () => {
+  const status = document.getElementById('maintenanceStatus');
+  if (!confirm('Prune old detail data? Hourly rollups are kept. This cannot be undone.')) return;
+  status.textContent = 'Pruning…';
+  try {
+    const r = await fetch(`${API}/api/prune`, {method: 'POST'});
+    const j = await r.json();
+    status.textContent = j.output || 'Prune complete';
+  } catch (e) {
+    status.textContent = 'Prune failed: ' + e.message;
+  }
+});
+
+document.getElementById('btnRefreshStorage')?.addEventListener('click', loadStorage);
+
+async function loadStorage() {
+  const el = document.getElementById('storageInfo');
+  try {
+    const r = await fetch(`${API}/api/storage`);
+    const s = await r.json();
+    const db = Object.entries(s.database_bytes).map(([t,b]) => `${t}: ${(b/1024/1024).toFixed(1)} MB`).join('\n');
+    el.textContent = `Database tables:\n${db}\nTotal DB: ${(s.database_total_bytes/1024/1024).toFixed(1)} MB\nBackups: ${(s.backup_total_bytes/1024/1024).toFixed(1)} MB\nDisk free: ${(s.disk_free_bytes/1024/1024/1024).toFixed(1)} GB / ${(s.disk_total_bytes/1024/1024/1024).toFixed(1)} GB`;
+  } catch (e) {
+    el.textContent = 'Failed to load storage: ' + e.message;
+  }
+}
+
+async function loadBackups() {
+  const el = document.getElementById('backupsList');
+  try {
+    const r = await fetch(`${API}/api/backups`);
+    const b = await r.json();
+    if (!b.backups.length) { el.innerHTML = '<p>No backups yet.</p>'; return; }
+    el.innerHTML = '<h4>Backups</h4><ul style="font-size:0.8rem;">' +
+      b.backups.map(x => `<li>${x.name} — ${(x.size_bytes/1024/1024).toFixed(1)} MB — ${new Date(x.mtime*1000).toLocaleString()}</li>`).join('') +
+      '</ul>';
+  } catch (e) {
+    el.innerHTML = 'Failed to load backups: ' + e.message;
+  }
+}
+
+settingsTab?.addEventListener('click', () => {
+  loadStorage();
+  loadBackups();
+});
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </body>
