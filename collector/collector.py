@@ -124,6 +124,7 @@ def config_from_env() -> CollectorConfig:
             mqtt_ha_prefix=_env_or("LUX_MQTT_HA_PREFIX", "homeassistant"),
             mqtt_device_name=_env_or("LUX_MQTT_DEVICE_NAME", "luxmon"),
             mqtt_device_id=_env_or("LUX_MQTT_DEVICE_ID", "luxmon_solar"),
+            temperature_unit=_env_or("LUX_TEMPERATURE_UNIT", "celsius"),
 
             alerts_enabled=_env_bool("LUX_ALERTS_ENABLED"),
             alerts_soc_low=_env_or("LUX_ALERTS_SOC_LOW", 20.0, float),
@@ -240,6 +241,7 @@ def _load_db_output_settings(cfg: CollectorConfig) -> None:
             out.mqtt_ha_discovery = _override("mqtt_ha_discovery", out.mqtt_ha_discovery, bool)
             out.mqtt_device_name = _override("mqtt_device_name", out.mqtt_device_name)
             out.mqtt_device_id = _override("mqtt_device_id", out.mqtt_device_id)
+            out.temperature_unit = _override("temperature_unit", out.temperature_unit)
 
             out.alerts_enabled = _override("alerts_enabled", out.alerts_enabled, bool)
             out.alerts_soc_low = _override("alerts_soc_low", out.alerts_soc_low, float)
