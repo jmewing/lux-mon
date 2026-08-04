@@ -77,13 +77,13 @@ dongle IP and passwords, then run:
 ```bash
 cp docker/.env.example .env
 # edit .env
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-This pulls the published image (`ghcr.io/jmewing/lux-mon:v1.0`) and starts
-MariaDB, InfluxDB, Mosquitto, collector, API, and Grafana with pre-loaded
-dashboards. To build from source instead, add
-`-f docker/docker-compose.build.yml --build`.
+This builds the lux-mon image from source, then starts MariaDB, InfluxDB,
+Mosquitto, collector, API, and Grafana with pre-loaded dashboards. To use a
+pre-built image instead, set `LUX_IMAGE` in `.env` (e.g. `ghcr.io/jmewing/lux-mon:v1.0`)
+and omit `--build`.
 
 See `docker/README.md` for details.
 

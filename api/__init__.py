@@ -31,11 +31,14 @@ app.add_middleware(
 
 # ── database ────────────────────────────────────────────────────────────────
 
+# Support both legacy LUX_DB_* names and the LUX_MARIADB_* names used by the
+# collector / Docker Compose stack.
 DB_CONFIG = {
-    "host": os.getenv("LUX_DB_HOST", "localhost"),
-    "user": os.getenv("LUX_DB_USER", "luxmon"),
-    "password": os.getenv("LUX_DB_PASSWORD", "luxmon"),
-    "database": os.getenv("LUX_DB_NAME", "luxmon"),
+    "host": os.getenv("LUX_DB_HOST") or os.getenv("LUX_MARIADB_HOST", "localhost"),
+    "user": os.getenv("LUX_DB_USER") or os.getenv("LUX_MARIADB_USER", "luxmon"),
+    "password": os.getenv("LUX_DB_PASSWORD") or os.getenv("LUX_MARIADB_PASSWORD", "luxmon"),
+    "database": os.getenv("LUX_DB_NAME") or os.getenv("LUX_MARIADB_DATABASE", "luxmon"),
+    "port": int(os.getenv("LUX_DB_PORT") or os.getenv("LUX_MARIADB_PORT", "3306")),
     "charset": "utf8mb4",
 }
 

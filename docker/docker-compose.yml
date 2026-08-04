@@ -3,7 +3,7 @@ version: "3.8"
 # -----------------------------------------------------------------------------
 # One-command lux-mon stack (Docker Compose)
 #
-# 1. Copy docker/.env.example to .env in the repository root and fill it in.
+# 1. Copy docker/.env.example to the repository root as .env and fill it in.
 # 2. From the repository root run:
 #        docker compose -f docker/docker-compose.yml up -d
 # 3. Dashboards:
@@ -24,6 +24,7 @@ x-lux-env: &lux-env
   LUX_MARIADB_USER: ${LUX_MARIADB_USER:-luxmon}
   LUX_MARIADB_PASSWORD: ${LUX_MARIADB_PASSWORD}
   LUX_MARIADB_DATABASE: ${LUX_MARIADB_DATABASE:-luxmon}
+  LUX_MARIADB_TABLE_PREFIX: ${LUX_MARIADB_TABLE_PREFIX:-lux_}
 
   # InfluxDB v2
   LUX_INFLUX_ENABLED: ${LUX_INFLUX_ENABLED:-true}
@@ -72,7 +73,7 @@ services:
         - 'mysqladmin ping -uroot -p"$${MARIADB_ROOT_PASSWORD}" | grep "mysqld is alive"'
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   influxdb:
     image: influxdb:2.7
@@ -107,7 +108,7 @@ services:
       INFLUX_ORG: ${LUX_INFLUX_ORG:-luxmon}
       INFLUX_TOKEN: ${LUX_INFLUX_TOKEN}
     volumes:
-      - ./influxdb-init.sh:/init.sh:ro
+      - ./docker/influxdb-init.sh:/init.sh:ro
     networks:
       - lux-mon-net
     depends_on:
@@ -123,14 +124,52 @@ services:
     ports:
       - "1883:1883"
     volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - lux-mosquitto-data:/mosquitto/data
       - lux-mosquitto-logs:/mosquitto/log
     networks:
       - lux-mon-net
 
+  db-init:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ${LUX_IMAGE:-lux-mon:local}
+    container_name: lux-db-init
+    environment:
+      <<: *lux-env
+    networks:
+      - lux-mon-net
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: "no"
+    command:
+      - python
+      - -c
+      - |
+        import os, sys
+        sys.path.insert(0, os.path.dirname(os.path.abspath('__file__')))
+        from collector.outputs import Outputs, OutputConfig
+        c = OutputConfig(
+          mariadb_enabled=True,
+          mariadb_host=os.environ['LUX_MARIADB_HOST'],
+          mariadb_port=int(os.environ['LUX_MARIADB_PORT']),
+          mariadb_user=os.environ['LUX_MARIADB_USER'],
+          mariadb_password=os.environ['LUX_MARIADB_PASSWORD'],
+          mariadb_database=os.environ['LUX_MARIADB_DATABASE'],
+          mariadb_table_prefix=os.environ['LUX_MARIADB_TABLE_PREFIX'],
+          influx_enabled=False,
+          mqtt_enabled=False,
+        )
+        Outputs(c)
+        print('MariaDB schema initialized')
+
   collector:
-    image: ${LUX_IMAGE:-ghcr.io/jmewing/lux-mon:v1.0}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ${LUX_IMAGE:-lux-mon:local}
     container_name: lux-collector
     restart: unless-stopped
     environment:
@@ -146,9 +185,14 @@ services:
         condition: service_completed_successfully
       mosquitto:
         condition: service_started
+      db-init:
+        condition: service_completed_successfully
 
   api:
-    image: ${LUX_IMAGE:-ghcr.io/jmewing/lux-mon:v1.0}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ${LUX_IMAGE:-lux-mon:local}
     container_name: lux-api
     restart: unless-stopped
     command: ["python", "-m", "api"]
@@ -163,8 +207,8 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-      collector:
-        condition: service_started
+      db-init:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD-SHELL
