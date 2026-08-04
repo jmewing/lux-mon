@@ -43,11 +43,16 @@ Key variables:
 The compose file includes `build` sections for collector/API. By default,
 `docker compose up --build` builds the image locally and tags it `lux-mon:local`.
 
-To use a published image instead, set `LUX_IMAGE` in `.env`:
+To use a published multi-arch image (amd64 + arm64) instead, set `LUX_IMAGE` in `.env`:
 
 ```bash
-LUX_IMAGE=ghcr.io/jmewing/lux-mon:v1.0
+LUX_IMAGE=jmewing/lux-mon:v1.0.1
 ```
+
+Published locations:
+
+- **Docker Hub:** `jmewing/lux-mon:v1.0.1` (recommended, no registry login)
+- **GitHub Container Registry:** `ghcr.io/jmewing/lux-mon:v1.0.1`
 
 Then run without `--build`:
 
