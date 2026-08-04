@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import glob
 import os
+import shutil
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -21,7 +24,7 @@ app = FastAPI(title="lux-mon API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
 
@@ -394,6 +397,105 @@ def api_setting_put(name: str, body: SettingUpdate):
         return {"name": name, "value": body.value, "updated": True}
     finally:
         conn.close()
+
+
+# ── backup / prune / storage ────────────────────────────────────────────────
+
+BACKUP_DIR = Path(os.environ.get("LUX_BACKUP_DIR", "/var/backups/lux-mon"))
+SRC_DIR = Path(__file__).parent.parent
+
+
+@app.post("/api/backup")
+def api_backup():
+    """Trigger a MariaDB + .env backup and return the archive path."""
+    script = SRC_DIR / "scripts" / "backup.sh"
+    if not script.exists():
+        raise HTTPException(status_code=500, detail="backup.sh not found")
+    try:
+        result = subprocess.run(
+            ["/bin/bash", str(script)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        path = result.stdout.strip().splitlines()[-1]
+        return {"backup_path": path, "ok": True}
+    except subprocess.CalledProcessError as exc:
+        logger.exception("Backup failed")
+        raise HTTPException(status_code=500, detail=exc.stderr or "backup failed")
+
+
+@app.get("/api/backups")
+def api_backups():
+    """List available backup archives."""
+    files = sorted(glob.glob(str(BACKUP_DIR / "luxmon-backup-*.tar.gz")), reverse=True)
+    return {
+        "backups": [
+            {
+                "path": f,
+                "name": Path(f).name,
+                "size_bytes": Path(f).stat().st_size,
+                "mtime": Path(f).stat().st_mtime,
+            }
+            for f in files
+            if Path(f).is_file()
+        ]
+    }
+
+
+@app.post("/api/prune")
+def api_prune():
+    """Trigger retention pruning of old detail data."""
+    script = SRC_DIR / "scripts" / "prune.sh"
+    if not script.exists():
+        raise HTTPException(status_code=500, detail="prune.sh not found")
+    try:
+        result = subprocess.run(
+            ["/bin/bash", str(script)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return {"ok": True, "output": result.stdout.strip()}
+    except subprocess.CalledProcessError as exc:
+        logger.exception("Prune failed")
+        raise HTTPException(status_code=500, detail=exc.stderr or "prune failed")
+
+
+@app.get("/api/storage")
+def api_storage():
+    """Show storage usage for lux-mon data."""
+    db_sizes = {}
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT table_name,
+                       ROUND(data_length + index_length, 0) AS bytes
+                FROM information_schema.tables
+                WHERE table_schema = DATABASE()
+                  AND table_name LIKE 'lux_%'
+            """)
+            for row in cur.fetchall():
+                db_sizes[row[0]] = int(row[1])
+    finally:
+        conn.close()
+
+    disk = shutil.disk_usage(BACKUP_DIR) if BACKUP_DIR.exists() else shutil.disk_usage("/")
+    backup_total = sum(
+        Path(f).stat().st_size for f in glob.glob(str(BACKUP_DIR / "luxmon-backup-*.tar.gz"))
+        if Path(f).is_file()
+    )
+
+    return {
+        "database_bytes": db_sizes,
+        "database_total_bytes": sum(db_sizes.values()),
+        "backup_dir": str(BACKUP_DIR),
+        "backup_total_bytes": backup_total,
+        "disk_total_bytes": disk.total,
+        "disk_used_bytes": disk.used,
+        "disk_free_bytes": disk.free,
+    }
 
 
 # ── static dashboard ────────────────────────────────────────────────────────
