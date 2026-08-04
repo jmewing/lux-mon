@@ -12,7 +12,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pymysql
-from fastapi import FastAPI, HTTPException, Query
+import asyncio
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -496,6 +497,95 @@ def api_storage():
         "disk_used_bytes": disk.used,
         "disk_free_bytes": disk.free,
     }
+
+
+# ── websocket live feed ─────────────────────────────────────────────────────
+
+_active_ws_clients: set = set()
+
+
+def _fetch_latest_snapshot() -> Optional[dict]:
+    """Read the most recent snapshot from MariaDB."""
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, ts FROM lux_snapshots ORDER BY id DESC LIMIT 1")
+            snap = cur.fetchone()
+            if not snap:
+                return None
+            snap_id, snap_ts = snap
+            ts_aware = snap_ts.replace(tzinfo=TZ) if snap_ts.tzinfo is None else snap_ts
+            cur.execute(
+                "SELECT name, value, unit FROM lux_registers "
+                "WHERE snapshot_id = %s ORDER BY name",
+                (snap_id,),
+            )
+            registers = {
+                row[0]: {"value": float(row[1]), "unit": row[2]}
+                for row in cur.fetchall()
+            }
+            return {
+                "snapshot_id": snap_id,
+                "timestamp": ts_aware.isoformat(),
+                "registers": registers,
+            }
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+
+async def _ws_broadcaster_task() -> None:
+    """Background task: push the latest snapshot to every connected WS client."""
+    last_id: Optional[int] = None
+    while True:
+        await asyncio.sleep(1.0)
+        if not _active_ws_clients:
+            last_id = None
+            continue
+        try:
+            snap = await asyncio.to_thread(_fetch_latest_snapshot)
+        except Exception:
+            snap = None
+        if not snap:
+            continue
+        # Only send when a new snapshot arrives.
+        if snap["snapshot_id"] == last_id:
+            continue
+        last_id = snap["snapshot_id"]
+        payload = {"type": "snapshot", "data": snap}
+        disconnected = set()
+        for ws in _active_ws_clients:
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                disconnected.add(ws)
+        for ws in disconnected:
+            _active_ws_clients.discard(ws)
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """Stream live snapshots as JSON messages."""
+    await websocket.accept()
+    _active_ws_clients.add(websocket)
+    # Send current snapshot immediately so the client has data right away.
+    snap = _fetch_latest_snapshot()
+    if snap:
+        await websocket.send_json({"type": "snapshot", "data": snap})
+    try:
+        while True:
+            # Keep connection alive; clients can send ping/keepalive text.
+            message = await websocket.receive_text()
+            if message in ("ping", "keepalive"):
+                await websocket.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        _active_ws_clients.discard(websocket)
+
+
+@app.on_event("startup")
+async def _start_ws_broadcaster() -> None:
+    asyncio.create_task(_ws_broadcaster_task())
 
 
 # ── static dashboard ────────────────────────────────────────────────────────
