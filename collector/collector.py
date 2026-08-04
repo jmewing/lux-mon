@@ -183,13 +183,19 @@ def _load_db_serials(cfg: CollectorConfig) -> None:
         logger.exception("Failed to load serials from MariaDB settings")
 
 
-def _load_db_setting(name: str) -> Optional[str]:
+def _load_db_setting(name: str, cfg: CollectorConfig) -> Optional[str]:
     """Load a single setting value from MariaDB, or None if unavailable."""
     try:
+        import pymysql
         from .settings import get
-        conn = _get_db_conn()
-        if conn is None:
-            return None
+        conn = pymysql.connect(
+            host=cfg.outputs.mariadb_host,
+            port=cfg.outputs.mariadb_port,
+            user=cfg.outputs.mariadb_user,
+            password=cfg.outputs.mariadb_password,
+            database=cfg.outputs.mariadb_database,
+            autocommit=True,
+        )
         try:
             return get(conn, name)
         finally:
@@ -507,7 +513,7 @@ def run_collector(
             "LUX_POLL_MODE=true is deprecated; set LUX_TRANSPORT=tcp_active instead"
         )
 
-    inverter_model = _env_or("LUX_INVERTER_MODEL") or _load_db_setting("inverter_model") or DEFAULT_MODEL
+    inverter_model = _env_or("LUX_INVERTER_MODEL") or _load_db_setting("inverter_model", cfg) or DEFAULT_MODEL
     try:
         driver = get_driver(inverter_model)
         logger.info("Using inverter driver: %s", driver.label)
