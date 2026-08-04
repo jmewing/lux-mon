@@ -27,6 +27,12 @@ x-lux-env: &lux-env
   LUX_MARIADB_PASSWORD: ${LUX_MARIADB_PASSWORD}
   LUX_MARIADB_DATABASE: ${LUX_MARIADB_DATABASE:-luxmon}
   LUX_MARIADB_TABLE_PREFIX: ${LUX_MARIADB_TABLE_PREFIX:-lux_}
+  # Legacy aliases for v1.0 image compatibility; remove after v1.0.1 rebuild.
+  LUX_DB_HOST: mariadb
+  LUX_DB_USER: ${LUX_MARIADB_USER:-luxmon}
+  LUX_DB_PASSWORD: ${LUX_MARIADB_PASSWORD}
+  LUX_DB_NAME: ${LUX_MARIADB_DATABASE:-luxmon}
+  LUX_DB_PORT: 3306
 
   # InfluxDB v2
   LUX_INFLUX_ENABLED: ${LUX_INFLUX_ENABLED:-true}
