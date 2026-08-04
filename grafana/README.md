@@ -66,6 +66,22 @@ You can also store these settings in MariaDB via the web UI (`/api/settings`). E
 
 - Default Grafana credentials: `admin` / `admin` (change on first login)
 
+## Updating dashboards from settings
+
+After changing power/temperature settings in the web UI, regenerate the Grafana dashboard JSON files so panel axis maxima and temperature units match:
+
+```bash
+python3 scripts/regenerate-dashboards.py
+```
+
+Then copy the updated JSON files to your Grafana dashboards folder (on alpha):
+
+```bash
+rsync -av grafana/dashboards/ alpha:/var/lib/grafana/dashboards/lux-mon/
+```
+
+The script reads `pv_max_power`, `grid_max_power`, `charge_max_power`, `discharge_max_power`, `eps_max_power`, and `temperature_unit` from MariaDB and updates `axisSoftMax` plus temperature labels in all `grafana/dashboards/*.json` files.
+
 ## Schema
 
 The collector writes SolarAssistant-compatible measurement names so that existing SolarAssistant Grafana dashboards import directly:
@@ -109,3 +125,4 @@ Add your MQTT broker to Home Assistant (default: `192.168.12.8:1883` if exposed)
 - `provisioning/dashboards/dashboards.yaml` — dashboard provider
 - `dashboards/lux-mon-charts.json` — imported SolarAssistant "Charts" dashboard
 - `../scripts/setup-grafana-stack.sh` — one-command install/bootstrap script
+- `../scripts/regenerate-dashboards.py` — update dashboard JSON from lux-mon settings

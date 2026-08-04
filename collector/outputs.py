@@ -341,10 +341,32 @@ class Outputs:
         """Write a decoded snapshot to all enabled backends."""
         if self._mariadb_conn:
             self._write_mariadb(decoded, raw_registers)
+        # Use temperature-unit-converted copy for display backends
+        out_decoded = self._convert_temperatures(decoded)
         if self.cfg.influx_enabled:
-            self._write_influxdb(decoded)
+            self._write_influxdb(out_decoded)
         if self._mqtt_client:
-            self._write_mqtt(decoded)
+            self._write_mqtt(out_decoded)
+
+    def _convert_temperatures(self, decoded: dict) -> dict:
+        """Return a shallow copy with temperature values converted if needed."""
+        if self.cfg.temperature_unit != "fahrenheit":
+            return decoded
+        out = dict(decoded)
+        temp_keys = (
+            "temp_inverter", "temp_battery", "temp_radiator_1", "temp_radiator_2",
+            "outside_temperature",
+        )
+        for key in temp_keys:
+            info = out.get(key)
+            if not isinstance(info, dict) or "value" not in info:
+                continue
+            try:
+                c = float(info["value"])
+                out[key] = {**info, "value": round(c * 9.0 / 5.0 + 32.0, 1), "unit": "°F"}
+            except (TypeError, ValueError):
+                continue
+        return out
 
     # ── MariaDB writing ─────────────────────────────────────────────
     def _write_mariadb(self, decoded: dict, raw_registers: dict[int, int]) -> None:
@@ -517,6 +539,7 @@ class Outputs:
 
     def _ha_announce(self, decoded: dict, computed: dict, state_topic: str) -> None:
         """Publish Home Assistant MQTT discovery configs for core sensors."""
+        temp_unit = "°F" if self.cfg.temperature_unit == "fahrenheit" else "°C"
         sensors = [
             ("pv_power_total", "PV Power", "power", "W", "solar-power"),
             ("grid_power_net", "Grid Net Power", "power", "W", "transmission-tower"),
@@ -529,10 +552,10 @@ class Outputs:
             ("grid_voltage_r", "Grid Voltage", "voltage", "V", "transmission-tower"),
             ("grid_frequency", "Grid Frequency", "frequency", "Hz", "sine-wave"),
             ("ac_output_voltage", "AC Output Voltage", "voltage", "V", "flash"),
-            ("temp_inverter", "Inverter Temperature", "temperature", "°C", "thermometer"),
-            ("temp_battery", "Battery Temperature", "temperature", "°C", "thermometer"),
-            ("temp_radiator_1", "Radiator Temperature 1", "temperature", "°C", "thermometer"),
-            ("temp_radiator_2", "Radiator Temperature 2", "temperature", "°C", "thermometer"),
+            ("temp_inverter", "Inverter Temperature", "temperature", temp_unit, "thermometer"),
+            ("temp_battery", "Battery Temperature", "temperature", temp_unit, "thermometer"),
+            ("temp_radiator_1", "Radiator Temperature 1", "temperature", temp_unit, "thermometer"),
+            ("temp_radiator_2", "Radiator Temperature 2", "temperature", temp_unit, "thermometer"),
             ("eps_power", "EPS Output Power", "power", "W", "flash"),
             ("eps_frequency", "EPS Output Frequency", "frequency", "Hz", "sine-wave"),
             ("runtime", "Runtime", "duration", "s", "timer"),

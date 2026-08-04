@@ -224,7 +224,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "links": []
         },
         "overrides": []
@@ -369,7 +371,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 5000
+          },
           "links": []
         },
         "overrides": []
@@ -1009,7 +1013,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "links": []
         },
         "overrides": []
@@ -1137,7 +1143,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "links": []
         },
         "overrides": []
@@ -1265,7 +1273,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "links": []
         },
         "overrides": []
@@ -1393,7 +1403,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "links": []
         },
         "overrides": []
@@ -2100,7 +2112,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "links": []
         },
         "overrides": []
@@ -2228,7 +2242,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "links": []
         },
         "overrides": []
@@ -2356,7 +2372,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "links": []
         },
         "overrides": []
@@ -2484,7 +2502,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "links": []
         },
         "overrides": []
@@ -2934,7 +2954,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "links": []
         },
         "overrides": []
@@ -3062,7 +3084,9 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 6000
+          },
           "links": []
         },
         "overrides": []

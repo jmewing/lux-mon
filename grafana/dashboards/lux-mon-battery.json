@@ -574,7 +574,9 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "custom": {},
+          "custom": {
+            "axisSoftMax": 5000
+          },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
