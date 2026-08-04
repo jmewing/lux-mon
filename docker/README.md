@@ -1,53 +1,67 @@
-# Docker / Compose Notes
+# Docker / Compose (v1.0)
 
-The included `docker-compose.yml` provides an optional **InfluxDB + Grafana** stack for users who prefer that backend. The collector itself defaults to **MariaDB/MySQL**, which is what we use on `alpha` (the Raspberry Pi already runs MariaDB for WordPress).
+The included `docker-compose.yml` runs the entire lux-mon stack in one command:
 
-## Run InfluxDB + Grafana locally
+- MariaDB (settings + snapshots)
+- InfluxDB v2 (SolarAssistant-compatible time-series backend)
+- Mosquitto MQTT broker (Home Assistant auto-discovery)
+- lux-mon collector (reads the EG4/LuxPower dongle)
+- lux-mon API + web dashboard
+- Grafana with pre-provisioned datasources and dashboards
+
+## Quick start
+
+1. Copy the example environment file to the repository root:
+
+   ```bash
+   cp docker/.env.example .env
+   ```
+
+2. Edit `.env` and set at least:
+   - `LUX_DONGLE_HOST` — IP of your EG4/LuxPower WiFi/LAN dongle
+   - `LUX_MARIADB_ROOT_PASSWORD` / `LUX_MARIADB_PASSWORD`
+   - `LUX_INFLUX_TOKEN` (a long random string used as the admin token)
+   - `LUX_INFLUX_ADMIN_PASSWORD`
+   - `LUX_GRAFANA_ADMIN_PASSWORD`
+
+3. From the repository root, start the stack:
+
+   ```bash
+   docker compose -f docker/docker-compose.yml up -d
+   ```
+
+4. Open the dashboards after ~30 seconds (MariaDB/InfluxDB need a moment to initialise):
+   - Web UI/API: http://<host>:8080/
+   - Grafana:    http://<host>:3000/  (anonymous read is enabled; admin login uses the password from `.env`)
+   - MQTT state topic: `luxmon/luxmon_solar/state`
+   - Home Assistant discovery: `homeassistant/sensor/luxmon_solar_*/config`
+
+## Services
+
+| Service          | Image                     | Port  | Notes                                          |
+|------------------|---------------------------|-------|------------------------------------------------|
+| lux-mariadb      | `mariadb:10.11`           | 3306  | Auto-creates `luxmon` DB and user              |
+| lux-influxdb     | `influxdb:2.7`            | 8086  | Auto-creates org/bucket/admin token              |
+| lux-mosquitto    | `eclipse-mosquitto:2`     | 1883  | Anonymous MQTT enabled                         |
+| lux-collector    | built from repo           | —     | Reads dongle every `LUX_WRITE_INTERVAL` seconds |
+| lux-api          | built from repo           | 8080  | Serves REST API and static dashboard             |
+| lux-grafana      | `grafana/grafana:latest`  | 3000  | Pre-loaded lux-mon datasources + dashboards    |
+
+## Stopping
 
 ```bash
-cd docker
-docker compose up -d
+docker compose -f docker/docker-compose.yml down
 ```
 
-- InfluxDB: http://localhost:8086  (luxmon / lux-mon-password)
-- Grafana:  http://localhost:3000   (luxmon / lux-mon-password)
-
-## Run the collector against InfluxDB
+To remove persistent data volumes as well:
 
 ```bash
-export LUX_STORAGE_TYPE=influxdb
-python3 -m collector
+docker compose -f docker/docker-compose.yml down -v
 ```
 
-## Run the collector against MariaDB
+## Updating
 
 ```bash
-# MariaDB must already exist; the collector auto-creates tables.
-export LUX_STORAGE_TYPE=mariadb
-export LUX_MARIADB_HOST=localhost
-export LUX_MARIADB_USER=luxmon
-export LUX_MARIADB_PASSWORD=luxmon
-export LUX_MARIADB_DATABASE=luxmon
-python3 -m collector
-```
-
-## Verify data in MariaDB
-
-```bash
-mysql -u luxmon -pluxmon luxmon -e 'SELECT * FROM lux_snapshots ORDER BY ts DESC LIMIT 1;'
-mysql -u luxmon -pluxmon luxmon -e 'SELECT name, value, unit FROM lux_registers WHERE ts > NOW() - INTERVAL 1 MINUTE ORDER BY ts DESC;'
-```
-
-## Verify data in InfluxDB
-
-```bash
-curl -G 'http://localhost:8086/query?db=solar' \
-  --data-urlencode 'q=SELECT * FROM inverter ORDER BY time DESC LIMIT 1'
-```
-
-## Stop
-
-```bash
-cd docker
-docker compose down
+git pull
+docker compose -f docker/docker-compose.yml up -d --build
 ```
