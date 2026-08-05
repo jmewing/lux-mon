@@ -13,6 +13,8 @@ venv/
 config.yaml
 config.py
 .env
+.credentials
+backup.tar.gz
 !config.example.yaml
 !config.example.py
 !env.example

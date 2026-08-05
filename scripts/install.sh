@@ -93,6 +93,19 @@ python3 -m venv venv
 venv/bin/pip install --upgrade pip
 venv/bin/pip install -r docker/requirements.txt
 
+# ── Add lux-mon user to dialout group for RS-485 serial access ───────────
+echo "==> Granting serial port access to ${LUX_USER}..."
+$SUDO usermod -aG dialout ${LUX_USER} || true
+
+# ── Make CLI entrypoints executable ──────────────────────────────────────
+echo "==> Installing lux-mon CLI entrypoints..."
+$SUDO chmod +x "${LUX_INSTALL_DIR}/bin/latest_snapshot.py"
+$SUDO chmod +x "${LUX_INSTALL_DIR}/bin/lux-mon-rs485"
+if [[ -d /usr/local/bin ]]; then
+  $SUDO ln -sf "${LUX_INSTALL_DIR}/bin/lux-mon-rs485" /usr/local/bin/lux-mon-rs485 || true
+  $SUDO ln -sf "${LUX_INSTALL_DIR}/scripts/discover-rs485.py" /usr/local/bin/lux-mon-discover-rs485 || true
+fi
+
 # ── InfluxDB + Mosquitto + Grafana ────────────────────────────────────────
 echo "==> Installing InfluxDB + Mosquitto + Grafana..."
 LUX_INFLUX_ADMIN_PASSWORD="${LUX_INFLUX_ADMIN_PASSWORD:-}" bash "$LUX_INSTALL_DIR/scripts/setup-grafana-stack.sh"
@@ -219,9 +232,39 @@ $SUDO systemctl daemon-reload
 $SUDO systemctl enable lux-mon.service lux-api.service
 $SUDO systemctl restart lux-mon.service lux-api.service
 
+# ── Optional RS-485 collector service ────────────────────────────────────
+if [[ "${LUX_RS485_ENABLED:-}" == "true" ]]; then
+  echo "==> Installing RS-485 collector service..."
+  $SUDO tee /etc/systemd/system/lux-mon-rs485.service >/dev/null <<EOF
+[Unit]
+Description=lux-mon RS-485 serial collector
+After=network.target mariadb.service mosquitto.service
+Wants=mariadb.service
+
+[Service]
+Type=simple
+User=${LUX_USER}
+Group=dialout
+WorkingDirectory=${LUX_INSTALL_DIR}
+ExecStart=${LUX_INSTALL_DIR}/bin/lux-mon-rs485
+Restart=always
+RestartSec=5
+EnvironmentFile=-${LUX_INSTALL_DIR}/.env
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  $SUDO systemctl daemon-reload
+  $SUDO systemctl enable lux-mon-rs485.service
+  $SUDO systemctl restart lux-mon-rs485.service || true
+fi
+
 sleep 3
 $SUDO systemctl status lux-mon.service --no-pager || true
 $SUDO systemctl status lux-api.service --no-pager || true
+if [[ "${LUX_RS485_ENABLED:-}" == "true" ]]; then
+  $SUDO systemctl status lux-mon-rs485.service --no-pager || true
+fi
 
 # ── Grafana reverse proxy hint ──────────────────────────────────────────
 echo ""
