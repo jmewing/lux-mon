@@ -180,24 +180,24 @@ class Eg4A5BmsDevice(Rs485Device):
         """Parse the 0x82 0x10 status payload.
 
         Payload layout (35 bytes observed, big-endian 16-bit values after an
-        initial zero/status byte):
+        initial zero/status byte). Offsets were verified by capturing 17
+        consecutive status frames and correlating against the inverter values:
 
             offset 0   : unknown status byte (always 0x00 in captures)
             offset 1-2 : pack voltage * 0.01 V
             offset 3-4 : current * 0.01 A, signed (negative = discharge)
-            offset 5-6 : unknown (possibly temperature; 20 in one capture, 0 now)
-            offset 7-8 : unknown (0x1400 in one capture, 0 now)
-            offset 9-10: unknown (0 in current capture, 0x72 in one capture)
-            offset 11-12: unknown
-            offset 13-14: unknown
+            offset 5-6 : temperature (likely MOSFET/PCB, °C)
+            offset 7-8 : unknown
+            offset 9-10: unknown
+            offset 11-12: unknown (possibly battery or sensor temperature)
+            offset 13-14: unknown (possibly max cell temperature)
             offset 15-16: unknown
-            offset 17-18: unknown
-            offset 19-20: average cell voltage, mV
+            offset 17-18: average cell voltage, mV
+            offset 19-20: unknown
             offset 21-22: status_word
             offset 23-24: protection_word
-            offset 25-26: error_word
-            offset 27-28: cycle_count
-            offset 29-34: unknown (reserved)
+            offset 25-26: cycle_count
+            offset 27-34: unknown (reserved)
 
         SOC is not yet located; it will be correlated once the battery moves
         away from 0%% SOC.
@@ -212,19 +212,20 @@ class Eg4A5BmsDevice(Rs485Device):
         result["current"] = round(result["current_raw"] * 0.01, 2)
         result["power"] = round(result["voltage"] * result["current"], 2)
 
+        result["temperature_pcb"] = _u16_be(payload, 5)
+
         # Candidate numeric fields (exported raw so we can correlate later)
-        result["field_5_6"] = _u16_be(payload, 5)
         result["field_7_8"] = _u16_be(payload, 7)
         result["field_9_10"] = _u16_be(payload, 9)
         result["field_11_12"] = _u16_be(payload, 11)
         result["field_13_14"] = _u16_be(payload, 13)
         result["field_15_16"] = _u16_be(payload, 15)
-        result["field_17_18"] = _u16_be(payload, 17)
-        result["avg_cell_voltage"] = _u16_be(payload, 19)
+        result["avg_cell_voltage"] = _u16_be(payload, 17)
+        result["field_19_20"] = _u16_be(payload, 19)
         result["status_word"] = _u16_be(payload, 21)
         result["protection_word"] = _u16_be(payload, 23)
-        result["error_word"] = _u16_be(payload, 25)
-        result["cycle_count"] = _u16_be(payload, 27)
+        result["cycle_count"] = _u16_be(payload, 25)
+        result["error_word"] = _u16_be(payload, 27)
         result["field_29_30"] = _u16_be(payload, 29)
         result["field_31_32"] = _u16_be(payload, 31)
         result["field_33_34"] = _u16_be(payload, 33)
@@ -282,8 +283,10 @@ class Eg4A5BmsDevice(Rs485Device):
             "voltage": ("voltage", "V"),
             "current": ("current", "A"),
             "power": ("power", "W"),
+            "temperature_pcb": ("temperature_pcb", "°C"),
             "avg_cell_voltage": ("avg_cell_voltage", "mV"),
             "cycle_count": ("cycle_count", ""),
+            "error_word": ("error_word", ""),
             "cell_count": ("cell_count", ""),
             "cell_min_voltage": ("cell_min_voltage", "V"),
             "cell_max_voltage": ("cell_max_voltage", "V"),
@@ -293,14 +296,12 @@ class Eg4A5BmsDevice(Rs485Device):
             "cell_max_index": ("cell_max_index", ""),
             "status_word": ("status_word", ""),
             "protection_word": ("protection_word", ""),
-            "error_word": ("error_word", ""),
-            "field_5_6": ("field_5_6", ""),
             "field_7_8": ("field_7_8", ""),
             "field_9_10": ("field_9_10", ""),
             "field_11_12": ("field_11_12", ""),
             "field_13_14": ("field_13_14", ""),
             "field_15_16": ("field_15_16", ""),
-            "field_17_18": ("field_17_18", ""),
+            "field_19_20": ("field_19_20", ""),
             "field_29_30": ("field_29_30", ""),
             "field_31_32": ("field_31_32", ""),
             "field_33_34": ("field_33_34", ""),

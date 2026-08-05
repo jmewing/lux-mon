@@ -112,17 +112,20 @@ and `luxmon_register{name="rs485_total_voltage"}` in InfluxDB.
 The `eg4_a5_bms` driver decodes broadcast frames from EG4 rack/wall-mount
 batteries on their "PC ready" / display port.
 
-Known fields from the 0x82 0x10 status frame (35-byte payload):
+Known fields from the 0x82 0x10 status frame (35-byte payload). The
+offsets below were cross-checked against 17 consecutive status frames and
+inverter-reported values:
 
 | Bytes | Name | Scale | Notes |
 |-------|------|-------|-------|
 | 1-2   | `voltage` | 0.01 V | Pack voltage |
 | 3-4   | `current` | 0.01 A, signed | Negative = discharge |
-| 19-20 | `avg_cell_voltage` | 1 mV | Average of the 16 cells |
+| 5-6   | `temperature_pcb` | 1 °C | Likely MOSFET/PCB temperature |
+| 17-18 | `avg_cell_voltage` | 1 mV | Average of the 16 cells |
 | 21-22 | `status_word` | - | BMS status bits |
 | 23-24 | `protection_word` | - | Protection bits |
-| 25-26 | `error_word` | - | Error/fault bits |
-| 27-28 | `cycle_count` | - | Charge/discharge cycles |
+| 25-26 | `cycle_count` | - | Charge/discharge cycles |
+| 27-28 | `error_word` | - | Error/fault bits |
 
 The remaining fields are exported as `field_X_Y` integers so they can be
 correlated against inverter-reported values once the battery is active. In
