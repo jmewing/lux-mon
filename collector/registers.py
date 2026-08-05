@@ -130,7 +130,7 @@ INPUT_REGISTERS: dict[int, RegisterDef] = {
     95: RegisterDef("bms_status_inv",     "",     1.0,    "Inverter battery status summary"),
     96: RegisterDef("battery_count",       "",     1.0,    "Number of parallel batteries"),
     97: RegisterDef("battery_capacity",   "Ah",   1.0,    "Battery capacity"),
-    98: RegisterDef("battery_current",    "A",    0.01,   "Battery current (signed)", signed=True),
+    98: RegisterDef("battery_current",    "A",    0.1,    "Battery current (signed)", signed=True),
     99: RegisterDef("bms_fault_code",     "",     1.0,    "BMS fault code"),
     100:RegisterDef("bms_warning_code",   "",     1.0,    "BMS warning code"),
     101:RegisterDef("cell_voltage_max",   "V",    0.001,  "Maximum cell voltage"),
