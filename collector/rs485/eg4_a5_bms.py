@@ -258,9 +258,9 @@ class Eg4A5BmsDevice(Rs485Device):
         result: Dict[str, Any] = {}
         result["cell_count"] = 16
         for i, mv in enumerate(cell_voltages, start=1):
-            result[f"cell_{i}_voltage"] = mv * 0.001
-        result["cell_min_voltage"] = min_v * 0.001
-        result["cell_max_voltage"] = max_v * 0.001
+            result[f"cell_{i}_voltage"] = round(mv * 0.001, 3)
+        result["cell_min_voltage"] = round(min_v * 0.001, 3)
+        result["cell_max_voltage"] = round(max_v * 0.001, 3)
         result["cell_avg_voltage"] = round(sum_v / 16.0 * 0.001, 3)
         result["cell_delta_voltage"] = round((max_v - min_v) * 0.001, 3)
         result["cell_min_index"] = float(min_idx)
@@ -297,16 +297,5 @@ class Eg4A5BmsDevice(Rs485Device):
             key = f"cell_{i}_voltage"
             if key in self._latest:
                 out[key] = {"value": float(self._latest[key]), "unit": "V"}
-
-        # Expose raw status/protection words as booleans for easy dashboards.
-        if "status_word" in self._latest:
-            word = int(self._latest["status_word"])
-            out["charging"] = {"value": float(bool(word & 0x0001)), "unit": ""}
-            out["discharging"] = {"value": float(bool(word & 0x0002)), "unit": ""}
-            out["heating"] = {"value": float(bool(word & 0x8000)), "unit": ""}
-
-        if "protection_word" in self._latest:
-            word = int(self._latest["protection_word"])
-            out["protection_active"] = {"value": float(bool(word)), "unit": ""}
 
         return out
