@@ -537,16 +537,13 @@ class Outputs:
         payload = "\n".join(lines)
         if self._influx_client:
             try:
-                from influxdb_client import Point
-                points = []
-                for measurement, fields in measurements.items():
-                    point = Point(measurement)
-                    for field, val in fields.items():
-                        point = point.field(field, float(val))
-                    points.append(point)
-                write_api = self._influx_client.write_api()
-                write_api.write(bucket=self.cfg.influx_bucket, record=points)
-                logger.info("Wrote %d InfluxDB v2 points", len(points))
+                self._influx_client.write_api().write(
+                    bucket=self.cfg.influx_bucket,
+                    org=self.cfg.influx_org,
+                    record=payload,
+                    write_precision="ns",
+                )
+                logger.info("Wrote %d InfluxDB v2 lines", len(lines))
             except Exception:
                 logger.exception("InfluxDB v2 write failed; falling back to line protocol")
                 self._post_influx_v1(payload)
