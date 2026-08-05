@@ -194,9 +194,11 @@ class Eg4A5BmsDevice(Rs485Device):
             offset 15-16: unknown
             offset 17-18: average cell voltage, mV
             offset 19-20: unknown
-            offset 21-22: status_word
-            offset 23-24: protection_word
-            offset 25-26: cycle_count
+            offset 21-22: status_word (tentative)
+            offset 23-24: protection_word (tentative)
+            offset 25-26: field_25_26 (candidate for cycle_count; value has
+                         matched inverter cycle_count in some frames but
+                         varies, so it is left as a raw field for now)
             offset 27-34: unknown (reserved)
 
         SOC is not yet located; it will be correlated once the battery moves
@@ -224,7 +226,7 @@ class Eg4A5BmsDevice(Rs485Device):
         result["field_19_20"] = _u16_be(payload, 19)
         result["status_word"] = _u16_be(payload, 21)
         result["protection_word"] = _u16_be(payload, 23)
-        result["cycle_count"] = _u16_be(payload, 25)
+        result["field_25_26"] = _u16_be(payload, 25)
         result["error_word"] = _u16_be(payload, 27)
         result["field_29_30"] = _u16_be(payload, 29)
         result["field_31_32"] = _u16_be(payload, 31)
@@ -285,7 +287,7 @@ class Eg4A5BmsDevice(Rs485Device):
             "power": ("power", "W"),
             "temperature_pcb": ("temperature_pcb", "°C"),
             "avg_cell_voltage": ("avg_cell_voltage", "mV"),
-            "cycle_count": ("cycle_count", ""),
+            "field_25_26": ("field_25_26", ""),
             "error_word": ("error_word", ""),
             "cell_count": ("cell_count", ""),
             "cell_min_voltage": ("cell_min_voltage", "V"),

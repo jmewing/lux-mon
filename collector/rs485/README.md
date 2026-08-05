@@ -122,10 +122,14 @@ inverter-reported values:
 | 3-4   | `current` | 0.01 A, signed | Negative = discharge |
 | 5-6   | `temperature_pcb` | 1 °C | Likely MOSFET/PCB temperature |
 | 17-18 | `avg_cell_voltage` | 1 mV | Average of the 16 cells |
-| 21-22 | `status_word` | - | BMS status bits |
-| 23-24 | `protection_word` | - | Protection bits |
-| 25-26 | `cycle_count` | - | Charge/discharge cycles |
-| 27-28 | `error_word` | - | Error/fault bits |
+| 21-22 | `status_word` | - | BMS status bits (tentative) |
+| 23-24 | `protection_word` | - | Protection bits (tentative) |
+| 27-28 | `error_word` | - | Error/fault bits (tentative) |
+
+The field at bytes 25-26 (`field_25_26`) is a **candidate for `cycle_count`** —
+in one captured frame it equaled the inverter-reported cycle count (53), but
+in a 17-frame capture it varied between 51 and 53, so it is left as a raw
+integer until a stable correlation is confirmed.
 
 The remaining fields are exported as `field_X_Y` integers so they can be
 correlated against inverter-reported values once the battery is active. In
