@@ -12,6 +12,8 @@ and RS-485 collection runs as a separate daemon.
 
 | Driver         | Device / protocol                                   |
 |----------------|------------------------------------------------------|
+| `eg4_a5_bms`   | EG4 battery BMS via proprietary A5/5A serial protocol |
+| `eg4_bms`      | EG4 LL LiFePO4 battery BMS via Modbus RTU           |
 | `jk_bms`       | JiKong (JK) BMS over UART/RS-485                    |
 | `modbus_rtu`   | Generic Modbus RTU master                           |
 | `raw`          | Listen-only hex dump for discovery / unknown devices |

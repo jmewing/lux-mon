@@ -33,6 +33,8 @@ def _register_factories():
         return
 
     candidates = [
+        ("eg4_a5_bms", "collector.rs485.eg4_a5_bms", "Eg4A5BmsDevice"),
+        ("eg4_bms", "collector.rs485.eg4_bms", "Eg4BmsDevice"),
         ("jk_bms", "collector.rs485.jk_bms", "JkBmsDevice"),
         ("modbus_rtu", "collector.rs485.modbus_rtu", "ModbusRtuDevice"),
         ("raw", "collector.rs485.raw", "RawSerialDevice"),
