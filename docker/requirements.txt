@@ -1,3 +1,5 @@
+pyserial>=3.5
+pymodbus>=3.6.0
 influxdb-client>=1.50.0
 paho-mqtt>=2.0.0
 pymysql>=1.1.0
