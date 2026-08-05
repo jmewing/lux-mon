@@ -1009,7 +1009,7 @@ async function refresh() {
 
   try {
     const overviewHistory = await fetchJson(
-      API + `/api/history?minutes=${overviewChartRange}&fields=pv1_power,pv2_power,charge_power,discharge_power,grid_import_power,grid_export_power,soc,battery_voltage,battery_current,eps_power,temp_inverter,temp_battery,temp_radiator_1`
+      API + `/api/history?minutes=${overviewChartRange}&max_points=400&fields=pv1_power,pv2_power,charge_power,discharge_power,grid_import_power,grid_export_power,soc,battery_voltage,battery_current,eps_power,temp_inverter,temp_battery,temp_radiator_1`
     );
     renderOverviewChart(overviewHistory);
   } catch (e) {
@@ -1020,7 +1020,7 @@ async function refresh() {
   if (currentTab === 'charts') {
     try {
       const chartsHistory = await fetchJson(
-        API + `/api/history?minutes=${chartRange}&fields=pv1_power,pv2_power,charge_power,discharge_power,grid_import_power,grid_export_power,soc,battery_voltage,battery_current,eps_power,temp_inverter,temp_battery,temp_radiator_1`
+        API + `/api/history?minutes=${chartRange}&max_points=400&fields=pv1_power,pv2_power,charge_power,discharge_power,grid_import_power,grid_export_power,soc,battery_voltage,battery_current,eps_power,temp_inverter,temp_battery,temp_radiator_1`
       );
       renderCharts(chartsHistory);
     } catch (e) {
