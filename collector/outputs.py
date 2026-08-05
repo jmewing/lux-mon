@@ -166,7 +166,11 @@ def _escape_influx(s: str) -> str:
 
 def _to_line(measurement: str, tags: Dict[str, str], fields: Dict[str, Any], ts_ns: int) -> str:
     """Build a single InfluxDB line-protocol line."""
-    tag_str = "".join(f",{_escape_influx(k)}={_escape_influx(v)}" for k, v in tags.items())
+    tag_str = "".join(
+        f",{_escape_influx(k)}={_escape_influx(v)}"
+        for k, v in tags.items()
+        if v != "" and v is not None
+    )
     field_parts = []
     for k, v in fields.items():
         if isinstance(v, bool):
