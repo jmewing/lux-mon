@@ -11,8 +11,10 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import pymysql
 import asyncio
+import math
+
+import pymysql
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -100,11 +102,18 @@ def api_history(
         "",
         description="Comma-separated register names (empty = all)",
     ),
+    max_points: int = Query(
+        500,
+        ge=10,
+        le=5000,
+        description="Maximum number of snapshot points to return; larger windows are downsampled",
+    ),
 ):
     """Return time-series data for the last N minutes.
 
     Returns a list of {timestamp, registers: {name: value}} objects.
     If *fields* is provided, only those registers are included.
+    Larger windows are automatically downsampled to keep responses fast.
     """
     since = datetime.now(TZ) - timedelta(minutes=minutes)
     conn = _get_conn()
@@ -118,6 +127,11 @@ def api_history(
             snapshots = cur.fetchall()
             if not snapshots:
                 return {"snapshots": [], "count": 0}
+
+            # Downsample large windows to avoid multi-second responses on a Pi.
+            if len(snapshots) > max_points:
+                step = math.ceil(len(snapshots) / max_points)
+                snapshots = snapshots[::step]
 
             snap_ids = [s[0] for s in snapshots]
             placeholders = ",".join(["%s"] * len(snap_ids))
