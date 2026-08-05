@@ -80,6 +80,7 @@ def probe_jk_bms(port: str, baud: int, timeout: float = 1.0) -> bool:
 
     found = False
     try:
+        dev.reset_input_buffer()
         for req_name, request in [("standard", STATUS_REQUEST), ("fallback", STATUS_REQUEST_FALLBACK)]:
             dev.reset_input_buffer()
             dev.write(_append_checksum(bytearray(request)))
@@ -98,6 +99,8 @@ def probe_jk_bms(port: str, baud: int, timeout: float = 1.0) -> bool:
                     found = True
                 else:
                     print(f"  [{baud}] JK BMS parse failed")
+    except serial.SerialException as exc:
+        print(f"  [{baud}] Serial error while probing JK BMS: {exc}")
     finally:
         dev.close()
 
