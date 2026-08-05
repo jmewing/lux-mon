@@ -106,3 +106,29 @@ and `luxmon_register{name="rs485_total_voltage"}` in InfluxDB.
   before choosing a driver.
 - Missing dependencies (e.g. `pymodbus`) are logged and skipped instead of
   crashing the registry.
+
+## EG4 A5/5A BMS field map
+
+The `eg4_a5_bms` driver decodes broadcast frames from EG4 rack/wall-mount
+batteries on their "PC ready" / display port.
+
+Known fields from the 0x82 0x10 status frame (35-byte payload):
+
+| Bytes | Name | Scale | Notes |
+|-------|------|-------|-------|
+| 1-2   | `voltage` | 0.01 V | Pack voltage |
+| 3-4   | `current` | 0.01 A, signed | Negative = discharge |
+| 19-20 | `avg_cell_voltage` | 1 mV | Average of the 16 cells |
+| 21-22 | `status_word` | - | BMS status bits |
+| 23-24 | `protection_word` | - | Protection bits |
+| 25-26 | `error_word` | - | Error/fault bits |
+| 27-28 | `cycle_count` | - | Charge/discharge cycles |
+
+The remaining fields are exported as `field_X_Y` integers so they can be
+correlated against inverter-reported values once the battery is active. In
+particular, **SOC has not yet been located** because the observed battery is
+at 0% SOC, so the candidate byte(s) cannot be distinguished from other zero
+fields. A future update will map SOC as soon as the battery charges or
+discharges.
+
+The 0x82 0x11 frame carries the 16 individual cell voltages in mV.

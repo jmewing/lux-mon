@@ -184,45 +184,52 @@ class Eg4A5BmsDevice(Rs485Device):
 
             offset 0   : unknown status byte (always 0x00 in captures)
             offset 1-2 : pack voltage * 0.01 V
-            offset 3-4 : current * 0.1 A, signed (negative = discharge)
-            offset 5-6 : temperature (likely MOSFET/PCB, °C)
-            offset 7-8 : unknown / 0
-            offset 9-10: unknown (possibly SOC or SOH; varies 85-86 in capture)
-            offset 11-12: unknown (35 in capture)
-            offset 13-14: unknown (36 in capture)
-            offset 15-16: unknown / 0
-            offset 17-18: average cell voltage, mV
-            offset 19-34: status/protection bit fields (still being mapped)
+            offset 3-4 : current * 0.01 A, signed (negative = discharge)
+            offset 5-6 : unknown (possibly temperature; 20 in one capture, 0 now)
+            offset 7-8 : unknown (0x1400 in one capture, 0 now)
+            offset 9-10: unknown (0 in current capture, 0x72 in one capture)
+            offset 11-12: unknown
+            offset 13-14: unknown
+            offset 15-16: unknown
+            offset 17-18: unknown
+            offset 19-20: average cell voltage, mV
+            offset 21-22: status_word
+            offset 23-24: protection_word
+            offset 25-26: error_word
+            offset 27-28: cycle_count
+            offset 29-34: unknown (reserved)
+
+        SOC is not yet located; it will be correlated once the battery moves
+        away from 0%% SOC.
         """
-        if len(payload) < 19:
+        if len(payload) < 35:
             return None
 
         result: Dict[str, Any] = {}
         result["voltage_raw"] = _u16_be(payload, 1)
         result["current_raw"] = _s16_be(payload, 3)
         result["voltage"] = round(result["voltage_raw"] * 0.01, 2)
-        result["current"] = round(result["current_raw"] * 0.1, 2)
+        result["current"] = round(result["current_raw"] * 0.01, 2)
         result["power"] = round(result["voltage"] * result["current"], 2)
 
-        # Temperature candidate at offset 5
-        result["temperature_pcb_raw"] = _u16_be(payload, 5)
-        result["temperature_pcb"] = float(result["temperature_pcb_raw"])
-
-        # Other candidate numeric fields (exported raw for verification)
+        # Candidate numeric fields (exported raw so we can correlate later)
+        result["field_5_6"] = _u16_be(payload, 5)
         result["field_7_8"] = _u16_be(payload, 7)
         result["field_9_10"] = _u16_be(payload, 9)
         result["field_11_12"] = _u16_be(payload, 11)
         result["field_13_14"] = _u16_be(payload, 13)
         result["field_15_16"] = _u16_be(payload, 15)
-        result["avg_cell_voltage"] = _u16_be(payload, 17)
+        result["field_17_18"] = _u16_be(payload, 17)
+        result["avg_cell_voltage"] = _u16_be(payload, 19)
+        result["status_word"] = _u16_be(payload, 21)
+        result["protection_word"] = _u16_be(payload, 23)
+        result["error_word"] = _u16_be(payload, 25)
+        result["cycle_count"] = _u16_be(payload, 27)
+        result["field_29_30"] = _u16_be(payload, 29)
+        result["field_31_32"] = _u16_be(payload, 31)
+        result["field_33_34"] = _u16_be(payload, 33)
 
-        # Status/protection bits after the average cell voltage
-        if len(payload) >= 21:
-            result["status_word"] = _u16_be(payload, 19)
-        if len(payload) >= 23:
-            result["protection_word"] = _u16_be(payload, 21)
-        if len(payload) >= 25:
-            result["error_word"] = _u16_be(payload, 23)
+        logger.debug("A5/5A status payload hex: %s", payload.hex())
 
         return result
 
@@ -275,8 +282,8 @@ class Eg4A5BmsDevice(Rs485Device):
             "voltage": ("voltage", "V"),
             "current": ("current", "A"),
             "power": ("power", "W"),
-            "temperature_pcb": ("temperature_pcb", "°C"),
             "avg_cell_voltage": ("avg_cell_voltage", "mV"),
+            "cycle_count": ("cycle_count", ""),
             "cell_count": ("cell_count", ""),
             "cell_min_voltage": ("cell_min_voltage", "V"),
             "cell_max_voltage": ("cell_max_voltage", "V"),
@@ -287,6 +294,16 @@ class Eg4A5BmsDevice(Rs485Device):
             "status_word": ("status_word", ""),
             "protection_word": ("protection_word", ""),
             "error_word": ("error_word", ""),
+            "field_5_6": ("field_5_6", ""),
+            "field_7_8": ("field_7_8", ""),
+            "field_9_10": ("field_9_10", ""),
+            "field_11_12": ("field_11_12", ""),
+            "field_13_14": ("field_13_14", ""),
+            "field_15_16": ("field_15_16", ""),
+            "field_17_18": ("field_17_18", ""),
+            "field_29_30": ("field_29_30", ""),
+            "field_31_32": ("field_31_32", ""),
+            "field_33_34": ("field_33_34", ""),
         }
 
         for key, (out_key, unit) in mapping.items():

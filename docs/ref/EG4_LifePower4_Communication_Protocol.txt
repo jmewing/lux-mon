@@ -1,0 +1,3012 @@
+LifePower4 Battery
+
+Communication Protocol
+
+1 / 21
+Version History
+
+Date Version Chapter Note Author
+
+First version
+
+For battery following this protocol:
+
+2 / 21
+
+When battery communicate with inverter or upper computer, the Address of first battery starts from
+
+1 BMS Module ID:
+
+N
+O.
+
+Module
+Address
+
+BMS Module
+ID
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+9
+
+10
+
+11
+
+12
+
+13
+
+14
+
+15
+
+0x01
+
+0x02
+
+0x03
+
+0x04
+
+0x05
+
+0x06
+
+0x07
+
+0x08
+
+0x09
+
+0x0A
+
+0x0B
+
+0x0C
+
+0x0D
+
+0x0E
+
+0x0F
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+9
+
+10
+
+11
+
+12
+
+13
+
+14
+
+15
+
+ID Arrangement
+
+2#
+
+OFF
+
+ON
+
+ON
+
+OFF
+
+OFF
+
+ON
+
+ON
+
+OFF
+
+OFF
+
+ON
+
+ON
+
+OFF
+
+OFF
+
+ON
+
+ON
+
+3#
+
+OFF
+
+OFF
+
+OFF
+
+ON
+
+ON
+
+ON
+
+ON
+
+OFF
+
+OFF
+
+OFF
+
+OFF
+
+ON
+
+ON
+
+ON
+
+ON
+
+4#
+
+OFF
+
+OFF
+
+OFF
+
+OFF
+
+OFF
+
+OFF
+
+OFF
+
+ON
+
+ON
+
+ON
+
+ON
+
+ON
+
+ON
+
+ON
+
+ON
+
+1#
+
+ON
+
+OFF
+
+ON
+
+OFF
+
+ON
+
+OFF
+
+ON
+
+OFF
+
+ON
+
+OFF
+
+ON
+
+OFF
+
+ON
+
+OFF
+
+ON
+
+0
+
+0x00
+(Master)
+
+0
+
+OFF
+
+OFF
+
+OFF
+
+OFF
+
+1. Protocol ....................................................................................................................................................5
+
+3 / 21
+
+1.1 Protocol settings.............................................................................................................................. 5 1.2
+Basic format........................................................................................................................................ 5 1.2.1
+
+Basic format of frame ......................................................................................................................... 5 1.2.2
+
+Introduction of frame ............................................................................................................................ 5 1.3 
+Data format.......................................................................................................................................... 7 1.3.1
+Basic data format................................................................................................................................. 7 1.3.2
+LENGTH data format............................................................................................................................ 7 1.3.3
+
+CHKSUM data format........................................................................................................................... 8 1.3.4
+DATA_INFO data format ..................................................................................................................... 8 1.3.5
+DATA_TIME and COMMAND_TIME format........................................................................................... 9 1.4
+Encoding table..................................................................................................................................... 9 1.4.1
+CID1..................................................................................................................................................... 9 1.4.2
+CID2.............................................................................................................................................................. 9
+2. Communication command........................................................................................................................10
+
+2.1 Get analog value(fixed-point type) ...................................................................................................... 10
+
+2.2 Get alarm information.......................................................................................................................... 16
+
+4 / 21
+
+1. Protocol
+
+1.1Protocol settings
+
+Transmission rate: 9.6kb/s
+
+Format: Start bit 1 bit
+
+Data bit 8 bit
+
+Stop bit 1 bit
+
+Without parity
+
+1.2 Basic format
+
+1.2.1 Basic format of frame
+
+No
+
+Byte
+
+Format
+
+1
+
+1
+
+2
+
+1
+
+3
+
+1
+
+4
+
+1
+
+5
+
+1
+
+6
+
+2
+
+7
+
+LENID/2
+
+8
+
+2
+
+9
+
+1
+
+SOI
+
+VER
+
+ADR
+
+CID1
+
+CID2
+
+LENGTH
+
+INFO
+
+CHKSUM
+
+EOI
+
+1.2.2 Introduction of frame
+No
+
+Mark
+
+Meaning
+
+1
+
+2
+
+3
+
+4
+
+5
+
+SOI
+
+VER
+
+ADR
+
+CID1
+
+CID2
+
+Start bit mark
+
+Version of protocol
+
+（0、255）/Address
+
+Device identification code
+
+ Command information: control mark code
+(show the data or control command type)
+
+RTN
+
+Response information: return code RTN
+
+6
+
+LENGTH
+
+INFO，LENID LCHKSUM INFO length, 
+including LENID and LCHKSUM
+
+Note
+
+7EH
+
+20H
+
+1~15
+
+4AH
+
+7
+
+INFO
+
+5 / 21
+
+Command information: COMMAND_INFO
+
+Response information: DATA_INFO
+
+8
+
+9
+
+CHKSUM
+
+CHECKSUM
+
+EOI
+
+End code
+
+0DH
+
+■ COMMAND_INFO
+
+COMMAND_GROUP
+
+1 byte
+
+Group number of same type of device
+
+COMMAND_TYPE
+
+1 byte
+
+Different remote control command or different control
+command  in history data transmission
+
+COMMAND_ID
+
+1 byte
+
+Different monitoring point of same type device 
+group
+
+COMMAND_TIME
+
+7 bytes
+
+Time field，see table data time 
+format
+
+COMMAND_DATAI
+
+Integer Command Information
+
+■ DATA_INFO
+
+DATAI
+
+Fixed point number response information
+
+DATAF
+
+Floating point number response information (not included in this protocol)
+
+DATA_FLAG
+
+Data flag information
+
+RUN_STATE
+
+Status of battery
+
+WARN_STATE
+
+Alarm information
+
+DATA_TIME
+
+Event time record
+
+■ DATA_FLAG
+
+Bit 7
+
+Bit 6
+
+Bit 5
+
+Bit 4
+
+Bit 3
+
+Bit 2
+
+Bit 1
+
+Bit 0
+
+Value
+
+0
+
+0
+
+0
+
+0
+
+0
+
+0
+
+0
+
+0
+
+1
+
+6 / 21
+
+state
+me
+nt
+
+1.3Data format
+
+1.3.1 Basic data format
+
+Exist
+unread
+alarm
+value
+
+No
+unread
+alarm
+value
+
+SOI  EOI    16    16，  16  ，  16－ASCII  ，ASCII  ，  CID2＝4BH  ，34H（‘4’  ASCII  ）  42H（‘B’ 
+
+ASCII ）。
+
+SOI and EOI are explained and transferred in HEX. Other items are explained in HEX, 
+
+transferred in HEX-ASCII, each byte contains 2 ASCII.
+
+E.g. CID2 = 4BH, transfer in 2 byte, 34H ( “4” in ASCII ), and 42H (“B” in
+
+ASCII). 1.3.2 LENGTH data format
+
+HIGH
+
+LCHKSUM
+
+LOW
+
+LENID
+
+D15 D14 D13 D12 D11 D10
+
+D9
+
+D8
+
+D7
+
+D6
+
+D5
+
+D4
+
+D3
+
+D2
+
+D1
+
+D0
+
+LENID  INFO ASCII ， LENID＝0 ，INFO 。 LENID means the number of byte of ASCII in 
+INFO, when LENID = 0, means INFO is empty.
+
+ LENID 12Bit4095。
+
+LENID has 12 bits, data package should smaller than 4095 bytes.
+
+LENGTH ASCII 。
+
+While transmission, HIGH byte first, then LOW byte and divided into 4 ASCII to transmit.
+
+LCHKSUM：D11D10D9D8+D7D6D5D4+D3D2D1D0，16 1
+
+7 / 21
+To calculate LCHKSUM: D11D10D9D8+D7D6D5D4+D3D2D1D0, add the sum, modulus 16
+
+take remainder, then do a bitwise invert and then plus 1.
+
+e.g.:
+
+INFO ASCII 18， LENID＝000000010010B。
+
+In INFO the number of ASCII is 18, then LENID = 000000010010B 
+D11D10D9D8+D7D6D5D4+D3D2D1D0＝0000B＋0001B＋0010B＝0011B，
+
+Modulus 16 the remainder = 0011B Do a bitwise invert 
+and plus 1 = 1101B， LCHKSUM = 1101B。
+
+LENGTH = 1101000000010010B，trans: D012
+
+1.3.3 CHKSUM data format
+
+CHKSUM SOI、EOI CHKSUM，ASCII ，65536 1。
+
+Except for SOI, EOI and CHKSUM, add sum number of other characters in ASCII, the
+
+result  modulus 65536 take remainder, then do a bitwise invert and then plus 1.
+
+E.g.:
+“1203400456ABCEFEFC71\R”（“~” SOI，“CR” EOI）， If we have a character: 
+“~1203400456ABCEFEFC71\R ” ( “~” is SOI, “CR” is EOI)
+
+“FC71\R” FC71  CHKSUM，
+The last 5 character ”FC71\R”, the FC71 is the CHKSUM
+
+Calculate:
+
+‘1’＋ ‘2’＋ ‘0’＋ …＋‘F’＋ ‘E’＝31H＋32H＋30H＋…＋46H＋45H＝038FH
+
+038FH  65535  038FH，038FH 1  FC71H。
+038FH modulus 65535 remainder = 038FH, do a bitwise invert and plus 1 = FC71H.
+
+1.3.4 DATA_INFO data format
+
+Analog quantity is transmitted in form of fixed-point or floating-
+point.
+
+Fixed-point (integer, 2 bytes),
+This protocol uses fixed-point
+Signed integer: -32768 ~ +32767
+Unsigned integer: 0 ~ +65535
+
+1.3.5 DATA_TIME and COMMAND_TIME format
+
+Year
+
+1-9999
+
+Integer
+
+2 bytes, HEX
+
+8 / 21
+
+Month
+
+Day
+
+Hour
+
+Minute
+
+Second
+
+Note
+
+1-12
+
+1-31
+
+0-23
+
+0-59
+
+0-59
+
+Char
+
+Char
+
+Char
+
+Char
+
+Char
+
+1 byte, HEX
+
+1 byte, HEX
+
+1 byte, HEX
+
+1 byte, HEX
+
+1 byte, HEX
+
+Year is transferred as integer, actual value = transfer value
+
+1.4 mEncoding table
+
+Content
+
+BMS/ LiFePO4 battery BMS
+
+CID1
+
+4AH
+
+Note
+
+1.4.1 CID1
+
+No
+
+1
+
+1.4.2 CID2
+
+■ Command information
+
+No
+
+1
+
+2
+
+3
+
+Content
+
+Get analog value, fixed point
+
+Get alarm info
+
+Get system parameter, fixed 
+point
+
+Note
+
+CID2
+
+42H
+
+44H
+
+47H
+
+4
+
+5
+
+6
+
+7
+
+Set system parameter, fixed 
+point
+
+Get manufacturer 
+info
+
+Get date time
+
+set date time
+
+■ Response information
+
+49H
+
+51H
+
+4DH
+
+4EH
+
+9 / 21
+
+Content
+
+CID2
+
+Note
+
+Normal
+
+VER error
+
+CHKSUM error
+
+LCHKSUM error
+
+CID2 invalid
+
+Command format error
+
+Invalid data
+
+00H
+
+01H
+
+02H
+
+03H
+
+04H
+
+05H
+
+06H
+
+INFO data invalid
+
+No
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+Data type
+
+Signed integer
+
+Signed integer
+
+Unsinged integer
+
+Unit
+
+mv
+
+0.1K
+
+10mv
+
+Signed integer
+
+10mA ,charge is positive
+
+The remaining capacity
+
+Total capacity
+
+Signed integer
+
+Signed integer
+
+10mAH
+
+10mAH
+
+■ Fixed point type
+
+No
+
+Content
+
+Cell voltage
+
+Temperature
+
+Module voltage
+
+Module current
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+2. Communication command
+
+2.1 Get analog value(fixed-point type)
+
+■ Command
+
+No
+
+Byte
+
+1
+
+1
+
+2
+
+1
+
+3
+
+1
+
+4
+
+1
+
+5
+
+1
+
+6
+
+2
+
+7
+
+LENID/2
+
+8
+
+2
+
+9
+
+1
+
+format
+
+SOI
+
+VER
+
+ADR
+
+CID1
+
+CID2
+
+LENGTH
+
+INFO
+
+CHKSUM
+
+EOI
+
+20H
+
+4AH
+
+42H
+
+7E
+H
+
+0DH
+
+Note:LENID = 00H
+
+■ Response
+
+No
+
+Byte
+
+1
+
+1
+
+2
+
+1
+
+3
+
+1
+
+4
+
+1
+
+5
+
+1
+
+6
+
+2
+
+7
+
+LENID/2
+
+8
+
+2
+
+9
+
+1
+
+format
+
+SOI
+
+VER
+
+ADR
+
+CID1
+
+RTN
+
+LENGTH
+
+INFO
+
+CHKSUM
+
+EOI
+
+INFO Content:
+
+No
+
+Content
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+9
+
+DATA_FLAG
+
+PACK Group
+
+M(Number of cells)
+
+Cell 1 voltage
+
+Cell 2 voltage
+
+Cell 3 voltage
+
+Cell 4 voltage
+
+Cell 5 voltage
+
+Cell 6 voltage
+
+10
+
+Cell 7 voltage
+
+10 / 21
+
+byt
+e
+
+1
+
+1
+
+1
+
+2
+
+2
+
+2
+
+2
+
+2
+
+2
+
+2
+
+Unit
+
+Note
+
+1
+
+16 or 8
+
+Variable
+
+1mv
+
+1mv
+
+1mv
+
+1mv
+
+1mv
+
+1mv
+
+1mv
+
+11
+
+12
+
+13
+
+14
+
+15
+
+16
+
+17
+
+18
+
+19
+
+20
+
+21
+
+22
+
+23
+
+24
+
+25
+
+26
+
+27
+
+28
+
+Cell 8 voltage
+
+Cell 9 voltage
+
+Cell l0 voltage
+
+Cell l1 voltage
+
+Cell 12 voltage
+
+Cell 13 voltage
+
+Cell 14 voltage
+
+Cell 15 voltage
+
+Cell 16 voltage
+
+N (number of cell temperature)
+
+Cell temperature 1
+
+Cell temperature 2
+
+Cell temperature 3
+
+Cell temperature 4
+
+Environment temperature
+
+MOSFET temperature
+
+2
+
+2
+
+2
+
+2
+
+2
+
+2
+
+2
+
+2
+
+2
+
+1
+
+2
+
+2
+
+2
+
+2
+
+2
+
+2
+
+1mv
+
+1mv
+
+1mv
+
+1mv
+
+1mv
+
+1mv
+
+1mv
+
+1mv
+
+1mv
+
+4
+
+Kelvin temperature: K
+
+Temperature blow 0 the value
+is  negative
+
+e.g.: 25.5℃
+
+=25.5*10+2731=2986
+
+-12.4℃ =
+
+-12.4*10+2731=2607
+
+Kelvin temperature: K
+
+Kelvin temperature: K
+
+Kelvin temperature: K
+
+Kelvin temperature: K
+
+Kelvin temperature: K
+
+Pack current
+
+Pack voltage
+
+11 / 21
+
+2
+
+2
+
+10mA
+Positive: charging
+Negative: discharging
+
+10mV
+
+15
+
+0~100%
+
+0~100%
+
+29
+
+30
+
+31
+
+32
+
+33
+
+34
+
+35
+
+36
+
+37
+
+38
+
+39
+
+40
+
+41
+
+42
+
+43
+
+44
+
+45
+
+Remain capacity
+
+Full capacity
+
+Battery cycle counts
+
+User-defined
+
+SOC
+
+SOH
+
+Max cell voltage
+
+Min cell voltage
+
+Cell voltage difference
+
+Max cell temperature
+
+Min cell temperature
+
+Cumulative charging capacity
+
+Cumulative discharge 
+capacity
+
+Cumulative charging 
+energy
+
+Cumulative discharge 
+energy
+
+Cumulative charging time
+
+Cumulative discharge time
+
+2
+
+2
+
+2
+
+1
+
+2
+
+2
+
+2
+
+2
+
+2
+
+2
+
+2
+
+4
+
+4
+
+4
+
+4
+
+4
+
+4
+
+46
+
+Cumulative charging times
+
+12 / 21
+
+2
+
+10mAH
+
+10mAH
+
+Cyc.
+
+1%
+
+1%
+
+1mv
+
+1mv
+
+1mv
+
+Kelvin temperature: K
+
+Kelvin temperature: K
+
+0.01AH
+
+0.01AH
+
+0.001KWH
+
+0.001KWH
+
+Hour
+
+Hour
+
+47
+
+Cumulative discharge times
+
+2
+
+e.g.: Send command:
+
+7E 32 30 30 31 34 41 34 32 30 30 30 30 46 44 41 32 0D
+
+NO
+
+Content
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+SOI
+
+VER
+
+ADR
+
+CID1
+
+CID2
+
+LENGTH
+
+CHKSUM
+
+EOI
+
+Response data:
+
+Data
+
+7E
+
+32 30
+
+30 31
+
+34 41
+
+34 32
+
+30 30 30 30
+
+46 44 41 32
+
+0D
+
+HEX
+
+7EH
+
+20H
+
+01H，BMS Addr 1
+
+4AH
+
+42H
+
+0000H
+
+FDA2H
+
+0DH
+
+7E 32 30 30 31 34 41 30 30 41 30 43 41 30 31 30 31 31 30 30 43 35 34 30 43 38 31 30 43 38 31 30 43 38 32 30
+43 38 31 30 43 38 31 30 43 38 31 30 43 38 31 30 43 38 32 30 43 38 32 30 43 38 32 30 43 38 32 30 43 38 32 30
+43 38 32 30 43 38 32 30 43 37 45 30 34 30 42 43 44 30 42 43 44 30 42 43 44 30 42 43 44 30 42 44 37 30 42 44
+37 30 30 30 30 31 33 46 44 30 30 30 30 32 37 31 30 30 30 30 30 30 46 30 30 30 30 30 30 36 34 30 43 38 32 30
+43 35 34 30 30 32 45 30 42 43 44 30 42 43 44 30 30 30 30 30 30 31 35 30 30 30 30 30 30 33 43 30 30 30 30 30
+30 30 41 30 30 30 30 30 30 31 44 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 32 30 30 31 44 44
+33 30 30 0D
+
+Response data parse：
+
+No
+
+Content
+
+SOI
+
+VER
+
+ADR
+
+CID1
+
+RTN
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+Data
+
+7E
+
+32 30
+
+30 31
+
+34 41
+
+30 30
+
+HEX
+
+7EH
+
+20H
+
+01H
+
+4AH
+
+00H
+
+A0CAH
+
+01H
+
+LENGTH
+
+DATA_FLAG
+
+41 30 43 41
+
+30 31
+
+8
+
+9
+
+10
+
+11
+
+12
+
+13
+
+14
+
+15
+
+16
+
+17
+
+18
+
+19
+
+20
+
+21
+
+22
+
+23
+
+24
+
+25
+
+26
+
+27
+
+28
+
+29
+
+30
+
+31
+
+32
+
+PACK GROUP
+
+M(Number of cells)
+
+Cell 1 voltage
+
+Cell 2 voltage
+
+Cell 3 voltage
+
+30 31
+
+31 30
+
+30 43 35 34
+
+30 43 38 31
+
+01H
+
+10H，16 Cells
+
+0C54H，3156mv
+
+0C81H，3201mv
+
+30 43 38 31
+
+0C81H，3201mv
+
+Cell 4 voltage
+
+Cell 5 voltage
+
+Cell 6 voltage
+
+Cell 7 voltage
+
+Cell 8 voltage
+
+Cell 9 voltage
+
+13 / 21
+
+30 43 38 32
+
+0C82H，3202mv
+
+30 43 38 31
+
+0C81H，3201mv
+
+30 43 38 31
+
+0C81H，3201mv
+
+30 43 38 31
+
+0C81H，3201mv
+
+30 43 38 31
+
+0C81H，3201mv
+
+30 43 38 32
+
+0C82H，3202mv
+
+Cell l0 voltage
+
+30 43 38 32
+
+Cell l1 voltage
+
+30 43 38 32
+
+Cell 12 voltage
+
+30 43 38 32
+
+Cell 13 voltage
+
+30 43 38 32
+
+Cell 14 voltage
+
+30 43 38 32
+
+Cell 15 voltage
+
+30 43 38 32
+
+Cell 16 voltage
+
+30 43 37 45
+
+0C82H，3202mv
+
+0C82H，3202mv
+
+0C82H，3202mv
+
+0C82H，3202mv
+
+0C82H，3202mv
+
+0C82H，3202mv
+
+0C7EH，3198mv
+
+N
+(number of cell
+temperature)
+
+30 34
+
+04H，4 cell temperature
+
+Cell temperature 1
+
+30 42 43 44
+
+0BCDH，29.0℃
+
+Cell temperature 2
+
+30 42 43 44
+
+0BCDH，29.0℃
+
+Cell temperature 3
+
+30 42 43 44
+
+0BCDH，29.0℃
+
+Cell temperature 4
+
+30 42 43 44
+
+0BCDH，29.0℃
+
+Environment
+temperature
+
+30 42 44 37
+
+0BD7H，30.0℃
+
+MOSFET temperature
+
+30 42 44 37
+
+0BD7H，30.0℃
+
+33
+
+34
+
+35
+
+36
+
+37
+
+38
+
+39
+
+40
+
+41
+
+42
+
+43
+
+44
+
+45
+
+46
+
+47
+
+48
+
+49
+
+50
+
+Pack current
+
+Pack voltage
+
+30 30 30 30
+
+0000H，0A
+
+31 33 46 44
+
+13FDH，51.17V
+
+Remain capacity
+
+30 30 30 30
+
+0000H，0AH
+
+Full capacity
+
+32 37 31 30
+
+2710H，100.00AH
+
+Battery cycle counts
+
+30 30 30 30
+
+User-defined
+
+30 46
+
+0000H，0
+
+0FH，15
+
+SOC
+
+SOH
+
+30 30 30 30
+
+0000H，0%
+
+30 30 36 34
+
+0064H，100%
+
+Max cell voltage
+
+30 43 38 32
+
+0C82H，3202mv
+
+Min cell voltage
+
+30 43 35 34
+
+0C54H，3156mv
+
+Cell voltage
+difference
+
+30 30 32 45
+
+002EH，46mv
+
+Max cell temperature
+
+30 42 43 44
+
+0BCDH，29.0℃
+
+Min cell temperature
+
+30 42 43 44
+
+0BCDH，29.0℃
+
+14 / 21
+
+30 30 30 30 30 30 31 35
+
+00000015H，0.21AH
+
+30 30 30 30 30 30 33 43
+
+0000003CH，0.6AH
+
+30 30 30 30 30 30 30 41
+
+0000000AH，0.01Kwh
+
+30 30 30 30 30 30 31 44
+
+0000001DH，0.029Kwh
+
+30 30 30 30 30 30 30 30
+
+00000000H，0hour
+
+Cumulative
+charging  capacity
+
+Cumulative
+discharge
+capacity
+
+Cumulative 
+charging  energy
+
+Cumulative
+discharge  energy
+
+Cumulative 
+charging  time
+
+51
+
+52
+
+53
+
+54
+
+55
+
+Cumulative
+discharge  time
+
+Cumulative
+charging  times
+
+Cumulative 
+discharge  times
+
+30 30 30 30 30 30 30 30
+
+00000000H，0hour
+
+30 30 30 32
+
+0002H，2
+
+30 30 31 44
+
+001DH，29
+
+CHKSUM
+
+EOI
+
+44 33 30 30
+
+0D
+
+D300H
+
+0DH
+
+2.2 Get alarm information
+
+15 / 21
+
+■ Command
+
+No
+
+Byte
+
+1
+
+1
+
+2
+
+1
+
+3
+
+1
+
+4
+
+1
+
+5
+
+1
+
+6
+
+2
+
+7
+
+LENID/2
+
+8
+
+2
+
+9
+
+1
+
+format
+
+SOI
+
+VER
+
+ADR
+
+CID1
+
+CID2
+
+LENGTH
+
+INFO
+
+CHKSUM
+
+EOI
+
+7EH
+
+20H
+
+4AH
+
+44H
+
+0DH
+
+Note:LENID = 00H
+
+■ Response
+
+No
+
+Byte
+
+1
+
+1
+
+2
+
+1
+
+3
+
+1
+
+4
+
+1
+
+5
+
+1
+
+6
+
+2
+
+7
+
+LENID/2
+
+8
+
+2
+
+9
+
+1
+
+format
+
+SOI
+
+VER
+
+ADR
+
+CID1
+
+RTN
+
+LENGTH
+
+INFO
+
+CHKSUM
+
+EOI
+
+INFO Content:
+
+No
+
+1
+
+2
+
+Content
+
+byte
+
+DATA_FLAG
+
+PACK Group
+
+1
+
+1
+
+Note
+
+1
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+9
+
+10
+
+11
+
+12
+
+13
+
+14
+
+15
+
+16
+
+17
+
+18
+
+19
+
+20
+
+21
+
+22
+
+23
+
+M(Number of cells)
+
+Cell 1 voltage alarm status
+
+Cell 2 voltage alarm status
+
+Cell 3 voltage alarm status
+
+Cell 4 voltage alarm status
+
+Cell 5 voltage alarm status
+
+Cell 6 voltage alarm status
+
+Cell 7 voltage alarm status
+
+Cell 8 voltage alarm status
+
+Cell 9 voltage alarm status
+
+Cell l0 voltage alarm status
+
+Cell l1 voltage alarm status
+
+Cell 12 voltage alarm status
+
+Cell 13 voltage alarm status
+
+Cell 14 voltage alarm status
+
+Cell 15 voltage alarm status
+
+Cell 16 voltage alarm status
+
+N
+(number of cell temperature)
+
+Cell temperature 1 alarm
+status
+
+Cell temperature 2 alarm
+status
+
+Cell temperature 3 alarm
+status
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+16 / 21
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+Variable
+16 or 8
+
+0x00: no alarm
+0x01: Lower limit alarm
+0x02: Upper limit alarm
+
+4
+
+0x00: no alarm
+0x01: Lower limit alarm
+0x02: Upper limit alarm
+
+24
+
+25
+
+26
+
+27
+
+28
+
+29
+
+30
+
+31
+
+Cell temperature 4 alarm
+status
+
+Environment temperature
+alarm  status
+
+MOSFET temperature
+alarm  status
+
+Pack current alarm status
+
+Pack voltage alarm status
+
+User-defined
+
+Balance event code
+
+Voltage Event 
+Code
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+1
+
+17 / 21
+
+0x00: no alarm
+0x01: Lower limit alarm
+0x02: Upper limit alarm
+
+0x00: no alarm
+0x01: Lower limit alarm
+0x02: Upper limit alarm
+
+9
+
+Bit0：Balance module (1 : On, 0 : Off)
+Bit1：reserved
+Bit2：reserved
+Bit3：reserved
+Bit4：Cell voltage difference alarm
+Bit5：Charge MOS fault alarm
+Bit6：Discharge MOS fault alarm
+Bit7：reserved
+
+Bit0：Cell overvoltage alarm
+Bit1：Cell overvoltage protection
+Bit2：Cell undervoltage alarm
+Bit3：Cell undervoltage protection
+Bit4：Pack overvoltage alarm
+Bit5：Pack overvoltage protection
+Bit6：Pack undervoltage alarm
+Bit7：Pack undervoltage protection
+
+32
+
+Temperature event 
+code
+
+2
+
+33
+
+Current event code
+
+1
+
+34
+
+Remaining capacity alarm
+
+1
+
+Bit0：Charge high temperature alarm
+Bit1：Charge high temperature
+protection Bit2：Charge low
+temperature alarm
+Bit3：Charge low temperature protection Bit4
+：Discharge high temperature alarm Bit5：
+Discharge high temperature protection Bit6：
+Discharge low temperature alarm Bit7：
+Discharge low temperature protection Bit8：
+Environment high temperature alarm Bit9：
+Environment high temperature protection
+Bit10：Environment low temperature alarm
+Bit11：Environment low temperature
+protection Bit12：MOSFET high temperature
+protection Bit13：fire alarm event
+Bit14：reserved
+Bit15：reserved
+
+Bit0：Charge overcurrent alarm
+Bit1：Charge overcurrent protection
+Bit2：Discharge overcurrent alarm
+Bit3：Discharge overcurrent protection Bit4
+：Discharge level 2 overcurrent protection
+Bit5：Output short circuit protection
+Bit6：Discharge level 2 overcurrent
+lockout Bit7：Output short-circuit
+lockout
+
+Bit0：SOC low alarm
+Bit1：reserved
+Bit2：reserved
+Bit3：reserved
+Bit4：reserved
+Bit5：reserved
+Bit6：reserved
+Bit7：reserved
+
+35
+
+FET status 
+code
+
+1
+
+Bit0：Discharge MOS (1 : On, 0 : Off)
+Bit1：Charge MOS (1 : On, 0 : Off)
+Bit2： Charge current limiter(1 : On, 0 :
+Off) Bit3：Heater (1 : On, 0 : Off)
+Bit4：reserved
+Bit5：reserved
+Bit6：reserved
+Bit7：reserved
+
+36
+
+System status 
+code
+
+18 / 21
+
+1
+
+37
+
+Balance Status Code
+
+4
+
+Bit0：Discharging
+Bit1：Charging
+Bit2：reserved
+Bit3：Standby
+Bit4：reserved
+Bit5：reserved
+Bit6：reserved
+Bit7：reserved
+
+Bit0： cell 1 equalization on
+Bit1：cell 2 equalization on
+Bit2：cell 3 equalization on
+Bit3：cell 4 equalization on
+Bit4：cell 5 equalization on
+Bit5：cell 6 equalization on
+Bit6：cell 7 equalization on
+Bit7：cell 8 equalization on
+Bit8：cell 9 equalization on
+Bit9：cell 10 equalization on
+Bit10：cell 11 equalization on
+Bit11：cell 12 equalization on
+Bit12：cell 13 equalization on
+Bit13：cell 14 equalization on
+Bit14：cell 15 equalization on
+Bit15：cell 16 equalization on
+Bit16~Bit31: reserved
+
+38
+
+Reserved for future
+expansion
+
+1
+
+reserved
+
+e.g.:
+
+Send command:
+
+7E 32 30 30 31 34 41 34 34 30 30 30 30 46 44 41 30 0D
+
+NO
+
+Content
+
+SOI
+
+VER
+
+ADR
+
+CID1
+
+CID2
+
+Data
+
+7E
+
+32 30
+
+30 31
+
+34 41
+
+34 34
+
+LENGTH
+
+30 30 30 30
+
+CHKSUM
+
+46 44 41 30
+
+EOI
+
+0D
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+HEX
+
+7EH
+
+20H
+
+01H，BMS Addr 1
+
+4AH
+
+44H
+
+0000H
+
+FDA0H
+
+0DH
+
+Receive data:
+
+19 / 21
+
+7E 32 30 30 31 34 41 30 30 37 30 35 34 30 31 30 31 31 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30  30 30 
+30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 34 30 30 30 30 30 30 30 30 30 30 30 30 30  30 30 30 30 
+39 30 30 30 30 30 30 30 30 30 30 30 31 30 33 30 30 30 30 30 30 30 30 30 30 30 30 45 44  43 34 0D
+
+Response data parse：
+
+No
+
+Content
+
+Data
+
+Hex
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+9
+
+10
+
+11
+
+12
+
+SOI
+
+VER
+
+ADR
+
+CID1
+
+RTN
+
+LENGTH
+
+DATA_FLAG
+
+PACK Group
+
+M(Number of cells)
+
+Cell 1 voltage alarm status
+
+Cell 2 voltage alarm status
+
+Cell 3 voltage alarm status
+
+7E
+
+32 30
+
+30 31
+
+34 41
+
+30 30
+
+7EH
+
+20H
+
+01H
+
+4AH
+
+00H
+
+37 30 35 34
+
+7054H
+
+30 31
+
+30 31
+
+31 30
+
+30 30
+
+30 30
+
+30 30
+
+01H
+
+01H
+
+10H
+
+00H
+
+00H
+
+00H
+
+13
+
+14
+
+15
+
+16
+
+17
+
+18
+
+19
+
+20
+
+21
+
+22
+
+23
+
+24
+
+25
+
+26
+
+27
+
+28
+
+29
+
+30
+
+31
+
+32
+
+33
+
+34
+
+35
+
+36
+
+37
+
+Cell 4 voltage alarm status
+
+Cell 5 voltage alarm status
+
+Cell 6 voltage alarm status
+
+Cell 7 voltage alarm status
+
+Cell 8 voltage alarm status
+
+Cell 9 voltage alarm status
+
+Cell l0 voltage alarm status
+
+Cell l1 voltage alarm status
+
+Cell 12 voltage alarm status
+
+Cell 13 voltage alarm status
+
+Cell 14 voltage alarm status
+
+Cell 15 voltage alarm status
+
+Cell 16 voltage alarm status
+
+N(number of cell temperature)
+
+Cell temperature 1 alarm status
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 34
+
+30 30
+
+Cell temperature 2 alarm status
+
+30 30
+
+20 / 21
+
+Cell temperature 3 alarm status
+
+Cell temperature 4 alarm status
+
+Environment temperature alarm status
+
+MOSFET temperature alarm status
+
+Pack current alarm status
+
+Pack voltage alarm status
+
+User-defined
+
+Balance event 
+code
+
+Voltage Event 
+Code
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 30
+
+30 39
+
+30 30
+
+30 30
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+04H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+00H
+
+09H
+
+00H
+
+00H
+
+38
+
+39
+
+40
+
+41
+
+42
+
+43
+
+44
+
+45
+
+46
+
+Temperature event 
+code
+
+Current event 
+code
+
+Remaining capacity alarm
+
+FET status code
+
+System status 
+code
+
+Balance Status Code
+
+Reserved for future expansion
+
+CHKSUM
+
+EOI
+
+21 / 21
+
+30 30 30 30
+
+0000H
+
+30 30
+
+30 31
+
+30 33
+
+00H
+
+01H
+
+03H
+
+30 30 30 30 30
+30  30 30
+
+0000H
+
+30 30
+
+30 30
+
+00H
+
+00H
+
+45 44 43 34
+
+EDC4H
+
+0D
+
+0DH
+
+
