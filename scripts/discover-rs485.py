@@ -21,7 +21,47 @@ repo = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(repo))
 
 from collector.rs485 import Rs485DeviceConfig
+from collector.rs485.eg4_a5_bms import Eg4A5BmsDevice
 from collector.rs485.jk_bms import JkBmsDevice, STATUS_REQUEST, STATUS_REQUEST_FALLBACK, _append_checksum
+
+
+def probe_eg4_a5_bms(port: str, baud: int, timeout: float = 1.0) -> bool:
+    """Listen for EG4 A5/5A broadcast frames and see if they parse."""
+    try:
+        import serial
+    except ImportError:
+        return False
+
+    try:
+        dev = serial.Serial(port, baudrate=baud, timeout=timeout)
+    except Exception as exc:
+        print(f"  Could not open {port} at {baud}: {exc}")
+        return False
+
+    found = False
+    try:
+        dev.reset_input_buffer()
+        # Send a minimal poll probe to wake a quiet BMS.
+        dev.write(bytes([0xA5, 0x5A, 0x05, 0x82, 0x21, 0x13, 0x00, 0x00]))
+        time.sleep(0.2)
+        data = dev.read(4096)
+        if data:
+            print(f"  [{baud}] EG4 A5 probe got {len(data)} bytes: {data[:60].hex()}")
+            drv = Eg4A5BmsDevice(Rs485DeviceConfig(port=port, baudrate=baud, timeout=timeout))
+            parsed = drv.read()
+            if parsed:
+                print(f"  [{baud}] EG4 A5 BMS parsed successfully:")
+                for key in ("voltage", "current", "power", "temperature_pcb", "cell_count", "cell_delta_voltage"):
+                    info = parsed.get(key)
+                    if info:
+                        print(f"    {key}: {info['value']} {info.get('unit', '')}")
+                found = True
+            else:
+                print(f"  [{baud}] EG4 A5 BMS parse failed")
+    finally:
+        dev.close()
+
+    return found
 
 
 def probe_jk_bms(port: str, baud: int, timeout: float = 1.0) -> bool:
@@ -74,6 +114,8 @@ def main():
     print(f"Probing {args.port} for RS-485 devices...")
     for baud in args.baud:
         print(f"\nBaud {baud}:")
+        if probe_eg4_a5_bms(args.port, baud, args.timeout):
+            print(f"  -> EG4 A5/5A BMS detected at {baud} baud")
         if probe_jk_bms(args.port, baud, args.timeout):
             print(f"  -> JK BMS detected at {baud} baud")
 
