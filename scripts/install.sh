@@ -182,10 +182,7 @@ Restart=always
 RestartSec=5
 Environment=LUX_API_HOST=0.0.0.0
 Environment=LUX_API_PORT=8080
-Environment=LUX_DB_HOST=localhost
-Environment=LUX_DB_USER=luxmon
-Environment=LUX_DB_PASSWORD=${LUX_MARIADB_PASSWORD}
-Environment=LUX_DB_NAME=luxmon
+EnvironmentFile=-${LUX_INSTALL_DIR}/.env
 
 [Install]
 WantedBy=multi-user.target
