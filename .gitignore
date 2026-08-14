@@ -35,6 +35,13 @@ data/
 Thumbs.db
 
 # Docker
+!docker-compose.yml
+!docker/docker-compose.yml
+docker-compose.mac.yml
+docker/docker-compose.image.yml
 docker-compose.override.yaml
+
+# Backups (contain local DB dumps and credentials)
+backups/
 PROJECT.md
 PLAN.md
