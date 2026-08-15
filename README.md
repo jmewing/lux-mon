@@ -462,3 +462,14 @@ This project is actively running on a Raspberry Pi 4 ("alpha") monitoring an EG4
 | Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals, settings |
 | Active polling | ✅ Built | Fallback for non-broadcasting dongles |
 | Runtime settings | ✅ Live | DB-backed, editable from dashboard ⚙️ tab |
+| Docker image | ✅ Published | `jmewing/lux-mon:v1.0.1` (amd64 + arm64) on Docker Hub and GHCR |
+| RS-485 / BMS | ✅ Live | `lux-mon-rs485` daemon, EG4 A5/5A battery BMS driver deployed |
+| Alerts | ✅ Live | SMTP + webhook notifications, rate-limited, UI configurable |
+| Home Assistant | ✅ Integrated | MQTT auto-discovery, energy dashboard sensors |
+| Backup/restore | ✅ Built | Nightly systemd timer + one-command restore |
+| Grafana | ✅ Built | Pre-loaded `lux-mon-charts` dashboard and data source |
+
+**Current runtimes**
+- Primary: Mac mini (`assistant`, 192.168.12.5) via Docker/Colima since 2026-08-05
+- Historical: Raspberry Pi 4 (`alpha`, Ubuntu 26.04 LTS) — warm standby
+- See `MEMORY.md` in the workspace for full deployment history.
