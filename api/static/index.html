@@ -515,17 +515,18 @@ function prop(label, reg, opts={}) {
 }
 function detailInverter(r) {
   return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Output</h3><div class="props">
-      ${prop('AC Voltage R','ac_output_voltage_r',{suffix:' V'})}
-      ${prop('AC Voltage S','ac_output_voltage_s',{suffix:' V'})}
-      ${prop('AC Voltage T','ac_output_voltage_t',{suffix:' V'})}
-      ${prop('AC Power R','ac_output_power_r',{suffix:' W', int:1})}
-      ${prop('AC Power S','ac_output_power_s',{suffix:' W', int:1})}
-      ${prop('AC Power T','ac_output_power_t',{suffix:' W', int:1})}
-      ${prop('EPS Power','eps_power',{suffix:' W', int:1})}
-      ${prop('EPS Frequency','eps_frequency',{suffix:' Hz', digits:2})}
+      ${prop('Voltage R','eps_voltage_r',{suffix:' V'})}
+      ${prop('Voltage S','eps_voltage_s',{suffix:' V'})}
+      ${prop('Voltage T','eps_voltage_t',{suffix:' V'})}
+      ${prop('Power L1','eps_power_l1',{suffix:' W', int:1})}
+      ${prop('Power L2','eps_power_l2',{suffix:' W', int:1})}
+      ${prop('Total Power','eps_power',{suffix:' W', int:1})}
+      ${prop('Apparent Power','eps_apparent_power',{suffix:' VA', int:1})}
+      ${prop('Frequency','eps_frequency',{suffix:' Hz', digits:2})}
+      ${prop('State','state',{int:1})}
       ${prop('Fault Code','fault_code',{int:1})}
       ${prop('Warning Code','warning_code',{int:1})}
-      ${prop('Runtime','runtime',{suffix:' min', int:1})}
+      ${prop('Runtime','runtime',{suffix:' s', int:1})}
     </div></div></div><div class="card"><div class="card-section"><h3>Temperatures</h3><div class="props">
       ${prop('Inverter','temp_inverter',{suffix:' °C'})}
       ${prop('Battery','temp_battery',{suffix:' °C'})}
@@ -555,8 +556,8 @@ function detailGrid(r) {
       ${prop('Frequency','grid_frequency',{suffix:' Hz', digits:2})}
       ${prop('Import Power','grid_import_power',{suffix:' W', int:1})}
       ${prop('Export Power','grid_export_power',{suffix:' W', int:1})}
-      ${prop('Import Today','grid_energy_in_today',{suffix:' kWh', digits:2})}
-      ${prop('Export Today','grid_energy_out_today',{suffix:' kWh', digits:2})}
+      ${prop('Import Today','grid_import_today',{suffix:' kWh', digits:2})}
+      ${prop('Export Today','grid_export_today',{suffix:' kWh', digits:2})}
     </div></div></div></div>`;
 }
 function detailSolar(r) {
@@ -564,16 +565,19 @@ function detailSolar(r) {
       ${prop('Total PV Power','pv_total_power',{suffix:' W', int:1})}
       ${prop('PV1 Power','pv1_power',{suffix:' W', int:1})}
       ${prop('PV2 Power','pv2_power',{suffix:' W', int:1})}
+      ${prop('PV3 Power','pv3_power',{suffix:' W', int:1})}
       ${prop('PV1 Voltage','pv1_voltage',{suffix:' V'})}
       ${prop('PV2 Voltage','pv2_voltage',{suffix:' V'})}
-      ${prop('PV Energy Today','pv_energy_today',{suffix:' kWh', digits:2})}
+      ${prop('PV3 Voltage','pv3_voltage',{suffix:' V'})}
+      ${prop('PV Energy Today','pv1_energy_today',{suffix:' kWh', digits:2})}
     </div></div></div></div>`;
 }
 function detailLoad(r) {
   return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Load</h3><div class="props">
       ${prop('Total Load','load_power',{suffix:' W', int:1})}
       ${prop('EPS Power','eps_power',{suffix:' W', int:1})}
-      ${prop('Load Energy Today','load_energy_today',{suffix:' kWh', digits:2})}
+      ${prop('EPS Energy L1','eps_energy_l1_today',{suffix:' kWh', digits:2})}
+      ${prop('EPS Energy L2','eps_energy_l2_today',{suffix:' kWh', digits:2})}
       ${prop('EPS Energy Today','eps_energy_today',{suffix:' kWh', digits:2})}
     </div></div></div></div>`;
 }
