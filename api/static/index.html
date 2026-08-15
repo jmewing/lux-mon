@@ -455,8 +455,6 @@ function renderMain(r) {
   const batV = val(r,'battery_voltage');
   const soc = val(r,'soc');
   const batP = val(r,'battery_power') || ((val(r,'discharge_power')||0) - (val(r,'charge_power')||0));
-  const gridIn = val(r,'grid_import_power') || 0;
-  const gridOut = val(r,'grid_export_power') || 0;
   const loadPower = val(r,'load_power') || val(r,'total_load_power') || (pvTotal + gridIn - gridOut + ((val(r,'discharge_power')||0) - (val(r,'charge_power')||0)));
   r.registers.load_power = { value: loadPower, unit: 'W' };
   setText('sa-bat-v', batV !== undefined ? fmt(batV) + ' V' : null);
