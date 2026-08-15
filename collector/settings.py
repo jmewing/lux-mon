@@ -91,6 +91,10 @@ DEFAULTS = {
     "alerts_email_tls": "true",             # Use TLS/STARTTLS (required)
     "alerts_webhook_enabled": "false",      # Enable webhook alerts
     "alerts_webhook_url": "",               # Webhook URL for POST JSON alerts
+
+    # ── Automation / Rules Engine ──
+    "automation_enabled": "false",          # Enable time/sensor automation rules
+    "automation_rules": "[]",               # JSON list of automation rules
 }
 
 
@@ -487,6 +491,20 @@ SETTING_META = {
         "type": "text",
         "section": "alerts",
         "hint": "HTTPS endpoint that receives POST JSON payloads",
+    },
+
+    # ── Automation ──
+    "automation_enabled": {
+        "label": "Enable Automation Rules",
+        "type": "checkbox",
+        "section": "automation",
+        "hint": "Evaluate time/sensor rules and write inverter settings automatically",
+    },
+    "automation_rules": {
+        "label": "Automation Rules (JSON)",
+        "type": "textarea",
+        "section": "automation",
+        "hint": "JSON array of rules; use the Automations page for a friendly editor",
     },
 }
 

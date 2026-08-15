@@ -9,7 +9,7 @@ Protocol spec: docs/reference/lux-protocol/PROTOCOL.md
 
 import struct
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Dict, Optional
 
 # ── Protocol Constants ──────────────────────────────────────────────
 
@@ -25,6 +25,49 @@ MODBUS_READ_HOLD = 3
 MODBUS_READ_INPUT = 4
 MODBUS_WRITE_SINGLE = 6
 MODBUS_WRITE_MULTI = 16
+
+# ── Holding Registers (Writable, Function Code 0x06/0x10) ───────────
+#
+# Based on EG4 6000XP Modbus protocol and live probing.  These are the
+# user-configurable parameters that the automation engine is allowed to
+# modify.  Values listed are raw 16-bit integers; use the scale field to
+# convert to/from engineering units.
+HOLDING_REGISTERS: Dict[int, dict] = {
+    60: {"name": "active_power_percent",     "unit": "%",   "scale": 1.0,   "desc": "Active power command percent", "min": 0, "max": 100},
+    61: {"name": "reactive_power_percent",   "unit": "%",   "scale": 1.0,   "desc": "Reactive power command percent", "min": 0, "max": 100},
+    62: {"name": "power_factor_command",     "unit": "",    "scale": 1.0,   "desc": "Power factor command", "min": -100, "max": 100},
+    63: {"name": "soft_start_slope",         "unit": "%/s", "scale": 1.0,   "desc": "Soft start slope", "min": 0, "max": 100},
+    64: {"name": "charge_power_percent",     "unit": "%",   "scale": 1.0,   "desc": "Charge power percent", "min": 0, "max": 100},
+    65: {"name": "discharge_power_percent",  "unit": "%",   "scale": 1.0,   "desc": "Discharge power percent", "min": 0, "max": 100},
+    66: {"name": "ac_charge_power",          "unit": "A",   "scale": 1.0,   "desc": "AC / grid charge current", "min": 0, "max": 140},
+    67: {"name": "ac_charge_soc_limit",      "unit": "%",   "scale": 1.0,   "desc": "AC charge SOC limit", "min": 0, "max": 100},
+    # 68-73 are time-of-day slots encoded as HH:MM
+    68: {"name": "ac_charge_period_1_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 1 start (HH*256+MM)", "min": 0, "max": 2359},
+    69: {"name": "ac_charge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 1 end (HH*256+MM)", "min": 0, "max": 2359},
+    70: {"name": "ac_charge_period_2_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 2 start (HH*256+MM)", "min": 0, "max": 2359},
+    71: {"name": "ac_charge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 2 end (HH*256+MM)", "min": 0, "max": 2359},
+    72: {"name": "ac_charge_period_3_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 3 start (HH*256+MM)", "min": 0, "max": 2359},
+    73: {"name": "ac_charge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 3 end (HH*256+MM)", "min": 0, "max": 2359},
+    74: {"name": "charge_priority_power",      "unit": "A",   "scale": 1.0, "desc": "Charge priority current", "min": 0, "max": 140},
+    75: {"name": "charge_priority_soc_limit",  "unit": "%",   "scale": 1.0, "desc": "Charge priority SOC limit", "min": 0, "max": 100},
+    76: {"name": "charge_priority_period_1_start", "unit": "time", "scale": 1.0, "desc": "Charge priority period 1 start", "min": 0, "max": 2359},
+    77: {"name": "charge_priority_period_1_end",   "unit": "time", "scale": 1.0, "desc": "Charge priority period 1 end", "min": 0, "max": 2359},
+    78: {"name": "charge_priority_period_2_start", "unit": "time", "scale": 1.0, "desc": "Charge priority period 2 start", "min": 0, "max": 2359},
+    79: {"name": "charge_priority_period_2_end",   "unit": "time", "scale": 1.0, "desc": "Charge priority period 2 end", "min": 0, "max": 2359},
+    80: {"name": "charge_priority_period_3_start", "unit": "time", "scale": 1.0, "desc": "Charge priority period 3 start", "min": 0, "max": 2359},
+    81: {"name": "charge_priority_period_3_end",   "unit": "time", "scale": 1.0, "desc": "Charge priority period 3 end", "min": 0, "max": 2359},
+    82: {"name": "forced_discharge_power",     "unit": "A",   "scale": 1.0, "desc": "Forced discharge current", "min": 0, "max": 140},
+    83: {"name": "forced_discharge_soc_limit", "unit": "%",   "scale": 1.0, "desc": "Forced discharge SOC limit", "min": 0, "max": 100},
+    84: {"name": "forced_discharge_period_1_start", "unit": "time", "scale": 1.0, "desc": "Forced discharge period 1 start", "min": 0, "max": 2359},
+    85: {"name": "forced_discharge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "Forced discharge period 1 end", "min": 0, "max": 2359},
+    86: {"name": "forced_discharge_period_2_start", "unit": "time", "scale": 1.0, "desc": "Forced discharge period 2 start", "min": 0, "max": 2359},
+    87: {"name": "forced_discharge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "Forced discharge period 2 end", "min": 0, "max": 2359},
+    88: {"name": "forced_discharge_period_3_start", "unit": "time", "scale": 1.0, "desc": "Forced discharge period 3 start", "min": 0, "max": 2359},
+    89: {"name": "forced_discharge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "Forced discharge period 3 end", "min": 0, "max": 2359},
+}
+
+# Build reverse lookups by name
+HOLDING_BY_NAME: Dict[str, int] = {info["name"]: reg for reg, info in HOLDING_REGISTERS.items()}
 
 # ── Data Classes ────────────────────────────────────────────────────
 
@@ -195,6 +238,43 @@ def build_read_request(
     return bytes(pkt)
 
 
+def build_write_request(
+    datalog_serial: str,
+    inverter_serial: str,
+    register: int,
+    value: int,
+) -> bytes:
+    """
+    Build a WriteSingleRegister (0x06) request packet.
+
+    Layout mirrors build_read_request but the Modbus data frame is:
+        addr(1) + func(1) + inv_serial(10) + reg(2) + value(2) + crc(2)
+    Total data length: 18 bytes -> outer packet: 6 + 2 + 18 = 26 bytes for header
+    Full packet size is 38 bytes; frame_len = 32 (38 - 6)
+    """
+    if not (0 <= value <= 0xFFFF):
+        raise ValueError(f"Modbus register value out of range: {value}")
+
+    pkt = bytearray(38)
+    pkt[0:2] = PREFIX
+    struct.pack_into('<H', pkt, 2, 1)      # protocol
+    struct.pack_into('<H', pkt, 4, 32)     # frame length
+    pkt[6] = 0x01
+    pkt[7] = TCP_FUNC_TRANSLATED_DATA
+    pkt[8:18] = _serial_to_bytes(datalog_serial)
+    struct.pack_into('<H', pkt, 18, 18)    # data length
+
+    pkt[20] = 0x00                         # address
+    pkt[21] = MODBUS_WRITE_SINGLE            # function 0x06
+    pkt[22:32] = _serial_to_bytes(inverter_serial)
+    struct.pack_into('<H', pkt, 32, register)
+    struct.pack_into('<H', pkt, 34, value)
+
+    crc = crc16_modbus(bytes(pkt[20:36]))
+    struct.pack_into('<H', pkt, 36, crc)
+    return bytes(pkt)
+
+
 # ── Frame Parser ────────────────────────────────────────────────────
 
 def parse_frame(data: bytes) -> Optional[LuxFrame]:
@@ -260,8 +340,13 @@ def _parse_data_frame(data: bytes, frame: LuxFrame) -> None:
     if len(data) >= reg_start + 2:
         frame.register = struct.unpack_from('<H', data, reg_start)[0]
 
-    if frame.is_read:
-        # Read responses have a value length byte, then values
+    if frame.is_read or frame.device_function == MODBUS_WRITE_SINGLE:
+        # Read responses have a value length byte, then values.
+        # Write-single responses echo reg+value without a length byte.
+        if frame.device_function == MODBUS_WRITE_SINGLE:
+            if len(data) >= reg_start + 4 + 2:  # reg + value + crc
+                frame.values.append(struct.unpack_from('<H', data, reg_start + 2)[0])
+            return
         val_start = reg_start + 2
         if len(data) > val_start:
             val_len = data[val_start]

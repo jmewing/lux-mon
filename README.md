@@ -139,6 +139,45 @@ The API server runs on port 8080 and provides:
 | `GET /api/settings` | All runtime settings |
 | `GET /api/settings/{name}` | Single setting value |
 | `PUT /api/settings/{name}` | Update a setting (JSON body: `{"value": "..."}`) |
+| `GET /api/automation/rules` | List automation rules and global enable flag |
+| `POST /api/automation/rules` | Replace the full rule set (JSON array) |
+| `POST /api/automation/test` | Dry-run evaluate rules against the latest snapshot |
+| `GET /api/automation/log` | Recent automation actions / dry-runs |
+
+The built-in dashboard (`/`) includes an **Automations** page where you can enable the engine, add rules with time windows and sensor conditions, and test them in dry-run mode before allowing live inverter writes.
+
+### Automation rules
+
+Rules are stored as JSON in the `automation_rules` setting and evaluated after every snapshot. A rule can set a holding register to a static value or choose a value from a sensor-range table (e.g., different charge amps for different battery-voltage bands). Each rule supports:
+
+- `time_window`: `{"start": "21:00", "end": "06:00"}` (wraps past midnight)
+- `conditions`: list of `{"sensor": "battery_voltage", "min": 0, "max": 54}` checks
+- `action`: `{"register": "ac_charge_power", "value": 85}` or a `ranges` table
+- `dry_run`: when `true`, the rule logs what it *would* write but never sends a Modbus command
+
+Only registers listed in `collector/protocol.py:HOLDING_REGISTERS` can be written, and every value is clamped to the register's documented min/max. Example rule matching SolarAssistant's night grid-charge behavior:
+
+```json
+{
+  "id": "night_grid_charge",
+  "name": "Grid charge current (night)",
+  "enabled": true,
+  "dry_run": true,
+  "time_window": {"start": "21:00", "end": "06:00"},
+  "conditions": [],
+  "action": {
+    "register": "ac_charge_power",
+    "range_sensor": "battery_voltage",
+    "ranges": [
+      {"min": 0,   "max": 54.0, "value": 85},
+      {"min": 55.0, "max": 56.0, "value": 45},
+      {"min": 57.0, "max": 58.0, "value": 5}
+    ]
+  }
+}
+```
+
+Enable the engine globally with the `automation_enabled` setting (or the dashboard toggle). Set `dry_run: false` on a rule only when you are ready for live inverter writes.
 
 The API also serves a built-in web dashboard at `/` with real-time gauges, power flow, historic charts, battery details, energy totals, and runtime settings.
 
