@@ -164,6 +164,7 @@ tr:last-child td { border-bottom:none; }
       <div class="nav-item" data-page="grid"><span class="icon">🔌</span><span>Grid</span></div>
       <div class="nav-item" data-page="totals"><span class="icon">📊</span><span>Totals</span></div>
       <div class="nav-item" data-page="settings"><span class="icon">⚙️</span><span>Settings</span></div>
+      <div class="nav-item" data-page="automations"><span class="icon">🤖</span><span>Automations</span></div>
     </nav>
     <div class="updated" id="last-updated">--</div>
   </header>
@@ -275,6 +276,34 @@ tr:last-child td { border-bottom:none; }
         <div class="card-header"><div class="card-title" id="totals-title">Daily Energy</div></div>
         <div id="totals-table" style="overflow-x:auto;"></div>
       </div>
+    </section>
+
+    <!-- Automations -->
+    <section id="page-automations" class="section">
+      <div class="page-title">Automation Rules</div>
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-header"><div class="card-title">Global Control</div></div>
+        <div style="display:flex; align-items:center; gap:1rem;">
+          <label class="field" style="flex-direction:row; align-items:center; gap:0.5rem; margin:0;">
+            <input type="checkbox" id="auto-enabled"> <span>Enable automation engine</span>
+          </label>
+          <button class="btn" id="btn-save-auto-enabled">Save</button>
+        </div>
+        <p style="margin-top:0.75rem; color:var(--muted); font-size:0.8rem;">
+          Rules run after every snapshot. Each rule checks its time window and sensor conditions, then writes a value to a holding register. Use <strong>dry run</strong> to test safely.
+        </p>
+      </div>
+      <div class="actions" style="margin-bottom:1rem;">
+        <button class="btn" id="btn-add-rule">Add Rule</button>
+        <button class="btn secondary" id="btn-test-rules">Dry-Run Test</button>
+        <button class="btn secondary" id="btn-load-rules">Reload</button>
+      </div>
+      <div id="rules-list"></div>
+      <div class="card" style="margin-top:1rem;">
+        <div class="card-header"><div class="card-title">Automation Log</div></div>
+        <div id="auto-log" style="max-height:300px; overflow:auto; font-size:0.8rem;"></div>
+      </div>
+      <div id="auto-msg" style="margin-top:0.75rem; font-size:0.85rem;"></div>
     </section>
 
     <!-- Settings -->
@@ -512,6 +541,138 @@ async function saveSettings() {
   }
 }
 
+let autoRegisters = [];
+let autoRules = [];
+
+async function loadAutomationRegisters() {
+  try {
+    autoRegisters = (await fetchJson(API + '/api/automation/registers')).registers;
+  } catch (e) { console.error(e); }
+}
+
+async function loadAutomation() {
+  await loadAutomationRegisters();
+  const res = await fetchJson(API + '/api/automation/rules');
+  autoRules = res.rules || [];
+  document.getElementById('auto-enabled').checked = res.enabled;
+  renderRules();
+  renderAutomationLog();
+}
+
+function renderRules() {
+  const container = document.getElementById('rules-list');
+  if (!autoRules.length) {
+    container.innerHTML = '<p style="color:var(--muted)">No rules yet.</p>';
+    return;
+  }
+  container.innerHTML = autoRules.map((rule, idx) => {
+    const tw = rule.time_window || {};
+    const conds = (rule.conditions || []).map(c => `${c.sensor} ${c.min ?? ''}-${c.max ?? ''}`).join(', ') || 'none';
+    const action = rule.action || {};
+    const actionText = action.value !== undefined ? `${action.value} ${autoRegisters.find(r => r.name === action.register)?.unit || ''}` : 'range table';
+    return `
+      <div class="card" style="margin-bottom:0.75rem;">
+        <div class="card-header">
+          <div class="card-title">${rule.name || 'Unnamed'}</div>
+          <div class="card-status ${rule.enabled ? 'ok' : ''}">${rule.enabled ? 'Enabled' : 'Disabled'}</div>
+        </div>
+        <div style="font-size:0.8rem; color:var(--muted); margin-bottom:0.5rem;">
+          Time: ${tw.start || '00:00'} - ${tw.end || '23:59'} | Conditions: ${conds} | Action: ${action.register || '?'} = ${actionText}
+          ${rule.dry_run ? '<span style="color:var(--yellow)"> [DRY RUN]</span>' : ''}
+        </div>
+        <div class="actions" style="margin:0;">
+          <button class="btn secondary" onclick="editRule(${idx})">Edit</button>
+          <button class="btn negative" onclick="deleteRule('${rule.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function addRuleTemplate() {
+  const id = 'rule_' + Date.now();
+  autoRules.push({
+    id, name: 'New rule', enabled: true, dry_run: true,
+    time_window: {start: '21:00', end: '06:00'},
+    conditions: [{sensor: 'battery_voltage', min: 0, max: 54}],
+    action: {register: 'ac_charge_power', value: 85}
+  });
+  renderRules();
+  saveRules();
+}
+
+function editRule(idx) {
+  const rule = autoRules[idx];
+  const name = prompt('Rule name:', rule.name);
+  if (name === null) return;
+  rule.name = name;
+  rule.dry_run = !confirm('Disable dry-run? (Cancel keeps dry-run for safety)');
+  saveRules();
+  renderRules();
+}
+
+async function deleteRule(id) {
+  if (!confirm('Delete this rule?')) return;
+  await fetch(API + '/api/automation/rules/' + id, {method: 'DELETE'});
+  loadAutomation();
+}
+
+async function saveRules() {
+  const msg = document.getElementById('auto-msg');
+  try {
+    const res = await fetch(API + '/api/automation/rules', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(autoRules)
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    msg.textContent = 'Rules saved.';
+    msg.style.color = 'var(--green)';
+  } catch (e) {
+    msg.textContent = 'Error: ' + e.message;
+    msg.style.color = 'var(--red)';
+  }
+}
+
+async function testRules() {
+  const msg = document.getElementById('auto-msg');
+  msg.textContent = 'Running dry-run...';
+  msg.style.color = 'var(--muted)';
+  try {
+    const res = await fetch(API + '/api/automation/test', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({})
+    });
+    const data = await res.json();
+    const matched = data.results.filter(r => r.matched);
+    msg.innerHTML = `Dry-run complete. ${matched.length}/${data.results.length} rules matched.`;
+    msg.style.color = matched.length ? 'var(--yellow)' : 'var(--muted)';
+    renderAutomationLog();
+  } catch (e) {
+    msg.textContent = 'Error: ' + e.message;
+    msg.style.color = 'var(--red)';
+  }
+}
+
+async function renderAutomationLog() {
+  try {
+    const res = await fetchJson(API + '/api/automation/log?limit=20');
+    const log = res.log || [];
+    const html = log.map(row => {
+      const ts = new Date(row.timestamp).toLocaleTimeString();
+      const status = row.dry_run ? 'DRY-RUN' : (row.success ? 'OK' : 'FAIL');
+      return `<div style="margin-bottom:0.25rem;"><span style="color:var(--muted)">${ts}</span> <strong>${row.rule_name}</strong> ${row.register_name}=${row.scaled_value} [${status}] ${row.message || ''}</div>`;
+    }).join('') || '<p style="color:var(--muted)">No automation actions yet.</p>';
+    document.getElementById('auto-log').innerHTML = html;
+  } catch (e) { console.error(e); }
+}
+
+async function toggleAutomationEnabled() {
+  const enabled = document.getElementById('auto-enabled').checked;
+  const res = await fetch(API + '/api/automation/enable?enabled=' + enabled, {method: 'POST'});
+  document.getElementById('auto-msg').textContent = res.ok ? (enabled ? 'Automation enabled.' : 'Automation disabled.') : 'Failed to save.';
+}
+
+
 // Simple canvas chart
 function drawChart(canvasId, labels, datasets) {
   const canvas = document.getElementById(canvasId);
@@ -635,6 +796,7 @@ function showPage(page) {
   if (page === 'grid') { refresh(); loadHistoryChart('grid-chart', 120, ['grid_import_power','grid_export_power']); }
   if (page === 'totals') renderTotals('daily');
   if (page === 'settings') loadSettings();
+  if (page === 'automations') loadAutomation();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -656,6 +818,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const r = await fetch(API + '/api/prune', {method:'POST'});
     document.getElementById('settings-msg').textContent = r.ok ? 'Prune started.' : 'Prune failed.';
   });
+
+  document.getElementById('btn-add-rule').addEventListener('click', addRuleTemplate);
+  document.getElementById('btn-load-rules').addEventListener('click', loadAutomation);
+  document.getElementById('btn-test-rules').addEventListener('click', testRules);
+  document.getElementById('btn-save-auto-enabled').addEventListener('click', toggleAutomationEnabled);
 
   refresh();
   loadHistoryChart('overview-chart', 60, ['pv1_power','pv2_power','charge_power','discharge_power','grid_import_power','grid_export_power']);

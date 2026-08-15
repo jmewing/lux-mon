@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import glob
+import json
 import os
 import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Optional
 from zoneinfo import ZoneInfo
 
 import asyncio
@@ -603,6 +604,197 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.on_event("startup")
 async def _start_ws_broadcaster() -> None:
     asyncio.create_task(_ws_broadcaster_task())
+
+
+def _load_db_setting(name: str) -> Optional[str]:
+    """Load a single setting value from MariaDB, or None if unavailable."""
+    try:
+        conn = _get_conn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT value FROM lux_settings WHERE name = %s", (name,))
+            row = cur.fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+
+# ── automation / rules engine ───────────────────────────────────────────────
+
+from collector.protocol import HOLDING_REGISTERS, HOLDING_BY_NAME
+from collector.automation import AutomationEngine, SETTING_KEY as AUTOMATION_SETTING, ENABLED_KEY as AUTOMATION_ENABLED
+
+
+class AutomationRuleBody(BaseModel):
+    id: Optional[str] = None
+    name: str
+    enabled: bool = True
+    dry_run: bool = False
+    time_window: Optional[dict] = None
+    conditions: List[dict] = []
+    action: dict
+
+
+class AutomationTestBody(BaseModel):
+    snapshot: Optional[dict] = None
+    timezone: Optional[str] = None
+
+
+def _load_automation_engine() -> AutomationEngine:
+    return AutomationEngine(
+        db_host=DB_CONFIG["host"],
+        db_port=DB_CONFIG["port"],
+        db_user=DB_CONFIG["user"],
+        db_password=DB_CONFIG["password"],
+        db_name=DB_CONFIG["database"],
+    )
+
+
+@app.get("/api/automation/registers")
+def api_automation_registers():
+    """Return the list of writable holding registers for automation actions."""
+    return {
+        "registers": [
+            {
+                "name": info["name"],
+                "address": reg,
+                "unit": info["unit"],
+                "scale": info["scale"],
+                "min": info.get("min"),
+                "max": info.get("max"),
+                "desc": info["desc"],
+            }
+            for reg, info in sorted(HOLDING_REGISTERS.items())
+        ]
+    }
+
+
+@app.get("/api/automation/rules")
+def api_automation_rules():
+    """Return the current automation rules and global enable flag."""
+    engine = _load_automation_engine()
+    from collector.settings import get
+
+    conn = _get_conn()
+    try:
+        enabled_raw = get(conn, AUTOMATION_ENABLED)
+        rules_raw = get(conn, AUTOMATION_SETTING)
+    finally:
+        conn.close()
+
+    return {
+        "enabled": str(enabled_raw).lower() in ("true", "1", "yes", "on") if enabled_raw else False,
+        "rules": json.loads(rules_raw or "[]"),
+    }
+
+
+@app.post("/api/automation/rules")
+def api_automation_rules_save(body: List[dict]):
+    """Replace the entire automation rule set."""
+    from collector.settings import set_
+
+    conn = _get_conn()
+    try:
+        set_(conn, AUTOMATION_SETTING, json.dumps(body))
+        return {"saved": True, "count": len(body)}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/automation/rules/{rule_id}")
+def api_automation_rule_delete(rule_id: str):
+    """Delete a single automation rule by id."""
+    from collector.settings import get, set_
+
+    conn = _get_conn()
+    try:
+        rules_raw = get(conn, AUTOMATION_SETTING) or "[]"
+        rules = json.loads(rules_raw)
+        new_rules = [r for r in rules if str(r.get("id")) != rule_id]
+        set_(conn, AUTOMATION_SETTING, json.dumps(new_rules))
+        return {"deleted": True, "removed": len(rules) - len(new_rules)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/automation/enable")
+def api_automation_enable(enabled: bool = True):
+    """Enable or disable the automation engine globally."""
+    from collector.settings import set_
+
+    conn = _get_conn()
+    try:
+        set_(conn, AUTOMATION_ENABLED, "true" if enabled else "false")
+        return {"enabled": enabled}
+    finally:
+        conn.close()
+
+
+@app.post("/api/automation/test")
+def api_automation_test(body: AutomationTestBody):
+    """Dry-run evaluate rules against a snapshot (or the latest DB snapshot)."""
+    engine = _load_automation_engine()
+
+    snapshot = body.snapshot
+    if snapshot is None:
+        snap = _fetch_latest_snapshot()
+        if snap is None:
+            raise HTTPException(404, "No snapshot available")
+        snapshot = snap["registers"]
+
+    tz = body.timezone or _load_db_setting("timezone") or "America/Chicago"
+
+    # Force every rule into dry_run mode for this test.
+    rules = engine.load_rules()
+    results = []
+    from zoneinfo import ZoneInfo
+    from datetime import datetime
+
+    now = datetime.now(ZoneInfo(tz))
+    for rule in rules:
+        rule.dry_run = True
+        target = rule.evaluate(snapshot, now)
+        if target is None:
+            results.append({"rule_id": rule.id, "name": rule.name, "matched": False})
+            continue
+        meta = HOLDING_REGISTERS[HOLDING_BY_NAME[rule.action.register_name]]
+        raw = int(round(target / meta["scale"]))
+        results.append({
+            "rule_id": rule.id,
+            "name": rule.name,
+            "matched": True,
+            "register": meta["name"],
+            "value": target,
+            "raw": raw,
+        })
+    return {"enabled": engine.is_enabled(), "timezone": tz, "results": results}
+
+
+@app.get("/api/automation/log")
+def api_automation_log(limit: int = Query(50, ge=1, le=500)):
+    """Return recent automation actions / dry-runs."""
+    engine = _load_automation_engine()
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, ts, rule_id, rule_name, register_name,
+                       raw_value, scaled_value, dry_run, success, message
+                FROM {engine.log_table}
+                ORDER BY ts DESC LIMIT %s
+                """,
+                (limit,),
+            )
+            columns = [
+                "id", "timestamp", "rule_id", "rule_name", "register_name",
+                "raw_value", "scaled_value", "dry_run", "success", "message",
+            ]
+            rows = cur.fetchall()
+        return {"log": [_row_to_dict(row, columns) for row in rows], "count": len(rows)}
+    finally:
+        conn.close()
 
 
 # ── static dashboard ────────────────────────────────────────────────────────

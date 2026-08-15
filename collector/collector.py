@@ -34,6 +34,7 @@ from .protocol import LuxFrame
 from .drivers import ModelDriver
 from .drivers.registry import get_driver, DEFAULT_MODEL
 from .outputs import Outputs, OutputConfig
+from .automation import AutomationEngine
 
 
 def _env_or(key: str, default=None, cast=None):
@@ -338,6 +339,7 @@ class PassiveCollector:
         self._transport = None
         self._writer: Optional[Thread] = None
         self._outputs: Optional[Outputs] = None
+        self._automation: Optional[AutomationEngine] = None
         self._latest_input_raw: Dict = {}
         self._latest_hold_raw: Dict = {}
         self._latest_decoded: Dict = {}
@@ -363,6 +365,16 @@ class PassiveCollector:
         # Wire outputs before transport starts so callbacks are ready.
         self.cfg.outputs._write_interval = float(self.cfg.write_interval)
         self._outputs = Outputs(self.cfg.outputs, tz_name="UTC")
+
+        # Initialize automation engine using the same DB backend as outputs.
+        self._automation = AutomationEngine(
+            db_host=self.cfg.outputs.mariadb_host,
+            db_port=self.cfg.outputs.mariadb_port,
+            db_user=self.cfg.outputs.mariadb_user,
+            db_password=self.cfg.outputs.mariadb_password,
+            db_name=self.cfg.outputs.mariadb_database,
+            table_prefix=self.cfg.outputs.mariadb_table_prefix,
+        )
 
         self._transport = _create_transport(self.cfg, self._handle_frame, self.driver)
         self._transport.start()
@@ -424,6 +436,21 @@ class PassiveCollector:
                     self._outputs.write(self._latest_decoded, self._latest_input_raw)
                     self._outputs.evaluate_alerts(self._latest_decoded)
                 self._last_write = time.time()
+
+                # Evaluate automation rules after each successful snapshot.
+                if self._automation and self.cfg.datalog_serial and self.cfg.inverter_serial:
+                    try:
+                        tz = _load_db_setting("timezone", self.cfg) or "America/Chicago"
+                        self._automation.evaluate_and_apply(
+                            snapshot=self._latest_decoded,
+                            dongle_host=self.cfg.dongle_host,
+                            dongle_port=self.cfg.dongle_port,
+                            datalog_serial=self.cfg.datalog_serial,
+                            inverter_serial=self.cfg.inverter_serial,
+                            timezone=tz,
+                        )
+                    except Exception:
+                        logger.exception("Automation evaluation failed")
 
                 if self._on_snapshot:
                     try:
