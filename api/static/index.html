@@ -2,453 +2,375 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0f172a">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
 <title>lux-mon — Solar Dashboard</title>
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Exo:ital,wght@0,100..900;1,100..900&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Exo:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet" type="text/css"></noscript>
+<link rel="stylesheet" href="/app.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <style>
 :root {
-  --bg: #0b1120;
-  --surface: #111827;
-  --card: #1f2937;
-  --card-hover: #27354f;
-  --text: #f1f5f9;
-  --muted: #94a3b8;
-  --border: #334155;
-  --accent: #38bdf8;
-  --green: #22c55e;
-  --yellow: #eab308;
-  --red: #ef4444;
-  --orange: #f97316;
-  --purple: #a855f7;
-  --blue: #3b82f6;
-  --header-height: 3.5rem;
+  --text-color: #f1f5f9;
+  --light-text-color: #94a3b8;
+  --link-color: #38bdf8;
+  --background-color: #0b1120;
+  --midground-color: #111827;
+  --foreground-color: #1f2937;
+  --border-color: #334155;
+  --light-border-color: #475569;
+  --header-gradient-start: #0f172a;
+  --header-gradient-end: #1e293b;
+  --header-tab-unselected: rgba(15, 23, 42, 0.8);
+  --blue-color: #38bdf8;
+  --green-color: #22c55e;
+  --yellow-color: #eab308;
+  --red-color: #ef4444;
+  --grey-color: #94a3b8;
+  --card-shadow-color: rgba(0,0,0,0.4);
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-2: 0 4px 12px rgba(0,0,0,0.4);
+  --focus-outline: 2px solid #38bdf8;
+  --btn1-background-color: #27354f;
+  --btn2-background-color: #1f2937;
+  --btn3-background-color: #172033;
 }
-* { margin:0; padding:0; box-sizing:border-box; }
-html,body { height:100%; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
-.app { min-height:100%; display:flex; flex-direction:column; }
-
-/* Header */
-.header { height: var(--header-height); background: var(--surface); border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content:space-between; padding: 0 1rem; position:sticky; top:0; z-index:100; }
-.brand { display:flex; align-items:center; gap:0.6rem; font-weight:700; font-size:1.1rem; }
-.brand .logo { width:1.8rem; height:1.8rem; border-radius:0.35rem; background: linear-gradient(135deg, var(--accent), var(--green)); display:grid; place-items:center; font-size:1rem; }
-.nav { display:flex; gap:0.25rem; overflow-x:auto; }
-.nav-item { display:flex; align-items:center; gap:0.4rem; padding:0.45rem 0.8rem; border-radius:0.5rem; font-size:0.85rem; font-weight:500; color:var(--muted); cursor:pointer; white-space:nowrap; transition:all .15s; }
-.nav-item:hover { color:var(--text); background: rgba(255,255,255,0.05); }
-.nav-item.active { color:var(--text); background: rgba(56,189,248,0.12); }
-.nav-item .icon { font-size:1rem; }
-.updated { font-size:0.7rem; color:var(--muted); }
-
-/* Layout */
-.main { flex:1; padding:1rem; max-width:1600px; margin:0 auto; width:100%; }
-.section { display:none; }
-.section.active { display:block; }
-.page-title { font-size:1.3rem; font-weight:600; margin-bottom:1rem; }
-.page-subtitle { font-size:0.85rem; color:var(--muted); margin-bottom:1rem; }
-
-/* Cards */
-.card {
-  background: var(--card);
-  border:1px solid var(--border);
-  border-radius:0.75rem;
-  padding:1rem;
-}
-.card.clickable { cursor:pointer; transition: border-color .15s, background .15s; }
-.card.clickable:hover { background: var(--card-hover); border-color:#475569; }
-.card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; }
-.card-title { font-size:0.85rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.03em; }
-
-/* SA-style dashboard grid */
-.dashboard-grid { display:grid; grid-template-columns: 360px 1fr; gap:1rem; }
-@media (max-width:1100px) { .dashboard-grid { grid-template-columns: 1fr; } }
-
-.status-card { display:flex; flex-direction:column; gap:1rem; }
-.status-row {
-  display:flex;
-  align-items:center;
-  gap:0.75rem;
-  padding:0.75rem;
-  border-radius:0.5rem;
-  cursor:pointer;
-  transition: background .15s;
-  text-decoration:none;
-  color:var(--text);
-}
-.status-row:hover { background: rgba(255,255,255,0.05); }
-.status-icon { width:3rem; height:3rem; border-radius:0.5rem; display:grid; place-items:center; font-size:1.6rem; background: var(--surface); }
-.status-info { flex:1; }
-.status-label { font-size:0.8rem; color:var(--muted); margin-bottom:0.15rem; }
-.status-title { font-size:1.05rem; font-weight:600; }
-.status-prop { font-size:0.8rem; color:var(--muted); }
-
-.gauges { display:grid; grid-template-columns: repeat(2, 1fr); gap:0.75rem; }
-.gauge { text-align:center; padding:0.75rem 0; }
-.gauge-ring {
-  width: 110px; height: 55px;
-  margin: 0 auto;
-  position: relative;
-  overflow: hidden;
-}
-.gauge-ring::before {
-  content: "";
-  position: absolute;
-  top:0; left:0; right:0; bottom:0;
-  border-radius: 110px 110px 0 0;
-  border: 10px solid var(--surface);
-  border-bottom: none;
-}
-.gauge-ring::after {
-  content: "";
-  position: absolute;
-  top:0; left:0; right:0; bottom:0;
-  border-radius: 110px 110px 0 0;
-  border: 10px solid var(--accent);
-  border-bottom: none;
-  transform-origin: bottom center;
-  transform: rotate(var(--rot, 0deg));
-  transition: transform 0.5s ease;
-}
-.gauge-value { font-size:1rem; font-weight:700; margin-top:0.4rem; }
-.gauge-label { font-size:0.7rem; color:var(--muted); }
-
-/* Detail view */
-.detail-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:1rem; }
-.props { display:grid; grid-template-columns: repeat(2, 1fr); gap:0.75rem; }
-.prop { display:flex; flex-direction:column; gap:0.15rem; }
-.prop-label { font-size:0.7rem; color:var(--muted); }
-.prop-value { font-size:1.1rem; font-weight:600; }
-
-/* Chart cards */
-.chart-card { min-height:280px; }
-.chart { width:100%; height:260px; }
-.chart-grid-2 { display:grid; grid-template-columns: repeat(2, 1fr); gap:1rem; }
-.chart-grid-1 { display:grid; grid-template-columns: 1fr; gap:1rem; }
-@media (max-width:768px) { .chart-grid-2 { grid-template-columns: 1fr; } }
-
-/* Right column chart stack */
-.right-stack { display:flex; flex-direction:column; gap:1rem; }
-
-/* Tabs / buttons */
-.sub-nav { display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap; }
-.btn {
-  background:var(--accent);
-  color:#0b1120;
-  border:none;
-  border-radius:0.5rem;
-  padding:0.6rem 1.2rem;
-  font-weight:600;
-  cursor:pointer;
-}
-.btn:hover { opacity:0.9; }
-.btn.secondary { background:var(--surface); color:var(--text); border:1px solid var(--border); }
-.btn.negative { background:rgba(239,68,68,0.15); color:var(--red); border:1px solid rgba(239,68,68,0.3); }
-.actions { display:flex; gap:0.75rem; margin-top:1rem; flex-wrap:wrap; }
-
-/* Configuration */
-.form-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:1rem; }
-.field { display:flex; flex-direction:column; gap:0.35rem; }
-.field label { font-size:0.75rem; color:var(--muted); }
+body { font-family: Exo, system-ui, sans-serif; background: var(--background-color); color: var(--text-color); }
+.header { background: linear-gradient(90deg, var(--header-gradient-start), var(--header-gradient-end)); border-bottom: 1px solid var(--border-color); }
+.header .container { padding: 20px 32px 0; max-width: 1600px; margin: 0 auto; }
+.header .container .logo { background-image: url("/images/logo-dark.svg") !important; width: 160px; height: 40px; background-repeat: no-repeat; background-size: contain; margin-bottom: 20px; }
+.header .container .menu .menu-item { background-color: var(--header-tab-unselected); color: var(--text-color); border-radius: 6px 6px 0 0; }
+.header .container .menu .menu-item.active { background-color: var(--background-color); }
+.header .container .menu .menu-item .item-img svg { color: var(--light-text-color); }
+.main .content { max-width: 1600px; margin: 0 auto; padding: 16px 32px 32px; }
+.card { background: var(--foreground-color); border-color: var(--border-color); box-shadow: var(--shadow-2); }
+.card .card-section:not(:first-child) { border-color: var(--border-color); }
+a.status, a.status:visited { color: var(--text-color); }
+.status > img { border-color: var(--border-color); background: linear-gradient(90deg, var(--btn2-background-color), var(--btn3-background-color)); }
+a.status:hover img { background: linear-gradient(90deg, var(--btn1-background-color), var(--btn2-background-color)); }
+a.status:hover > div .label { color: var(--link-color); }
+.gauge .semi-circle.red { background: linear-gradient(-75deg, #f97316, #ef4444, #f87171, #ef4444); }
+.gauge .semi-circle.blue { background: linear-gradient(-45deg, #38bdf8, #2563eb, #60a5fa, #3b82f6); }
+.gauge .semi-circle.yellow { background: linear-gradient(-120deg, #fde047, #eab308, #facc15, #fef08a); }
+.gauge .semi-circle.green { background: linear-gradient(120deg, #4ade80, #16a34a, #22c55e, #86efac); }
+.gauge .semi-circle:before { background: var(--foreground-color); }
+.gauge .semi-circle--mask:before { background: var(--background-color); }
+.page-header { height: auto; min-height: 48px; }
+.chart h4 { color: var(--text-color); }
+.btn, button, .button { background: var(--btn2-background-color); border-color: var(--border-color); color: var(--text-color); }
+.btn:hover, button:hover { background: var(--btn1-background-color); border-color: var(--light-border-color); }
+.config-tab.active { background: var(--blue-color); color: #0b1120; }
+.nav-item { display: none; }
+/* tab switching via .section */
+.section { display: none; }
+.section.active { display: block; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+.props { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+.prop-label { font-size: 0.75rem; color: var(--light-text-color); }
+.prop-value { font-size: 1.1rem; font-weight: 600; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+.field { display: flex; flex-direction: column; gap: 0.35rem; }
+.field label { font-size: 0.75rem; color: var(--light-text-color); }
 .field input, .field select, .field textarea {
-  background:var(--surface); border:1px solid var(--border); border-radius:0.5rem;
-  padding:0.55rem 0.7rem; color:var(--text); font-size:0.9rem;
+  background: var(--midground-color); border: 1px solid var(--border-color); border-radius: 0.5rem;
+  padding: 0.55rem 0.7rem; color: var(--text-color); font-size: 0.9rem;
 }
-.field input:focus, .field select:focus, .field textarea:focus { outline:none; border-color:var(--accent); }
-.config-section { margin-bottom:1.5rem; }
-.config-section-title { font-size:1rem; font-weight:600; margin-bottom:0.75rem; }
-.config-panel { display:none; }
-.config-panel.active { display:block; }
-.back-link { color:var(--accent); cursor:pointer; font-size:0.85rem; margin-bottom:0.75rem; display:inline-flex; gap:0.4rem; }
-
-/* Rule cards */
-.rule-card { margin-bottom:0.75rem; }
-.rule-meta { font-size:0.8rem; color:var(--muted); margin-bottom:0.5rem; }
-
-@media (max-width:768px) {
-  .nav-item span { display:none; }
-  .header { flex-wrap:wrap; height:auto; min-height:var(--header-height); }
+.actions { display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; }
+.rule-card { margin-bottom: 0.75rem; }
+.rule-meta { font-size: 0.8rem; color: var(--light-text-color); }
+.config-panel { display: none; }
+.config-panel.active { display: block; }
+.back-link { color: var(--link-color); cursor: pointer; font-size: 0.85rem; margin-bottom: 0.75rem; display: inline-flex; gap: 0.4rem; }
+@media (max-width: 78em) {
+  .main .content { padding: 8px 16px 16px; }
+  .header .container { padding: 10px 16px 0; }
 }
 </style>
 </head>
-<body>
-<div class="app">
-  <header class="header">
-    <div class="brand"><div class="logo">☀️</div><div>lux-mon</div></div>
-    <nav class="nav">
-      <div class="nav-item active" data-page="main"><span class="icon">🏠</span><span>Main</span></div>
-      <div class="nav-item" data-page="charts"><span class="icon">📈</span><span>Charts</span></div>
-      <div class="nav-item" data-page="historical"><span class="icon">📜</span><span>Historical</span></div>
-      <div class="nav-item" data-page="automations"><span class="icon">🤖</span><span>Automation</span></div>
-      <div class="nav-item" data-page="configuration"><span class="icon">⚙️</span><span>Configuration</span></div>
-    </nav>
-    <div class="updated" id="last-updated">--</div>
-  </header>
+<body class="with-header dark-theme" data-gateway-timezone="America/Chicago">
+<div class="header">
+  <div class="container">
+    <div class="logo icon-logo"></div>
+    <div role="navigation" aria-label="main" class="menu" id="top-menu">
+      <a href="#" class="menu-item active" data-page="main">
+        <div class="item-img icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" height="24" width="24"><path d="M1.5 16.5h8s1 0 1 1v5s0 1 -1 1h-8s-1 0 -1 -1v-5s0 -1 1 -1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="m22.5 23.5 -8 0s-1 0 -1 -1l0 -11s0 -1 1 -1l8 0s1 0 1 1l0 11s0 1 -1 1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="m22.5 7.5 -8 0s-1 0 -1 -1l0 -5s0 -1 1 -1l8 0s1 0 1 1l0 5s0 1 -1 1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M1.5 0.5h8s1 0 1 1v11s0 1 -1 1h-8s-1 0 -1 -1v-11s0 -1 1 -1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path></svg></div>
+        <span class="item-caption">Dashboard</span>
+      </a>
+      <a href="#" class="menu-item" data-page="charts">
+        <div class="item-img icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" height="24" width="24"><path d="M4.5 20a0.5 0.5 0 0 0 -0.5 -0.5H2a0.5 0.5 0 0 0 -0.5 0.5v3.5h3Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M10.5 15a0.5 0.5 0 0 0 -0.5 -0.5H8a0.5 0.5 0 0 0 -0.5 0.5v8.5h3Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M16.5 18a0.5 0.5 0 0 0 -0.5 -0.5h-2a0.5 0.5 0 0 0 -0.5 0.5v5.5h3Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M22.5 10a0.5 0.5 0 0 0 -0.5 -0.5h-2a0.5 0.5 0 0 0 -0.5 0.5v13.5h3Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="m0.504 23.5 23 0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M3.918 8.586 6.59 5.914" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="m9.732 5.508 2.544 1.484" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="m15.577 6.764 3.854 -3.028" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M19.004 2.5a2 2 0 1 0 4 0 2 2 0 1 0 -4 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M12.004 8a2 2 0 1 0 4 0 2 2 0 1 0 -4 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M6.004 4.5a2 2 0 1 0 4 0 2 2 0 1 0 -4 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M0.504 10a2 2 0 1 0 4 0 2 2 0 1 0 -4 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path></svg></div>
+        <span class="item-caption">Charts</span>
+      </a>
+      <a href="#" class="menu-item" data-page="historical">
+        <div class="item-img icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" height="24" width="24"><path d="M12 0.5a11.5 11.5 0 1 0 0 23 11.5 11.5 0 1 0 0 -23" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M12 6.5v5.5l4 2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path></svg></div>
+        <span class="item-caption">Historical</span>
+      </a>
+      <a href="#" class="menu-item" data-page="automations">
+        <div class="item-img icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" height="24" width="24"><path d="m20 9.498 -10 14 2 -9 -8 0 10 -14 -2 9 8 0z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path></svg></div>
+        <span class="item-caption">Automation</span>
+      </a>
+      <a href="#" class="menu-item" data-page="configuration">
+        <div class="item-img icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" height="24" width="24"><path d="M20.254 13.5H22.5a1 1 0 0 0 1 -1v-1a1 1 0 0 0 -1 -1h-2.247a11.8 11.8 0 0 0 -1 -2.922l1.589 -1.588a1 1 0 0 0 0 -1.414l-1.418 -1.414a1 1 0 0 0 -1.414 0l-1.59 1.589a11.769 11.769 0 0 0 -2.92 -1V1.5a1 1 0 0 0 -1 -1h-1a1 1 0 0 0 -1 1v2.249a11.777 11.777 0 0 0 -2.921 1l-1.59 -1.587a1 1 0 0 0 -1.414 0L3.16 4.577a1 1 0 0 0 0 1.414L4.75 7.58a11.821 11.821 0 0 0 -1 2.921H1.5a1 1 0 0 0 -1 1v1a1 1 0 0 0 1 1h2.246a11.821 11.821 0 0 0 1 2.921l-1.59 1.59a1 1 0 0 0 0 1.414l1.419 1.414a1 1 0 0 0 1.414 0l1.589 -1.59a11.8 11.8 0 0 0 2.922 1v2.25a1 1 0 0 0 1 1h1a1 1 0 0 0 1 -1v-2.245a11.8 11.8 0 0 0 2.92 -1l1.591 1.589a1 1 0 0 0 1.414 0l1.414 -1.414a1 1 0 0 0 0 -1.414l-1.589 -1.59a11.821 11.821 0 0 0 1.004 -2.926Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M7.5 12.001a4.5 4.5 0 1 0 9 0 4.5 4.5 0 1 0 -9 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path></svg></div>
+        <span class="item-caption">Configuration</span>
+      </a>
+    </div>
+  </div>
+</div>
 
-  <main class="main">
-    <!-- Main Dashboard: SA-style icon grid + gauges + charts -->
-    <section id="page-main" class="section active">
-      <div class="dashboard-grid">
-        <!-- Left column: status + gauges -->
-        <div class="right-stack">
-          <div class="card status-card">
-            <div class="status-row" data-detail="inverter">
-              <div class="status-icon">⚡</div>
-              <div class="status-info">
-                <div class="status-label">Inverter</div>
-                <div class="status-title" id="sa-inv-state">--</div>
-                <div class="status-prop" id="sa-inv-prop">--</div>
+<main role="main" id="main" class="main">
+  <div class="content has-page-header" id="content-wrap">
+
+    <!-- Main Dashboard -->
+    <div id="page-main" class="section active">
+      <div class="page-header">
+        <div class="toolbar" style="width:100%; justify-content:flex-end;">
+          <span id="last-updated" class="text-light" style="font-size:0.8rem;">--</span>
+        </div>
+      </div>
+      <div class="card-grid dashboard">
+        <div class="card" role="status">
+          <div class="card-section dashboard-info">
+            <div><a href="#" class="status" data-detail="inverter" aria-labelledby="inverter-label">
+              <img src="/images/inverter-ok.svg" role="presentation" id="img-inverter">
+              <div>
+                <div class="label" id="inverter-label">Inverter</div>
+                <div class="property" id="sa-inv-state">--</div>
+                <div class="property small" id="sa-inv-temp">--</div>
               </div>
-            </div>
-            <div class="status-row" data-detail="solar">
-              <div class="status-icon">☀️</div>
-              <div class="status-info">
-                <div class="status-label">Solar PV</div>
-                <div class="status-title" id="sa-solar-pv">--</div>
-                <div class="status-prop" id="sa-solar-prop">Peak: --</div>
+            </a></div>
+            <div><a href="#" class="status" data-detail="solar" aria-labelledby="solar-label">
+              <img src="/images/solar-forecast.svg" role="presentation" id="img-solar">
+              <div>
+                <div class="label" id="solar-label">Solar PV</div>
+                <div class="property" id="sa-solar-total">--</div>
+                <div class="property small"><span class="name">Peak:</span><span id="sa-solar-peak">--</span></div>
               </div>
-            </div>
-            <div class="status-row" data-detail="grid">
-              <div class="status-icon">🔌</div>
-              <div class="status-info">
-                <div class="status-label">Grid</div>
-                <div class="status-title" id="sa-grid-v">--</div>
-                <div class="status-prop" id="sa-grid-prop">--</div>
+            </a></div>
+            <div><a href="#" class="status" data-detail="grid" aria-labelledby="grid-label">
+              <img src="/images/grid-ok.svg" role="presentation" id="img-grid">
+              <div>
+                <div class="label" id="grid-label">Grid</div>
+                <div class="property" id="sa-grid-v">--</div>
+                <div class="property font-small" id="sa-grid-prop">--</div>
               </div>
-            </div>
-            <div class="status-row" data-detail="battery">
-              <div class="status-icon">🔋</div>
-              <div class="status-info">
-                <div class="status-label">Battery</div>
-                <div class="status-title" id="sa-bat-v">--</div>
-                <div class="status-prop" id="sa-bat-prop">SOC: --</div>
+            </a></div>
+            <div><a href="#" class="status" data-detail="battery" aria-labelledby="battery-label">
+              <img src="/images/battery-mid.svg" role="presentation" id="img-battery">
+              <div>
+                <div class="label" id="battery-label">Battery</div>
+                <div class="property" id="sa-bat-v">--</div>
+                <div class="property" id="sa-bat-soc">--</div>
+                <div class="property battery-change" id="sa-bat-power">--</div>
               </div>
-            </div>
+            </a></div>
           </div>
-
-          <div class="card">
-            <div class="gauges">
-              <div class="gauge" data-detail="load">
-                <div class="gauge-ring" id="gauge-load-ring"></div>
-                <div class="gauge-value" id="gauge-load">--</div>
-                <div class="gauge-label">Load</div>
-              </div>
-              <div class="gauge" data-detail="solar">
-                <div class="gauge-ring" id="gauge-solar-ring"></div>
-                <div class="gauge-value" id="gauge-solar">--</div>
-                <div class="gauge-label">Solar PV</div>
-              </div>
-              <div class="gauge" data-detail="grid">
-                <div class="gauge-ring" id="gauge-grid-ring"></div>
-                <div class="gauge-value" id="gauge-grid">--</div>
-                <div class="gauge-label">Grid</div>
-              </div>
-              <div class="gauge" data-detail="battery">
-                <div class="gauge-ring" id="gauge-battery-ring"></div>
-                <div class="gauge-value" id="gauge-battery">--</div>
-                <div class="gauge-label">Battery</div>
-              </div>
-            </div>
+          <div class="card-section dashboard-gauges">
+            <div><div class="gauge" data-detail="load" aria-labelledby="load-gauge">
+              <div class="mask"><div class="semi-circle blue"></div><div class="semi-circle--mask" id="gauge-load-mask" style="transform: rotate(0deg)"></div></div>
+              <div class="value" id="gauge-load">--</div><div class="label" id="load-gauge">Load</div>
+            </div></div>
+            <div><div class="gauge" data-detail="solar" aria-labelledby="solar-gauge">
+              <div class="mask"><div class="semi-circle yellow"></div><div class="semi-circle--mask" id="gauge-solar-mask" style="transform: rotate(0deg)"></div></div>
+              <div class="value" id="gauge-solar">--</div><div class="label" id="solar-gauge">Solar PV</div>
+            </div></div>
+            <div><div class="gauge" data-detail="grid" aria-labelledby="grid-gauge">
+              <div class="mask"><div class="semi-circle red"></div><div class="semi-circle--mask" id="gauge-grid-mask" style="transform: rotate(0deg)"></div></div>
+              <div class="value" id="gauge-grid">--</div><div class="label" id="grid-gauge">Grid</div>
+            </div></div>
+            <div><div class="gauge" data-detail="battery" aria-labelledby="battery-gauge">
+              <div class="mask"><div class="semi-circle red"></div><div class="semi-circle--mask" id="gauge-battery-mask" style="transform: rotate(0deg)"></div></div>
+              <div class="value" id="gauge-battery">--</div><div class="label" id="battery-gauge">Battery</div>
+            </div></div>
           </div>
         </div>
 
-        <!-- Right column: charts -->
-        <div class="right-stack">
-          <div class="card chart-card">
-            <div class="card-header"><div class="card-title">PV Today</div></div>
-            <div class="chart"><canvas id="chart-pv-today"></canvas></div>
+        <div class="card">
+          <div id="weather-bar" role="figure" style="min-height: 300px; height: 300px; width: 100%" class="card-section height-flex height-50-single-column">
+            <h4>PV Today</h4>
+            <div class="chart" style="height: calc(100% - 40px);"><canvas id="chart-pv-today"></canvas></div>
           </div>
-          <div class="card chart-card">
-            <div class="card-header"><div class="card-title">Overview — Last 24 Hours</div></div>
-            <div class="chart"><canvas id="chart-overview-24h"></canvas></div>
+          <div id="overview-chart" role="figure" style="min-height: 300px; height: 300px; width: 100%" class="chart card-section height-flex height-50-single-column">
+            <h4>Overview — Last 24 Hours</h4>
+            <div style="height: calc(100% - 40px);"><canvas id="chart-overview-24h"></canvas></div>
           </div>
-          <div class="chart-grid-2">
-            <div class="card chart-card">
-              <div class="card-header"><div class="card-title">Battery Power</div></div>
-              <div class="chart"><canvas id="chart-battery-power"></canvas></div>
-            </div>
-            <div class="card chart-card">
-              <div class="card-header"><div class="card-title">Battery SOC</div></div>
-              <div class="chart"><canvas id="chart-battery-soc"></canvas></div>
-            </div>
+        </div>
+
+        <div class="card">
+          <div id="battery-power-chart" role="figure" style="min-height: 350px; height: 300px; width: 100%" class="chart card-section height-flex height-60-single-column">
+            <h4>Battery power</h4>
+            <div style="height: calc(100% - 40px);"><canvas id="chart-battery-power"></canvas></div>
+          </div>
+          <div id="battery-soc-chart" role="figure" style="min-height: 250px; height: 200px; width: 100%" class="chart card-section height-flex height-40-single-column">
+            <h4>Battery state of charge</h4>
+            <div style="height: calc(100% - 40px);"><canvas id="chart-battery-soc"></canvas></div>
           </div>
         </div>
       </div>
-    </section>
+    </div>
 
     <!-- Detail View -->
-    <section id="page-detail" class="section">
-      <div class="back-link" onclick="showPage('main')">← Back to Main Dashboard</div>
-      <div class="page-title" id="detail-title">Detail</div>
+    <div id="page-detail" class="section">
+      <div class="page-header"><div class="toolbar" style="width:100%; justify-content:flex-start;"><span class="back-link" onclick="showPage('main')">← Back to Dashboard</span></div></div>
+      <div class="page-header"><div class="title"><h2 id="detail-title">Detail</h2></div></div>
       <div id="detail-content"></div>
-    </section>
+    </div>
 
     <!-- Charts Dashboard -->
-    <section id="page-charts" class="section">
-      <div class="page-title">Charts Dashboard</div>
-      <div class="page-subtitle">Last 30 days per subsystem</div>
-      <div class="chart-grid-2">
-        <div class="card chart-card"><div class="card-header"><div class="card-title">Battery Charge / Discharge</div></div><div class="chart"><canvas id="chart-battery-30d"></canvas></div></div>
-        <div class="card chart-card"><div class="card-header"><div class="card-title">Grid Import / Export</div></div><div class="chart"><canvas id="chart-grid-30d"></canvas></div></div>
-        <div class="card chart-card"><div class="card-header"><div class="card-title">Inverter Power</div></div><div class="chart"><canvas id="chart-inverter-30d"></canvas></div></div>
-        <div class="card chart-card"><div class="card-header"><div class="card-title">Solar Input</div></div><div class="chart"><canvas id="chart-solar-30d"></canvas></div></div>
+    <div id="page-charts" class="section">
+      <div class="page-header"><div class="title"><h2>Charts Dashboard</h2></div></div>
+      <p class="text-light" style="margin-bottom:1em;">Last 30 days per subsystem</p>
+      <div class="card-grid dashboard">
+        <div class="card chart card-section height-flex"><h4>Battery Charge / Discharge</h4><div style="height:300px"><canvas id="chart-battery-30d"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Grid Import / Export</h4><div style="height:300px"><canvas id="chart-grid-30d"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Inverter Power</h4><div style="height:300px"><canvas id="chart-inverter-30d"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Solar Input</h4><div style="height:300px"><canvas id="chart-solar-30d"></canvas></div></div>
       </div>
-    </section>
+    </div>
 
     <!-- Historical Dashboard -->
-    <section id="page-historical" class="section">
-      <div class="page-title">Historical Dashboard</div>
-      <div class="page-subtitle">Last year and daily totals</div>
-      <div class="card chart-card" style="margin-bottom:1rem;">
-        <div class="card-header"><div class="card-title">Daily Totals — PV / Battery / Grid / Load</div></div>
-        <div class="chart"><canvas id="hist-totals"></canvas></div>
+    <div id="page-historical" class="section">
+      <div class="page-header"><div class="title"><h2>Historical Dashboard</h2></div></div>
+      <p class="text-light" style="margin-bottom:1em;">Last year and daily totals</p>
+      <div class="card chart card-section" style="margin-bottom:1em;"><h4>Daily Totals — PV / Battery / Grid / Load</h4><div style="height:320px"><canvas id="hist-totals"></canvas></div></div>
+      <div class="card-grid dashboard">
+        <div class="card chart card-section height-flex"><h4>Battery (1 Year)</h4><div style="height:300px"><canvas id="hist-battery"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Grid (1 Year)</h4><div style="height:300px"><canvas id="hist-grid"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Inverter (1 Year)</h4><div style="height:300px"><canvas id="hist-inverter"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Solar (1 Year)</h4><div style="height:300px"><canvas id="hist-solar"></canvas></div></div>
       </div>
-      <div class="chart-grid-2">
-        <div class="card chart-card"><div class="card-header"><div class="card-title">Battery (1 Year)</div></div><div class="chart"><canvas id="hist-battery"></canvas></div></div>
-        <div class="card chart-card"><div class="card-header"><div class="card-title">Grid (1 Year)</div></div><div class="chart"><canvas id="hist-grid"></canvas></div></div>
-        <div class="card chart-card"><div class="card-header"><div class="card-title">Inverter (1 Year)</div></div><div class="chart"><canvas id="hist-inverter"></canvas></div></div>
-        <div class="card chart-card"><div class="card-header"><div class="card-title">Solar (1 Year)</div></div><div class="chart"><canvas id="hist-solar"></canvas></div></div>
-      </div>
-    </section>
+    </div>
 
     <!-- Automation Dashboard -->
-    <section id="page-automations" class="section">
-      <div class="page-title">Automation Dashboard</div>
-      <div class="card" style="margin-bottom:1rem;">
-        <div class="card-header"><div class="card-title">Global Control</div></div>
-        <div style="display:flex; align-items:center; gap:1rem;">
-          <label class="field" style="flex-direction:row; align-items:center; gap:0.5rem; margin:0;">
-            <input type="checkbox" id="auto-enabled"> <span>Enable automation engine</span>
-          </label>
-          <button class="btn" id="btn-save-auto-enabled">Save</button>
+    <div id="page-automations" class="section">
+      <div class="page-header"><div class="title"><h2>Automation Dashboard</h2></div></div>
+      <div class="card" style="margin-bottom:1em;">
+        <div class="card-section">
+          <h3>Global Control</h3>
+          <div style="display:flex; align-items:center; gap:1rem; margin-top:0.75rem;">
+            <label class="field" style="flex-direction:row; align-items:center; gap:0.5rem; margin:0;"><input type="checkbox" id="auto-enabled"> <span>Enable automation engine</span></label>
+            <button class="btn" id="btn-save-auto-enabled">Save</button>
+          </div>
+          <p class="text-light" style="margin-top:0.75rem; font-size:0.85rem;">Rules run after every snapshot. Use <strong>dry run</strong> to test safely.</p>
         </div>
-        <p style="margin-top:0.75rem; color:var(--muted); font-size:0.8rem;">Rules run after every snapshot. Use <strong>dry run</strong> to test safely.</p>
       </div>
-      <div class="actions" style="margin-bottom:1rem;">
+      <div class="actions" style="margin-bottom:1em;">
         <button class="btn" id="btn-add-rule">Add Rule</button>
-        <button class="btn secondary" id="btn-test-rules">Dry-Run Test</button>
-        <button class="btn secondary" id="btn-load-rules">Reload</button>
+        <button class="btn" id="btn-test-rules">Dry-Run Test</button>
+        <button class="btn" id="btn-load-rules">Reload</button>
       </div>
       <div id="rules-list"></div>
-      <div class="card" style="margin-top:1rem;">
-        <div class="card-header"><div class="card-title">Automation Log</div></div>
-        <div id="auto-log" style="max-height:300px; overflow:auto; font-size:0.8rem;"></div>
+      <div class="card" style="margin-top:1em;">
+        <div class="card-section"><h3>Automation Log</h3><div id="auto-log" style="max-height:300px; overflow:auto; font-size:0.85rem;"></div></div>
       </div>
-      <div id="auto-msg" style="margin-top:0.75rem; font-size:0.85rem;"></div>
-    </section>
+      <div id="auto-msg" style="margin-top:0.75rem; font-size:0.9rem;"></div>
+    </div>
 
     <!-- Configuration Dashboard -->
-    <section id="page-configuration" class="section">
-      <div class="page-title">Configuration Dashboard</div>
-      <div class="sub-nav">
+    <div id="page-configuration" class="section">
+      <div class="page-header"><div class="title"><h2>Configuration Dashboard</h2></div></div>
+      <div class="sub-nav" style="margin-bottom:1em;">
         <button class="btn config-tab active" data-config="inverter">Inverter</button>
-        <button class="btn secondary config-tab" data-config="system">System</button>
-        <button class="btn secondary config-tab" data-config="network">Network</button>
-        <button class="btn secondary config-tab" data-config="mqtt">MQTT</button>
-        <button class="btn secondary config-tab" data-config="backup">Backup</button>
+        <button class="btn config-tab" data-config="system">System</button>
+        <button class="btn config-tab" data-config="network">Network</button>
+        <button class="btn config-tab" data-config="mqtt">MQTT</button>
+        <button class="btn config-tab" data-config="backup">Backup</button>
       </div>
 
       <div id="config-inverter" class="config-panel active">
-        <div class="config-section">
-          <div class="config-section-title">Inverter Connection</div>
-          <div class="form-grid">
+        <div class="card"><div class="card-section"><h3>Inverter Connection</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
             <div class="field"><label>Dongle Host</label><input type="text" data-key="dongle_host" placeholder="192.168.1.100"></div>
             <div class="field"><label>Dongle Port</label><input type="number" data-key="dongle_port" placeholder="8000"></div>
             <div class="field"><label>Datalog Serial</label><input type="text" data-key="datalog_serial" placeholder="BJxxxxxxxx"></div>
             <div class="field"><label>Inverter Serial</label><input type="text" data-key="inverter_serial" placeholder="5xxxxxxxx"></div>
             <div class="field"><label>Inverter Model</label><input type="text" data-key="inverter_model" placeholder="eg4_6000xp"></div>
           </div>
-        </div>
-        <div class="config-section">
-          <div class="config-section-title">Limits & Preferences</div>
-          <div class="form-grid">
+        </div></div>
+        <div class="card" style="margin-top:1em;"><div class="card-section"><h3>Limits & Preferences</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
             <div class="field"><label>Max PV Power (W)</label><input type="number" data-key="pv_max_power"></div>
             <div class="field"><label>Max Grid Power (W)</label><input type="number" data-key="grid_max_power"></div>
             <div class="field"><label>Max Charge Power (W)</label><input type="number" data-key="charge_max_power"></div>
             <div class="field"><label>Max Discharge Power (W)</label><input type="number" data-key="discharge_max_power"></div>
             <div class="field"><label>Temperature Unit</label><select data-key="temperature_unit"><option value="celsius">Celsius</option><option value="fahrenheit">Fahrenheit</option></select></div>
           </div>
-        </div>
+        </div></div>
       </div>
 
       <div id="config-system" class="config-panel">
-        <div class="config-section">
-          <div class="config-section-title">System Time & Date</div>
-          <div class="form-grid">
+        <div class="card"><div class="card-section"><h3>System Time & Date</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
             <div class="field"><label>Timezone</label><input type="text" data-key="timezone" placeholder="America/Chicago"></div>
             <div class="field"><label>Date</label><input type="date" data-key="system_date"></div>
             <div class="field"><label>Time</label><input type="time" data-key="system_time"></div>
           </div>
-          <div class="actions"><button class="btn" id="btn-sync-time">Sync to Browser</button><button class="btn secondary" id="btn-ntp-sync">Sync NTP</button></div>
-        </div>
-        <div class="config-section">
-          <div class="config-section-title">Data Retention</div>
-          <div class="form-grid">
+          <div class="actions"><button class="btn" id="btn-sync-time">Sync to Browser</button><button class="btn" id="btn-ntp-sync">Sync NTP</button></div>
+        </div></div>
+        <div class="card" style="margin-top:1em;"><div class="card-section"><h3>Data Retention</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
             <div class="field"><label>Snapshot retention (days)</label><input type="number" data-key="retention_days" placeholder="365"></div>
             <div class="field"><label>Write interval (seconds)</label><input type="number" data-key="write_interval" placeholder="5"></div>
           </div>
-        </div>
+        </div></div>
       </div>
 
       <div id="config-network" class="config-panel">
-        <div class="config-section">
-          <div class="config-section-title">Wi-Fi</div>
-          <div class="form-grid">
+        <div class="card"><div class="card-section"><h3>Wi-Fi</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
             <div class="field"><label>SSID</label><input type="text" data-key="wifi_ssid"></div>
             <div class="field"><label>Password</label><input type="password" data-key="wifi_password"></div>
           </div>
-        </div>
-        <div class="config-section">
-          <div class="config-section-title">Ethernet</div>
-          <div class="form-grid">
+        </div></div>
+        <div class="card" style="margin-top:1em;"><div class="card-section"><h3>Ethernet</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
             <div class="field"><label>Mode</label><select data-key="eth_mode"><option value="dhcp">DHCP</option><option value="static">Static</option></select></div>
             <div class="field"><label>IP Address</label><input type="text" data-key="eth_ip" placeholder="192.168.1.10"></div>
             <div class="field"><label>Gateway</label><input type="text" data-key="eth_gateway" placeholder="192.168.1.1"></div>
             <div class="field"><label>DNS</label><input type="text" data-key="eth_dns" placeholder="1.1.1.1"></div>
           </div>
-        </div>
+        </div></div>
+        <p class="text-light" style="font-size:0.8rem; margin-top:0.5rem;">Network changes may require a system restart and must be applied by the host OS.</p>
       </div>
 
       <div id="config-mqtt" class="config-panel">
-        <div class="config-section">
-          <div class="config-section-title">MQTT Broker</div>
-          <div class="form-grid">
+        <div class="card"><div class="card-section"><h3>MQTT Broker</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
             <div class="field"><label>Host</label><input type="text" data-key="mqtt_host" placeholder="localhost"></div>
             <div class="field"><label>Port</label><input type="number" data-key="mqtt_port" placeholder="1883"></div>
             <div class="field"><label>Username</label><input type="text" data-key="mqtt_username"></div>
             <div class="field"><label>Password</label><input type="password" data-key="mqtt_password"></div>
             <div class="field"><label>Topic Prefix</label><input type="text" data-key="mqtt_topic_prefix" placeholder="luxmon"></div>
           </div>
-        </div>
+        </div></div>
       </div>
 
       <div id="config-backup" class="config-panel">
-        <div class="config-section">
-          <div class="config-section-title">Backup & Maintenance</div>
-          <p style="color:var(--muted); font-size:0.85rem; margin-bottom:0.75rem;">Create a backup of the database and configuration.</p>
+        <div class="card"><div class="card-section"><h3>Backup & Maintenance</h3>
+          <p class="text-light" style="margin-bottom:0.75rem;">Create a backup of the database and configuration.</p>
           <div class="actions">
             <button class="btn" id="btn-backup-now">Backup Now</button>
-            <button class="btn secondary" id="btn-prune-old">Prune Old Data</button>
-            <button class="btn secondary" id="btn-download-backup">Download Latest</button>
+            <button class="btn" id="btn-prune-old">Prune Old Data</button>
+            <button class="btn" id="btn-download-backup">Download Latest</button>
           </div>
-        </div>
-        <div class="config-section">
-          <div class="config-section-title">Backup Schedule</div>
-          <div class="form-grid">
+        </div></div>
+        <div class="card" style="margin-top:1em;"><div class="card-section"><h3>Backup Schedule</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
             <div class="field"><label>Automatic backups</label><select data-key="backup_enabled"><option value="false">Disabled</option><option value="true">Enabled</option></select></div>
             <div class="field"><label>Backup time</label><input type="time" data-key="backup_time" value="02:00"></div>
             <div class="field"><label>Keep backups (days)</label><input type="number" data-key="backup_retention_days" placeholder="30"></div>
             <div class="field"><label>Remote backup URL</label><input type="text" data-key="backup_remote_url" placeholder="sftp://user@host:/path"></div>
           </div>
-        </div>
+        </div></div>
       </div>
 
       <div class="actions" style="margin-top:1.5rem;">
         <button class="btn" id="btn-save-config">Save Configuration</button>
-        <span id="config-msg" style="font-size:0.85rem; color:var(--muted);"></span>
+        <span id="config-msg" class="text-light" style="font-size:0.85rem;"></span>
       </div>
-    </section>
-  </main>
-</div>
+    </div>
+
+  </div>
+</main>
 
 <script>
 const API = location.origin;
@@ -459,11 +381,11 @@ let ws;
 let todayPeakPv = 0;
 
 function fmt(num, digits=1) {
-  if (num === undefined || num === null || Number.isNaN(num)) return '--';
+  if (num === undefined || num === null || Number.isNaN(num)) return null;
   return Number(num).toFixed(digits);
 }
 function fmtInt(num) {
-  if (num === undefined || num === null || Number.isNaN(num)) return '--';
+  if (num === undefined || num === null || Number.isNaN(num)) return null;
   return Math.round(num).toString();
 }
 function fmtTime(iso) {
@@ -482,38 +404,56 @@ async function fetchJson(url) {
   return res.json();
 }
 
+// Update text only if value exists (no flicker)
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el && text !== null && text !== undefined) el.textContent = text;
+}
+
 const STATE_MAP = {0:'Standby',1:'Self-test',2:'Normal',3:'Alarm',4:'Fault',5:'Bypass',6:'Battery',7:'ECO',8:'Shutdown'};
 
 function renderMain(r) {
   liveData = r;
-  document.getElementById('last-updated').textContent = 'Updated ' + fmtTime(r.timestamp);
+  setText('last-updated', 'Updated ' + fmtTime(r.timestamp));
 
   const state = val(r,'state',0);
-  document.getElementById('sa-inv-state').textContent = STATE_MAP[state] || ('State '+state);
+  setText('sa-inv-state', STATE_MAP[state] || ('State '+state));
   const invTemp = val(r,'temp_inverter');
-  document.getElementById('sa-inv-prop').textContent = invTemp !== undefined ? fmt(invTemp) + ' °C' : '--';
+  setText('sa-inv-temp', invTemp !== undefined ? fmt(invTemp) + ' °C' : null);
 
   const pv1 = val(r,'pv1_power') || 0;
   const pv2 = val(r,'pv2_power') || 0;
   const pvTotal = pv1 + pv2;
   if (pvTotal > todayPeakPv) todayPeakPv = pvTotal;
-  document.getElementById('sa-solar-pv').textContent = fmtInt(pvTotal) + ' W';
-  document.getElementById('sa-solar-prop').textContent = 'Peak: ' + fmtInt(todayPeakPv) + ' W';
+  setText('sa-solar-total', fmtInt(pvTotal) + ' W');
+  setText('sa-solar-peak', fmtInt(todayPeakPv) + ' W');
 
   const gridV = val(r,'grid_voltage_r');
   const gridIn = val(r,'grid_import_power') || 0;
   const gridOut = val(r,'grid_export_power') || 0;
-  document.getElementById('sa-grid-v').textContent = gridV !== undefined ? fmt(gridV) + ' V' : '--';
-  document.getElementById('sa-grid-prop').textContent = gridIn > 0 ? 'Importing ' + fmtInt(gridIn) + ' W' : (gridOut > 0 ? 'Exporting ' + fmtInt(gridOut) + ' W' : 'Idle');
+  setText('sa-grid-v', gridV !== undefined ? fmt(gridV) + ' V' : null);
+  setText('sa-grid-prop', gridIn > 0 ? 'Importing ' + fmtInt(gridIn) + ' W' : (gridOut > 0 ? 'Exporting ' + fmtInt(gridOut) + ' W' : 'Idle'));
 
   const batV = val(r,'battery_voltage');
   const soc = val(r,'soc');
   const batP = val(r,'battery_power') || ((val(r,'discharge_power')||0) - (val(r,'charge_power')||0));
-  document.getElementById('sa-bat-v').textContent = batV !== undefined ? fmt(batV) + ' V' : '--';
-  document.getElementById('sa-bat-prop').textContent = 'SOC: ' + fmtInt(soc) + '% | ' + fmtInt(batP) + ' W';
+  setText('sa-bat-v', batV !== undefined ? fmt(batV) + ' V' : null);
+  setText('sa-bat-soc', soc !== undefined ? fmtInt(soc) + ' %' : null);
+  setText('sa-bat-power', batP !== undefined ? fmtInt(batP) + ' W' : null);
 
-  // Gauges: simple 0-180° mapping, negative = below center
-  setGauge('load', val(r,'load_power') || val(r,'total_load_power') || (pvTotal + gridIn - gridOut + ((val(r,'discharge_power')||0) - (val(r,'charge_power')||0))), 10000);
+  // Battery icon based on SOC
+  if (soc !== undefined) {
+    const img = document.getElementById('img-battery');
+    const level = soc < 25 ? 'battery-mid.svg' : (soc < 75 ? 'battery-mid.svg' : 'battery-full.svg');
+    // Preload before swap
+    const pre = new Image();
+    pre.onload = () => { if (img) img.src = pre.src; };
+    pre.src = '/images/' + level;
+  }
+
+  // Gauges
+  const load = val(r,'load_power') || val(r,'total_load_power') || (pvTotal + gridIn - gridOut + ((val(r,'discharge_power')||0) - (val(r,'charge_power')||0)));
+  setGauge('load', load, 10000);
   setGauge('solar', pvTotal, 10000);
   setGauge('grid', gridIn - gridOut, 10000);
   setGauge('battery', batP, 10000);
@@ -521,17 +461,18 @@ function renderMain(r) {
 
 function setGauge(name, value, max) {
   const el = document.getElementById('gauge-' + name);
-  const ring = document.getElementById('gauge-' + name + '-ring');
+  const mask = document.getElementById('gauge-' + name + '-mask');
+  if (!el || !mask) return;
   if (value === undefined || value === null || Number.isNaN(value)) {
     el.textContent = '--';
-    ring.style.setProperty('--rot', '0deg');
+    mask.style.transform = 'rotate(0deg)';
     return;
   }
-  el.textContent = Math.abs(Math.round(value)) + ' W';
-  // clamp -max..max, map to -180..0..180 deg (left negative, right positive)
+  const kw = Math.abs(value) >= 1000 ? (value/1000).toFixed(2) + ' kW' : Math.round(value) + ' W';
+  el.textContent = kw;
   let pct = Math.max(-1, Math.min(1, value / max));
   let deg = pct * 180;
-  ring.style.setProperty('--rot', deg + 'deg');
+  mask.style.transform = 'rotate(' + deg + 'deg)';
 }
 
 function propsHtml(rows) {
@@ -554,7 +495,7 @@ function detailInverter(r) {
     ['Radiator 1', `${fmt(val(r,'temp_radiator_1'))} °C`],
     ['Radiator 2', `${fmt(val(r,'temp_radiator_2'))} °C`]
   ];
-  return `<div class="detail-grid"><div class="card"><div class="card-header"><div class="card-title">Output</div></div><div class="props">${propsHtml(out)}</div></div><div class="card"><div class="card-header"><div class="card-title">Temperatures</div></div><div class="props">${propsHtml(temps)}</div></div></div>`;
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Output</h3><div class="props">${propsHtml(out)}</div></div></div><div class="card"><div class="card-section"><h3>Temperatures</h3><div class="props">${propsHtml(temps)}</div></div></div></div>`;
 }
 function detailBattery(r) {
   const props = [
@@ -573,7 +514,7 @@ function detailBattery(r) {
     if (v === undefined) continue;
     cells += `<div class="prop"><div class="prop-label">Cell ${i}</div><div class="prop-value">${fmt(v,3)} V</div></div>`;
   }
-  return `<div class="detail-grid"><div class="card"><div class="card-header"><div class="card-title">Battery</div></div><div class="props">${propsHtml(props)}</div></div><div class="card"><div class="card-header"><div class="card-title">Cells</div></div><div class="props">${cells || '<div class="prop"><div class="prop-label">No cell data</div></div>'}</div></div></div>`;
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Battery</h3><div class="props">${propsHtml(props)}</div></div></div><div class="card"><div class="card-section"><h3>Cells</h3><div class="props">${cells || '<div class="prop"><div class="prop-label">No cell data</div></div>'}</div></div></div></div>`;
 }
 function detailGrid(r) {
   const props = [
@@ -584,7 +525,7 @@ function detailGrid(r) {
     ['Import Today', `${fmt(val(r,'grid_energy_in_today'),2)} kWh`],
     ['Export Today', `${fmt(val(r,'grid_energy_out_today'),2)} kWh`]
   ];
-  return `<div class="detail-grid"><div class="card"><div class="card-header"><div class="card-title">Grid</div></div><div class="props">${propsHtml(props)}</div></div></div>`;
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Grid</h3><div class="props">${propsHtml(props)}</div></div></div></div>`;
 }
 function detailSolar(r) {
   const pv1 = val(r,'pv1_power') || 0;
@@ -597,7 +538,7 @@ function detailSolar(r) {
     ['PV2 Voltage', `${fmt(val(r,'pv2_voltage'))} V`],
     ['PV Energy Today', `${fmt(val(r,'pv_energy_today'),2)} kWh`]
   ];
-  return `<div class="detail-grid"><div class="card"><div class="card-header"><div class="card-title">Solar</div></div><div class="props">${propsHtml(props)}</div></div></div>`;
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Solar</h3><div class="props">${propsHtml(props)}</div></div></div></div>`;
 }
 function detailLoad(r) {
   const pv1 = val(r,'pv1_power') || 0;
@@ -613,7 +554,7 @@ function detailLoad(r) {
     ['Load Energy Today', `${fmt(val(r,'load_energy_today'),2)} kWh`],
     ['EPS Energy Today', `${fmt(val(r,'eps_energy_today'),2)} kWh`]
   ];
-  return `<div class="detail-grid"><div class="card"><div class="card-header"><div class="card-title">Load</div></div><div class="props">${propsHtml(props)}</div></div></div>`;
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Load</h3><div class="props">${propsHtml(props)}</div></div></div></div>`;
 }
 function detailEnvironment(r) {
   const props = [
@@ -623,7 +564,7 @@ function detailEnvironment(r) {
     ['Radiator 2', `${fmt(val(r,'temp_radiator_2'))} °C`],
     ['Outside Temp', `${fmt(val(r,'temp_outside'))} °C`]
   ];
-  return `<div class="detail-grid"><div class="card"><div class="card-header"><div class="card-title">Environment</div></div><div class="props">${propsHtml(props)}</div></div></div>`;
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Environment</h3><div class="props">${propsHtml(props)}</div></div></div></div>`;
 }
 
 function showDetail(name) {
@@ -635,37 +576,38 @@ function showDetail(name) {
 }
 
 function createLineChart(id, datasets, opts={}) {
-  const ctx = document.getElementById(id).getContext('2d');
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
   if (charts[id]) charts[id].destroy();
-  charts[id] = new Chart(ctx, {
+  charts[id] = new Chart(ctx.getContext('2d'), {
     type:'line',
     data:{datasets},
     options:{
       responsive:true,
       maintainAspectRatio:false,
       interaction:{mode:'index', intersect:false},
-      plugins:{legend:{labels:{color:'#f1f5f9'}}, title:{display:!!opts.title, text:opts.title||'', color:'#f1f5f9'}},
+      plugins:{legend:{labels:{color:'#f1f5f9'}}, title:{display:false}},
       scales:{
-        x:{type:'time', time:{tooltipFormat:'MMM d HH:mm'}, ticks:{color:'#94a3b8'}, grid:{color:'#334155'}},
-        y:{ticks:{color:'#94a3b8'}, grid:{color:'#334155'}, beginAtZero:true}
+        x:{type:'time', time:{tooltipFormat:'MMM d HH:mm'}, ticks:{color:'#94a3b8'}, grid:{color:'rgba(255,255,255,0.07)'}},
+        y:{ticks:{color:'#94a3b8'}, grid:{color:'rgba(255,255,255,0.07)'}, beginAtZero:true}
       }
     }
   });
 }
-
 function createBarChart(id, labels, datasets, opts={}) {
-  const ctx = document.getElementById(id).getContext('2d');
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
   if (charts[id]) charts[id].destroy();
-  charts[id] = new Chart(ctx, {
+  charts[id] = new Chart(ctx.getContext('2d'), {
     type:'bar',
     data:{labels, datasets},
     options:{
       responsive:true,
       maintainAspectRatio:false,
-      plugins:{legend:{labels:{color:'#f1f5f9'}}, title:{display:!!opts.title, text:opts.title||'', color:'#f1f5f9'}},
+      plugins:{legend:{labels:{color:'#f1f5f9'}}, title:{display:false}},
       scales:{
-        x:{ticks:{color:'#94a3b8'}, grid:{color:'#334155'}},
-        y:{ticks:{color:'#94a3b8'}, grid:{color:'#334155'}, beginAtZero:true}
+        x:{ticks:{color:'#94a3b8'}, grid:{color:'rgba(255,255,255,0.07)'}},
+        y:{ticks:{color:'#94a3b8'}, grid:{color:'rgba(255,255,255,0.07)'}, beginAtZero:true}
       }
     }
   });
@@ -680,7 +622,7 @@ async function loadMainCharts() {
       data: rows.map(r => r.registers[field] != null ? {x:r.timestamp, y:r.registers[field]} : null).filter(p => p),
       borderColor: color, backgroundColor: color + (fill?'33':''), fill, tension:0.2, pointRadius:0
     });
-    createLineChart('chart-pv-today', [mk('PV1','pv1_power','#eab308'), mk('PV2','pv2_power','#facc15')], {title:'PV Today'});
+    createLineChart('chart-pv-today', [mk('PV1','pv1_power','#eab308'), mk('PV2','pv2_power','#facc15')]);
     createLineChart('chart-overview-24h', [
       mk('Solar','pv1_power','#eab308'),
       mk('Battery charge','charge_power','#a855f7'),
@@ -688,9 +630,9 @@ async function loadMainCharts() {
       mk('Grid import','grid_import_power','#3b82f6'),
       mk('Grid export','grid_export_power','#ef4444'),
       mk('Load','load_power','#f97316')
-    ], {title:'24h Power Flow'});
-    createLineChart('chart-battery-power', [mk('Battery power','battery_power','#22c55e', false)], {title:'Battery Power'});
-    createLineChart('chart-battery-soc', [mk('SOC','soc','#a855f7', false)], {title:'Battery SOC'});
+    ]);
+    createLineChart('chart-battery-power', [mk('Battery power','battery_power','#22c55e', false)]);
+    createLineChart('chart-battery-soc', [mk('SOC','soc','#a855f7', false)]);
   } catch (e) { console.error('loadMainCharts error', e); }
 }
 
@@ -700,18 +642,9 @@ function processEnergy(res) {
   return periods.map(p => {
     const d = data[p];
     const get = (cat, dir) => (d[cat] ? (d[cat][dir + '_kwh'] || 0) : 0);
-    return {
-      period: p,
-      pv: get('PV power','in'),
-      battery_in: get('Battery power','in'),
-      battery_out: get('Battery power','out'),
-      grid_in: get('Grid power','in'),
-      grid_out: get('Grid power','out'),
-      load: get('Load power','out')
-    };
+    return { period: p, pv: get('PV power','in'), battery_in: get('Battery power','in'), battery_out: get('Battery power','out'), grid_in: get('Grid power','in'), grid_out: get('Grid power','out'), load: get('Load power','out') };
   });
 }
-
 async function loadCharts30d() {
   try {
     const res = await fetchJson(API + '/api/energy?range=daily&periods=30');
@@ -720,20 +653,19 @@ async function loadCharts30d() {
     createBarChart('chart-battery-30d', labels, [
       {label:'Charge', data: rows.map(r=>r.battery_in), backgroundColor:'#a855f7'},
       {label:'Discharge', data: rows.map(r=>r.battery_out), backgroundColor:'#22c55e'}
-    ], {title:'Battery (30d)'});
+    ]);
     createBarChart('chart-grid-30d', labels, [
       {label:'Import', data: rows.map(r=>r.grid_in), backgroundColor:'#3b82f6'},
       {label:'Export', data: rows.map(r=>r.grid_out), backgroundColor:'#ef4444'}
-    ], {title:'Grid (30d)'});
+    ]);
     createBarChart('chart-inverter-30d', labels, [
       {label:'Load', data: rows.map(r=>r.load), backgroundColor:'#f97316'}
-    ], {title:'Inverter (30d)'});
+    ]);
     createBarChart('chart-solar-30d', labels, [
       {label:'PV', data: rows.map(r=>r.pv), backgroundColor:'#eab308'}
-    ], {title:'Solar (30d)'});
+    ]);
   } catch (e) { console.error(e); }
 }
-
 async function loadHistorical() {
   try {
     const res365 = await fetchJson(API + '/api/energy?range=daily&periods=365');
@@ -760,7 +692,7 @@ async function loadHistorical() {
       {label:'Grid import', data: rows365.map(r=>r.grid_in), backgroundColor:'#3b82f6'},
       {label:'Grid export', data: rows365.map(r=>r.grid_out), backgroundColor:'#ef4444'},
       {label:'Load', data: rows365.map(r=>r.load), backgroundColor:'#f97316'}
-    ], {title:'Daily Totals (kWh)'});
+    ]);
   } catch (e) { console.error(e); }
 }
 
@@ -779,13 +711,13 @@ async function loadAutomation() {
 }
 function renderRules() {
   const container = document.getElementById('rules-list');
-  if (!autoRules.length) { container.innerHTML = '<p style="color:var(--muted)">No rules yet.</p>'; return; }
+  if (!autoRules.length) { container.innerHTML = '<p class="text-light">No rules yet.</p>'; return; }
   container.innerHTML = autoRules.map((rule, idx) => {
     const tw = rule.time_window || {};
     const conds = (rule.conditions || []).map(c => `${c.sensor} ${c.min ?? ''}-${c.max ?? ''}`).join(', ') || 'none';
     const action = rule.action || {};
     const actionText = action.value !== undefined ? `${action.value} ${autoRegisters.find(r => r.name === action.register)?.unit || ''}` : 'range table';
-    return `<div class="card rule-card"><div class="card-header"><div class="card-title">${rule.name || 'Unnamed'}</div><div class="card-status">${rule.enabled ? 'Enabled' : 'Disabled'}</div></div><div class="rule-meta">Time: ${tw.start || '00:00'} - ${tw.end || '23:59'} | Conditions: ${conds} | Action: ${action.register || '?'} = ${actionText}${rule.dry_run ? '<span style="color:var(--yellow)"> [DRY RUN]</span>' : ''}</div><div class="actions" style="margin:0;"><button class="btn secondary" onclick="editRule(${idx})">Edit</button><button class="btn negative" onclick="deleteRule('${rule.id}')">Delete</button></div></div>`;
+    return `<div class="card rule-card"><div class="card-section"><h3>${rule.name || 'Unnamed'}</h3><div class="rule-meta">Time: ${tw.start || '00:00'} - ${tw.end || '23:59'} | Conditions: ${conds} | Action: ${action.register || '?'} = ${actionText}${rule.dry_run ? '<span style="color:var(--yellow-color)"> [DRY RUN]</span>' : ''}</div><div class="actions" style="margin:0;"><button class="btn" onclick="editRule(${idx})">Edit</button><button class="btn negative" onclick="deleteRule('${rule.id}')">Delete</button></div></div></div>`;
   }).join('');
 }
 function addRuleTemplate() {
@@ -810,20 +742,20 @@ async function saveRules() {
   try {
     const res = await fetch(API + '/api/automation/rules', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(autoRules)});
     if (!res.ok) throw new Error(res.statusText);
-    msg.textContent = 'Rules saved.'; msg.style.color = 'var(--green)';
-  } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red)'; }
+    msg.textContent = 'Rules saved.'; msg.style.color = 'var(--green-color)';
+  } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
 }
 async function testRules() {
   const msg = document.getElementById('auto-msg');
-  msg.textContent = 'Running dry-run...'; msg.style.color = 'var(--muted)';
+  msg.textContent = 'Running dry-run...'; msg.style.color = 'var(--light-text-color)';
   try {
     const res = await fetch(API + '/api/automation/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})});
     const data = await res.json();
     const matched = data.results.filter(r => r.matched);
     msg.innerHTML = `Dry-run complete. ${matched.length}/${data.results.length} rules matched.`;
-    msg.style.color = matched.length ? 'var(--yellow)' : 'var(--muted)';
+    msg.style.color = matched.length ? 'var(--yellow-color)' : 'var(--light-text-color)';
     renderAutomationLog();
-  } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red)'; }
+  } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
 }
 async function renderAutomationLog() {
   try {
@@ -832,8 +764,8 @@ async function renderAutomationLog() {
     document.getElementById('auto-log').innerHTML = log.map(row => {
       const ts = new Date(row.timestamp).toLocaleTimeString();
       const status = row.dry_run ? 'DRY-RUN' : (row.success ? 'OK' : 'FAIL');
-      return `<div style="margin-bottom:0.25rem;"><span style="color:var(--muted)">${ts}</span> <strong>${row.rule_name}</strong> ${row.register_name}=${row.scaled_value} [${status}] ${row.message || ''}</div>`;
-    }).join('') || '<p style="color:var(--muted)">No automation actions yet.</p>';
+      return `<div style="margin-bottom:0.25rem;"><span class="text-light">${ts}</span> <strong>${row.rule_name}</strong> ${row.register_name}=${row.scaled_value} [${status}] ${row.message || ''}</div>`;
+    }).join('') || '<p class="text-light">No automation actions yet.</p>';
   } catch (e) { console.error(e); }
 }
 async function toggleAutomationEnabled() {
@@ -855,7 +787,7 @@ async function loadConfiguration() {
 }
 async function saveConfiguration() {
   const msg = document.getElementById('config-msg');
-  msg.textContent = 'Saving...'; msg.style.color = 'var(--muted)';
+  msg.textContent = 'Saving...'; msg.style.color = 'var(--light-text-color)';
   const inputs = document.querySelectorAll('#page-configuration [data-key]');
   try {
     for (const input of inputs) {
@@ -865,8 +797,8 @@ async function saveConfiguration() {
       const res = await fetch(API + '/api/settings/' + key, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})});
       if (!res.ok) throw new Error(key + ': ' + res.statusText);
     }
-    msg.textContent = 'Configuration saved.'; msg.style.color = 'var(--green)';
-  } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red)'; }
+    msg.textContent = 'Configuration saved.'; msg.style.color = 'var(--green-color)';
+  } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
 }
 
 async function refresh() {
@@ -886,11 +818,12 @@ function connectWS() {
   ws.onmessage = ev => { try { renderMain(JSON.parse(ev.data)); } catch(e){} };
   ws.onclose = () => setTimeout(connectWS, 3000);
 }
+
 function showPage(page) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
-  const nav = document.querySelector(`.nav-item[data-page="${page}"]`);
+  document.querySelectorAll('#top-menu .menu-item').forEach(n => n.classList.remove('active'));
+  const nav = document.querySelector(`#top-menu .menu-item[data-page="${page}"]`);
   if (nav) nav.classList.add('active');
 
   if (page === 'main') loadMainCharts();
@@ -902,12 +835,16 @@ function showPage(page) {
 function showConfigPanel(name) {
   document.querySelectorAll('.config-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('config-' + name).classList.add('active');
-  document.querySelectorAll('.config-tab').forEach(b => b.className = 'btn ' + (b.dataset.config === name ? '' : 'secondary') + ' config-tab');
+  document.querySelectorAll('.config-tab').forEach(b => b.classList.toggle('active', b.dataset.config === name));
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.nav-item').forEach(n => n.addEventListener('click', () => showPage(n.dataset.page)));
-  document.querySelectorAll('.status-row[data-detail], .gauge[data-detail]').forEach(c => c.addEventListener('click', () => showDetail(c.dataset.detail)));
+  document.querySelectorAll('#top-menu .menu-item').forEach(n => {
+    n.addEventListener('click', e => { e.preventDefault(); showPage(n.dataset.page); });
+  });
+  document.querySelectorAll('.status[data-detail], .gauge[data-detail]').forEach(c => {
+    c.addEventListener('click', e => { e.preventDefault(); showDetail(c.dataset.detail); });
+  });
 
   document.getElementById('btn-add-rule').addEventListener('click', addRuleTemplate);
   document.getElementById('btn-load-rules').addEventListener('click', loadAutomation);
