@@ -25,8 +25,7 @@
   --foreground-color: #1f2937;
   --border-color: #334155;
   --light-border-color: #475569;
-  --header-gradient-start: #0f172a;
-  --header-gradient-end: #1e293b;
+  --header-bg-color: #161616;
   --header-tab-unselected: rgba(15, 23, 42, 0.8);
   --blue-color: #38bdf8;
   --green-color: #22c55e;
@@ -42,7 +41,7 @@
   --btn3-background-color: #172033;
 }
 body { font-family: Exo, system-ui, sans-serif; background: var(--background-color); color: var(--text-color); }
-.header { background: linear-gradient(90deg, var(--header-gradient-start), var(--header-gradient-end)); border-bottom: 1px solid var(--border-color); }
+.header { background-color: var(--header-bg-color); background-image: url("/images/header-bg.png"); background-repeat: repeat; background-size: 4px 4px; border-bottom: 1px solid var(--border-color); }
 .header .container { padding: 20px 32px 0; max-width: 1600px; margin: 0 auto; }
 .header .container .logo { background-image: url("/images/logo-dark.svg") !important; width: 160px; height: 40px; background-repeat: no-repeat; background-size: contain; margin-bottom: 20px; }
 .header .container .menu .menu-item { background-color: var(--header-tab-unselected); color: var(--text-color); border-radius: 6px 6px 0 0; }
