@@ -18,6 +18,7 @@ import math
 import pymysql
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from typing import Any
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.staticfiles import StaticFiles as StarletteStaticFiles
@@ -394,7 +395,7 @@ def api_energy(
 # ── settings ────────────────────────────────────────────────────────────────
 
 class SettingUpdate(BaseModel):
-    value: str
+    value: Any
 
 
 @app.get("/api/settings")
@@ -448,8 +449,9 @@ def api_setting_put(name: str, body: SettingUpdate):
 
     conn = _get_conn()
     try:
-        set_(conn, name, body.value)
-        return {"name": name, "value": body.value, "updated": True}
+        str_value = str(body.value) if body.value is not None else ""
+        set_(conn, name, str_value)
+        return {"name": name, "value": str_value, "updated": True}
     finally:
         conn.close()
 
