@@ -863,7 +863,10 @@ function connectWS() {
     try {
       const msg = JSON.parse(ev.data);
       const payload = msg.type === 'snapshot' ? msg.data : msg;
-      if (payload && payload.registers) renderMain(payload);
+      if (payload && payload.registers) {
+        renderMain(payload);
+        if (currentDetail) updateDetail(payload);
+      }
     } catch(e){}
   };
   ws.onclose = () => setTimeout(connectWS, 3000);
