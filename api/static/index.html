@@ -859,7 +859,13 @@ async function refresh() {
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(proto + '//' + location.host + '/ws');
-  ws.onmessage = ev => { try { renderMain(JSON.parse(ev.data)); } catch(e){} };
+  ws.onmessage = ev => {
+    try {
+      const msg = JSON.parse(ev.data);
+      const payload = msg.type === 'snapshot' ? msg.data : msg;
+      if (payload && payload.registers) renderMain(payload);
+    } catch(e){}
+  };
   ws.onclose = () => setTimeout(connectWS, 3000);
 }
 
