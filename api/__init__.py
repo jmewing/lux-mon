@@ -20,6 +20,20 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.staticfiles import StaticFiles as StarletteStaticFiles
+from starlette.types import Scope, Receive, Send
+
+class CacheStaticFiles(StarletteStaticFiles):
+    """StaticFiles variant that adds long-term cache headers to immutable assets."""
+
+    IMMUTABLE = {".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".woff2", ".woff", ".ttf", ".ico"}
+
+    async def get_response(self, path: str, scope: Scope) -> Any:
+        response = await super().get_response(path, scope)
+        ext = os.path.splitext(path)[1].lower()
+        if ext in self.IMMUTABLE:
+            response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+        return response
 
 TZ = ZoneInfo("America/Chicago")
 
@@ -801,4 +815,4 @@ def api_automation_log(limit: int = Query(50, ge=1, le=500)):
 
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_DIR.mkdir(exist_ok=True)
-app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+app.mount("/", CacheStaticFiles(directory=str(STATIC_DIR), html=True), name="static")

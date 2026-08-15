@@ -8,6 +8,11 @@
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Exo:ital,wght@0,100..900;1,100..900&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Exo:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet" type="text/css"></noscript>
 <link rel="stylesheet" href="/app.css">
+<link rel="preload" href="/images/inverter-ok.svg" as="image">
+<link rel="preload" href="/images/solar-forecast.svg" as="image">
+<link rel="preload" href="/images/grid-ok.svg" as="image">
+<link rel="preload" href="/images/battery-mid.svg" as="image">
+<link rel="preload" href="/images/battery-full.svg" as="image">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <style>
@@ -379,6 +384,16 @@ let settings = {};
 let charts = {};
 let ws;
 let todayPeakPv = 0;
+let currentDetail = null;
+let detailRendered = false;
+const imageCache = {};
+function preloadImage(src) {
+  if (imageCache[src]) return imageCache[src];
+  const img = new Image();
+  img.src = src;
+  imageCache[src] = img;
+  return img;
+}
 
 function fmt(num, digits=1) {
   if (num === undefined || num === null || Number.isNaN(num)) return null;
@@ -393,10 +408,10 @@ function fmtTime(iso) {
   const d = new Date(iso);
   return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
 }
-function val(r, key) {
-  if (!r || !r.registers) return undefined;
+function val(r, key, fallback) {
+  if (!r || !r.registers) return fallback;
   const k = r.registers[key];
-  return k ? k.value : undefined;
+  return k && k.value !== undefined ? k.value : fallback;
 }
 async function fetchJson(url) {
   const res = await fetch(url);
@@ -425,6 +440,9 @@ function renderMain(r) {
   const pv2 = val(r,'pv2_power') || 0;
   const pvTotal = pv1 + pv2;
   if (pvTotal > todayPeakPv) todayPeakPv = pvTotal;
+  // Inject computed values so detail view can read them via data-reg
+  if (!r.registers) r.registers = {};
+  r.registers.pv_total_power = { value: pvTotal, unit: 'W' };
   setText('sa-solar-total', fmtInt(pvTotal) + ' W');
   setText('sa-solar-peak', fmtInt(todayPeakPv) + ' W');
 
@@ -437,22 +455,34 @@ function renderMain(r) {
   const batV = val(r,'battery_voltage');
   const soc = val(r,'soc');
   const batP = val(r,'battery_power') || ((val(r,'discharge_power')||0) - (val(r,'charge_power')||0));
+  const gridIn = val(r,'grid_import_power') || 0;
+  const gridOut = val(r,'grid_export_power') || 0;
+  const loadPower = val(r,'load_power') || val(r,'total_load_power') || (pvTotal + gridIn - gridOut + ((val(r,'discharge_power')||0) - (val(r,'charge_power')||0)));
+  r.registers.load_power = { value: loadPower, unit: 'W' };
   setText('sa-bat-v', batV !== undefined ? fmt(batV) + ' V' : null);
   setText('sa-bat-soc', soc !== undefined ? fmtInt(soc) + ' %' : null);
   setText('sa-bat-power', batP !== undefined ? fmtInt(batP) + ' W' : null);
 
-  // Battery icon based on SOC
+  // Battery icon based on SOC — only swap if the target actually changes
   if (soc !== undefined) {
     const img = document.getElementById('img-battery');
-    const level = soc < 25 ? 'battery-mid.svg' : (soc < 75 ? 'battery-mid.svg' : 'battery-full.svg');
-    // Preload before swap
-    const pre = new Image();
-    pre.onload = () => { if (img) img.src = pre.src; };
-    pre.src = '/images/' + level;
+    if (img) {
+      const level = soc < 25 ? 'battery-mid.svg' : (soc < 75 ? 'battery-mid.svg' : 'battery-full.svg');
+      const nextSrc = '/images/' + level;
+      const currentSrc = img.getAttribute('src');
+      if (currentSrc !== nextSrc) {
+        const pre = preloadImage(nextSrc);
+        if (pre.complete) {
+          img.src = nextSrc;
+        } else {
+          pre.onload = () => { img.src = nextSrc; };
+        }
+      }
+    }
   }
 
   // Gauges
-  const load = val(r,'load_power') || val(r,'total_load_power') || (pvTotal + gridIn - gridOut + ((val(r,'discharge_power')||0) - (val(r,'charge_power')||0)));
+  const load = val(r,'load_power');
   setGauge('load', load, 10000);
   setGauge('solar', pvTotal, 10000);
   setGauge('grid', gridIn - gridOut, 10000);
@@ -478,101 +508,119 @@ function setGauge(name, value, max) {
 function propsHtml(rows) {
   return rows.map(([l,v]) => `<div class="prop"><div class="prop-label">${l}</div><div class="prop-value">${v}</div></div>`).join('');
 }
+function prop(label, reg, opts={}) {
+  const suffix = opts.suffix || '';
+  const intAttr = opts.int ? 'data-int="1"' : '';
+  const digitsAttr = opts.digits ? `data-digits="${opts.digits}"` : '';
+  const suffixAttr = suffix ? `data-suffix="${suffix}"` : '';
+  return `<div class="prop"><div class="prop-label">${label}</div><div class="prop-value" data-reg="${reg}" ${intAttr} ${digitsAttr} ${suffixAttr}>${suffix || '--'}</div></div>`;
+}
 function detailInverter(r) {
-  const out = [
-    ['AC Voltage (R/S/T)', `${fmt(val(r,'ac_output_voltage_r'))} / ${fmt(val(r,'ac_output_voltage_s'))} / ${fmt(val(r,'ac_output_voltage_t'))} V`],
-    ['AC Power (R/S/T)', `${fmtInt(val(r,'ac_output_power_r'))} / ${fmtInt(val(r,'ac_output_power_s'))} / ${fmtInt(val(r,'ac_output_power_t'))} W`],
-    ['EPS Power', `${fmtInt(val(r,'eps_power'))} W`],
-    ['EPS Frequency', `${fmt(val(r,'eps_frequency'),2)} Hz`],
-    ['State', STATE_MAP[val(r,'state',0)] || val(r,'state',0)],
-    ['Fault Code', fmtInt(val(r,'fault_code',0))],
-    ['Warning Code', fmtInt(val(r,'warning_code',0))],
-    ['Runtime', fmtInt(val(r,'runtime')) + ' min']
-  ];
-  const temps = [
-    ['Inverter', `${fmt(val(r,'temp_inverter'))} °C`],
-    ['Battery', `${fmt(val(r,'temp_battery'))} °C`],
-    ['Radiator 1', `${fmt(val(r,'temp_radiator_1'))} °C`],
-    ['Radiator 2', `${fmt(val(r,'temp_radiator_2'))} °C`]
-  ];
-  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Output</h3><div class="props">${propsHtml(out)}</div></div></div><div class="card"><div class="card-section"><h3>Temperatures</h3><div class="props">${propsHtml(temps)}</div></div></div></div>`;
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Output</h3><div class="props">
+      ${prop('AC Voltage R','ac_output_voltage_r',{suffix:' V'})}
+      ${prop('AC Voltage S','ac_output_voltage_s',{suffix:' V'})}
+      ${prop('AC Voltage T','ac_output_voltage_t',{suffix:' V'})}
+      ${prop('AC Power R','ac_output_power_r',{suffix:' W', int:1})}
+      ${prop('AC Power S','ac_output_power_s',{suffix:' W', int:1})}
+      ${prop('AC Power T','ac_output_power_t',{suffix:' W', int:1})}
+      ${prop('EPS Power','eps_power',{suffix:' W', int:1})}
+      ${prop('EPS Frequency','eps_frequency',{suffix:' Hz', digits:2})}
+      ${prop('Fault Code','fault_code',{int:1})}
+      ${prop('Warning Code','warning_code',{int:1})}
+      ${prop('Runtime','runtime',{suffix:' min', int:1})}
+    </div></div></div><div class="card"><div class="card-section"><h3>Temperatures</h3><div class="props">
+      ${prop('Inverter','temp_inverter',{suffix:' °C'})}
+      ${prop('Battery','temp_battery',{suffix:' °C'})}
+      ${prop('Radiator 1','temp_radiator_1',{suffix:' °C'})}
+      ${prop('Radiator 2','temp_radiator_2',{suffix:' °C'})}
+    </div></div></div></div>`;
 }
 function detailBattery(r) {
-  const props = [
-    ['SOC', `${fmtInt(val(r,'soc'))} %`],
-    ['SOH', `${fmtInt(val(r,'soh'))} %`],
-    ['Voltage', `${fmt(val(r,'battery_voltage'))} V`],
-    ['Current', `${fmt(val(r,'battery_current'))} A`],
-    ['Power', `${fmtInt(val(r,'battery_power'))} W`],
-    ['Capacity', `${fmt(val(r,'battery_capacity'))} Ah`],
-    ['Cycles', fmtInt(val(r,'cycle_count'))],
-    ['Temp', `${fmt(val(r,'temp_battery'))} °C`]
-  ];
   let cells = '';
-  for (let i=1; i<=16; i++) {
-    const v = val(r, 'cell_'+i+'_voltage');
-    if (v === undefined) continue;
-    cells += `<div class="prop"><div class="prop-label">Cell ${i}</div><div class="prop-value">${fmt(v,3)} V</div></div>`;
-  }
-  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Battery</h3><div class="props">${propsHtml(props)}</div></div></div><div class="card"><div class="card-section"><h3>Cells</h3><div class="props">${cells || '<div class="prop"><div class="prop-label">No cell data</div></div>'}</div></div></div></div>`;
+  for (let i=1; i<=16; i++) cells += prop(`Cell ${i}`,`cell_${i}_voltage`,{suffix:' V', digits:3});
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Battery</h3><div class="props">
+      ${prop('SOC','soc',{suffix:' %', int:1})}
+      ${prop('SOH','soh',{suffix:' %', int:1})}
+      ${prop('Voltage','battery_voltage',{suffix:' V'})}
+      ${prop('Current','battery_current',{suffix:' A'})}
+      ${prop('Power','battery_power',{suffix:' W', int:1})}
+      ${prop('Capacity','battery_capacity',{suffix:' Ah'})}
+      ${prop('Cycles','cycle_count',{int:1})}
+      ${prop('Temp','temp_battery',{suffix:' °C'})}
+    </div></div></div><div class="card"><div class="card-section"><h3>Cells</h3><div class="props">${cells}</div></div></div></div>`;
 }
 function detailGrid(r) {
-  const props = [
-    ['Voltage R/S/T', `${fmt(val(r,'grid_voltage_r'))} / ${fmt(val(r,'grid_voltage_s'))} / ${fmt(val(r,'grid_voltage_t'))} V`],
-    ['Frequency', `${fmt(val(r,'grid_frequency'),2)} Hz`],
-    ['Import Power', `${fmtInt(val(r,'grid_import_power'))} W`],
-    ['Export Power', `${fmtInt(val(r,'grid_export_power'))} W`],
-    ['Import Today', `${fmt(val(r,'grid_energy_in_today'),2)} kWh`],
-    ['Export Today', `${fmt(val(r,'grid_energy_out_today'),2)} kWh`]
-  ];
-  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Grid</h3><div class="props">${propsHtml(props)}</div></div></div></div>`;
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Grid</h3><div class="props">
+      ${prop('Voltage R','grid_voltage_r',{suffix:' V'})}
+      ${prop('Voltage S','grid_voltage_s',{suffix:' V'})}
+      ${prop('Voltage T','grid_voltage_t',{suffix:' V'})}
+      ${prop('Frequency','grid_frequency',{suffix:' Hz', digits:2})}
+      ${prop('Import Power','grid_import_power',{suffix:' W', int:1})}
+      ${prop('Export Power','grid_export_power',{suffix:' W', int:1})}
+      ${prop('Import Today','grid_energy_in_today',{suffix:' kWh', digits:2})}
+      ${prop('Export Today','grid_energy_out_today',{suffix:' kWh', digits:2})}
+    </div></div></div></div>`;
 }
 function detailSolar(r) {
-  const pv1 = val(r,'pv1_power') || 0;
-  const pv2 = val(r,'pv2_power') || 0;
-  const props = [
-    ['Total PV Power', `${fmtInt(pv1+pv2)} W`],
-    ['PV1 Power', `${fmtInt(pv1)} W`],
-    ['PV2 Power', `${fmtInt(pv2)} W`],
-    ['PV1 Voltage', `${fmt(val(r,'pv1_voltage'))} V`],
-    ['PV2 Voltage', `${fmt(val(r,'pv2_voltage'))} V`],
-    ['PV Energy Today', `${fmt(val(r,'pv_energy_today'),2)} kWh`]
-  ];
-  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Solar</h3><div class="props">${propsHtml(props)}</div></div></div></div>`;
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Solar</h3><div class="props">
+      ${prop('Total PV Power','pv_total_power',{suffix:' W', int:1})}
+      ${prop('PV1 Power','pv1_power',{suffix:' W', int:1})}
+      ${prop('PV2 Power','pv2_power',{suffix:' W', int:1})}
+      ${prop('PV1 Voltage','pv1_voltage',{suffix:' V'})}
+      ${prop('PV2 Voltage','pv2_voltage',{suffix:' V'})}
+      ${prop('PV Energy Today','pv_energy_today',{suffix:' kWh', digits:2})}
+    </div></div></div></div>`;
 }
 function detailLoad(r) {
-  const pv1 = val(r,'pv1_power') || 0;
-  const pv2 = val(r,'pv2_power') || 0;
-  const gridIn = val(r,'grid_import_power') || 0;
-  const gridOut = val(r,'grid_export_power') || 0;
-  const chargeP = val(r,'charge_power') || 0;
-  const dischargeP = val(r,'discharge_power') || 0;
-  const load = val(r,'load_power') || val(r,'total_load_power') || (pv1+pv2 + gridIn - gridOut + (dischargeP - chargeP));
-  const props = [
-    ['Total Load', `${fmtInt(load)} W`],
-    ['EPS Power', `${fmtInt(val(r,'eps_power'))} W`],
-    ['Load Energy Today', `${fmt(val(r,'load_energy_today'),2)} kWh`],
-    ['EPS Energy Today', `${fmt(val(r,'eps_energy_today'),2)} kWh`]
-  ];
-  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Load</h3><div class="props">${propsHtml(props)}</div></div></div></div>`;
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Load</h3><div class="props">
+      ${prop('Total Load','load_power',{suffix:' W', int:1})}
+      ${prop('EPS Power','eps_power',{suffix:' W', int:1})}
+      ${prop('Load Energy Today','load_energy_today',{suffix:' kWh', digits:2})}
+      ${prop('EPS Energy Today','eps_energy_today',{suffix:' kWh', digits:2})}
+    </div></div></div></div>`;
 }
 function detailEnvironment(r) {
-  const props = [
-    ['Inverter Temp', `${fmt(val(r,'temp_inverter'))} °C`],
-    ['Battery Temp', `${fmt(val(r,'temp_battery'))} °C`],
-    ['Radiator 1', `${fmt(val(r,'temp_radiator_1'))} °C`],
-    ['Radiator 2', `${fmt(val(r,'temp_radiator_2'))} °C`],
-    ['Outside Temp', `${fmt(val(r,'temp_outside'))} °C`]
-  ];
-  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Environment</h3><div class="props">${propsHtml(props)}</div></div></div></div>`;
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Environment</h3><div class="props">
+      ${prop('Inverter Temp','temp_inverter',{suffix:' °C'})}
+      ${prop('Battery Temp','temp_battery',{suffix:' °C'})}
+      ${prop('Radiator 1','temp_radiator_1',{suffix:' °C'})}
+      ${prop('Radiator 2','temp_radiator_2',{suffix:' °C'})}
+      ${prop('Outside Temp','temp_outside',{suffix:' °C'})}
+    </div></div></div></div>`;
 }
 
 function showDetail(name) {
   const titles = {inverter:'Inverter', battery:'Battery', grid:'Grid', solar:'Solar', load:'Load', environment:'Environment'};
   document.getElementById('detail-title').textContent = titles[name] || name;
-  const fn = {inverter:detailInverter, battery:detailBattery, grid:detailGrid, solar:detailSolar, load:detailLoad, environment:detailEnvironment}[name];
-  document.getElementById('detail-content').innerHTML = fn ? fn(liveData) : '<p>No detail available.</p>';
+  currentDetail = name;
+  detailRendered = false;
+  renderDetailHTML();
   showPage('detail');
+}
+function renderDetailHTML() {
+  if (!currentDetail) return;
+  const fn = {inverter:detailInverter, battery:detailBattery, grid:detailGrid, solar:detailSolar, load:detailLoad, environment:detailEnvironment}[currentDetail];
+  const content = document.getElementById('detail-content');
+  if (!detailRendered) {
+    content.innerHTML = fn ? fn(liveData) : '<p>No detail available.</p>';
+    detailRendered = true;
+  } else {
+    // Only update text values to avoid image/text flicker; keep structure
+    content.querySelectorAll('[data-reg]').forEach(el => {
+      const v = val(liveData, el.dataset.reg, null);
+      if (v !== null && v !== undefined) {
+        const fmtFn = el.dataset.int ? fmtInt : (el.dataset.digits ? (n=>fmt(n, Number(el.dataset.digits))) : fmt);
+        let text = fmtFn(v);
+        if (text === null || text === undefined) text = '--';
+        if (el.dataset.suffix) text += el.dataset.suffix;
+        el.textContent = text;
+      }
+    });
+  }
+}
+function updateDetail(r) {
+  liveData = r;
+  renderDetailHTML();
 }
 
 function createLineChart(id, datasets, opts={}) {
@@ -805,10 +853,8 @@ async function refresh() {
   try {
     const r = await fetchJson(API + '/api/summary');
     renderMain(r);
-    if (document.getElementById('page-detail').classList.contains('active')) {
-      const name = document.getElementById('detail-title').textContent.toLowerCase();
-      const key = name === 'environment' ? 'environment' : (name === 'solar' ? 'solar' : (['inverter','battery','grid','load'].includes(name)?name:'inverter'));
-      showDetail(key);
+    if (currentDetail) {
+      updateDetail(r);
     }
   } catch (e) { console.error(e); }
 }
@@ -876,7 +922,7 @@ document.addEventListener('DOMContentLoaded', () => {
   refresh();
   loadMainCharts();
   connectWS();
-  setInterval(refresh, 5000);
+  setInterval(refresh, 15000);
 });
 </script>
 </body>
