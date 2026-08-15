@@ -299,8 +299,12 @@ def api_energy(
 ):
     """Return daily/weekly/monthly energy totals from MariaDB hourly rollups.
 
-    Aggregates `lux_hourly_energy` rows into kWh values.
+    Aggregates `lux_hourly_energy` rows into kWh values. All requested
+    periods are returned, filling missing periods and categories with 0 kWh.
     """
+    from datetime import date, timedelta
+    from collections import defaultdict
+
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
@@ -348,21 +352,38 @@ def api_energy(
             rows = cur.fetchall()
 
         # Pivot to {period: {name: {in_kwh, out_kwh}}}
-        data: dict[str, dict[str, dict[str, float]]] = {}
+        data: dict[str, dict[str, dict[str, float]]] = defaultdict(dict)
         for period, name, in_kwh, out_kwh in rows:
-            data.setdefault(period, {})[name] = {
+            data[period][name] = {
                 "in_kwh": float(in_kwh or 0),
                 "out_kwh": float(out_kwh or 0),
             }
 
-        # Ensure all requested periods exist, even if empty
-        # (simpler to leave sparse and let the frontend fill)
+        # Generate all requested periods and fill missing categories with zeroes.
+        known_categories = {"PV power", "Battery power", "Grid power", "Load power"}
+        today = date.today()
+        full_data: dict[str, dict[str, dict[str, float]]] = {}
+        for i in range(periods - 1, -1, -1):
+            if range_ == "daily":
+                period = (today - timedelta(days=i)).isoformat()
+            elif range_ == "weekly":
+                d = today - timedelta(weeks=i)
+                period = f"{d.isocalendar().year}-W{d.isocalendar().week:02d}"
+            else:
+                d = today - timedelta(days=i * 30)
+                period = d.strftime("%Y-%m")
+            existing = data.get(period, {})
+            full_data[period] = {
+                cat: existing.get(cat, {"in_kwh": 0.0, "out_kwh": 0.0})
+                for cat in known_categories
+            }
+
         return {
             "range": range_,
             "periods": periods,
             "unit": "kWh",
-            "data": data,
-            "count": len(data),
+            "data": full_data,
+            "count": len(full_data),
         }
     finally:
         conn.close()
