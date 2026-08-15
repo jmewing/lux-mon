@@ -351,10 +351,11 @@ def api_energy(
                 )
             rows = cur.fetchall()
 
-        # Pivot to {period: {name: {in_kwh, out_kwh}}}
+        # Pivot to {period_str: {name: {in_kwh, out_kwh}}}
         data: dict[str, dict[str, dict[str, float]]] = defaultdict(dict)
         for period, name, in_kwh, out_kwh in rows:
-            data[period][name] = {
+            period_str = str(period)
+            data[period_str][name] = {
                 "in_kwh": float(in_kwh or 0),
                 "out_kwh": float(out_kwh or 0),
             }
