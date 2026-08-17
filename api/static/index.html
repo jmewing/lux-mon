@@ -247,23 +247,64 @@ a.status:hover > div .label { color: var(--link-color); }
 
     <!-- Automation Dashboard -->
     <div id="page-automations" class="section">
-      <div class="page-header"><div class="title"><h2>Automation Dashboard</h2></div></div>
+      <div class="page-header"><div class="title"><h2>Power Management</h2></div></div>
+
+      <!-- Global control -->
       <div class="card" style="margin-bottom:1em;">
         <div class="card-section">
-          <h3>Global Control</h3>
-          <div style="display:flex; align-items:center; gap:1rem; margin-top:0.75rem;">
-            <label class="field" style="flex-direction:row; align-items:center; gap:0.5rem; margin:0;"><input type="checkbox" id="auto-enabled"> <span>Enable automation engine</span></label>
-            <button class="btn" id="btn-save-auto-enabled">Save</button>
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+            <div>
+              <h3>Automation Engine</h3>
+              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Rules run after every snapshot. Use <strong>dry run</strong> to test safely.</p>
+            </div>
+            <label class="field" style="flex-direction:row; align-items:center; gap:0.5rem; margin:0;"><input type="checkbox" id="auto-enabled"> <span>Enable</span></label>
           </div>
-          <p class="text-light" style="margin-top:0.75rem; font-size:0.85rem;">Rules run after every snapshot. Use <strong>dry run</strong> to test safely.</p>
         </div>
       </div>
-      <div class="actions" style="margin-bottom:1em;">
-        <button class="btn" id="btn-add-rule">Add Rule</button>
-        <button class="btn" id="btn-test-rules">Dry-Run Test</button>
-        <button class="btn" id="btn-load-rules">Reload</button>
+
+      <!-- Timer schedule (charge / discharge time slots) -->
+      <div class="card" style="margin-bottom:1em;">
+        <div class="card-section">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
+            <div>
+              <h3>Timer Schedule</h3>
+              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Configure when the inverter charges from grid and when it prioritises battery.</p>
+            </div>
+            <button class="btn" id="btn-save-schedule">Save Schedule</button>
+          </div>
+          <div id="schedule-editor"></div>
+        </div>
       </div>
-      <div id="rules-list"></div>
+
+      <!-- Automation rules -->
+      <div class="card" style="margin-bottom:1em;">
+        <div class="card-section">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+            <h3>Automation Rules</h3>
+            <div class="actions" style="margin:0;">
+              <button class="btn" id="btn-add-rule">Add Rule</button>
+              <button class="btn" id="btn-test-rules">Dry-Run Test</button>
+              <button class="btn" id="btn-load-rules">Reload</button>
+            </div>
+          </div>
+          <div id="rules-list" style="margin-top:0.75rem;"></div>
+        </div>
+      </div>
+
+      <!-- Rule editor modal -->
+      <div id="rule-editor" style="display:none;">
+        <div class="card" style="margin-bottom:1em;">
+          <div class="card-section">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+              <h3 id="rule-editor-title">Edit Rule</h3>
+              <button class="btn" id="btn-rule-editor-close">Close</button>
+            </div>
+            <div id="rule-editor-body" style="margin-top:0.75rem;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Automation log -->
       <div class="card" style="margin-top:1em;">
         <div class="card-section"><h3>Automation Log</h3><div id="auto-log" style="max-height:300px; overflow:auto; font-size:0.85rem;"></div></div>
       </div>
@@ -681,7 +722,19 @@ async function loadMainCharts() {
       mk('Grid export','grid_export_power','#ef4444'),
       mk('Load','load_power','#f97316')
     ]);
-    createLineChart('chart-battery-power', [mk('Battery power','battery_power','#22c55e', false)]);
+    // Battery power = discharge - charge (net). There is no single 'battery_power'
+    // register in history, so compute it from the two that do exist.
+    const batPower = {
+      label: 'Battery power',
+      data: rows.map(r => {
+        const d = r.registers['discharge_power'];
+        const c = r.registers['charge_power'];
+        if (d == null && c == null) return null;
+        return { x: r.timestamp, y: (d || 0) - (c || 0) };
+      }).filter(p => p),
+      borderColor: '#22c55e', backgroundColor: '#22c55e', fill: false, tension: 0.2, pointRadius: 0
+    };
+    createLineChart('chart-battery-power', [batPower]);
     createLineChart('chart-battery-soc', [mk('SOC','soc','#a855f7', false)]);
   } catch (e) { console.error('loadMainCharts error', e); }
 }
@@ -748,39 +801,317 @@ async function loadHistorical() {
 
 let autoRegisters = [];
 let autoRules = [];
+let autoSettings = {};
+let editingRuleIdx = -1;
+
+const AUTO_SENSORS = [
+  {name:'battery_voltage', label:'Battery voltage', unit:'V'},
+  {name:'soc', label:'Battery SOC', unit:'%'},
+  {name:'soh', label:'Battery SOH', unit:'%'},
+  {name:'battery_current', label:'Battery current', unit:'A'},
+  {name:'pv1_power', label:'PV1 power', unit:'W'},
+  {name:'pv2_power', label:'PV2 power', unit:'W'},
+  {name:'grid_import_power', label:'Grid import', unit:'W'},
+  {name:'grid_export_power', label:'Grid export', unit:'W'},
+  {name:'charge_power', label:'Charge power', unit:'W'},
+  {name:'discharge_power', label:'Discharge power', unit:'W'},
+  {name:'temp_inverter', label:'Inverter temp', unit:'°C'},
+  {name:'temp_battery', label:'Battery temp', unit:'°C'}
+];
+
+function regByName(name) { return autoRegisters.find(r => r.name === name); }
+function sensorLabel(name) { const s = AUTO_SENSORS.find(x => x.name === name); return s ? s.label : name; }
+
 async function loadAutomationRegisters() {
   try { autoRegisters = (await fetchJson(API + '/api/automation/registers')).registers; } catch (e) { console.error(e); }
 }
+async function loadAutomationSettings() {
+  try {
+    const res = await fetchJson(API + '/api/settings');
+    const settings = res.settings || {};
+    autoSettings = Object.fromEntries(
+      Object.entries(settings).map(([k, v]) => [k, typeof v === 'object' && v !== null ? v.value : v])
+    );
+  } catch (e) { console.error(e); }
+}
 async function loadAutomation() {
-  await loadAutomationRegisters();
+  await Promise.all([loadAutomationRegisters(), loadAutomationSettings()]);
   const res = await fetchJson(API + '/api/automation/rules');
   autoRules = res.rules || [];
   document.getElementById('auto-enabled').checked = res.enabled;
   renderRules();
+  renderSchedule();
   renderAutomationLog();
 }
+
+function decodeTime(num) {
+  if (num === null || num === undefined || num === '') return '';
+  const n = Number(num);
+  if (Number.isNaN(n)) return '';
+  const hh = Math.floor(n / 256);
+  const mm = n % 256;
+  return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+}
+function encodeTime(hhmm) {
+  if (!hhmm || !hhmm.includes(':')) return '';
+  const [hh, mm] = hhmm.split(':');
+  const h = Number(hh), m = Number(mm);
+  if (Number.isNaN(h) || Number.isNaN(m)) return '';
+  return String(h * 256 + m);
+}
+
+function renderSchedule() {
+  const el = document.getElementById('schedule-editor');
+  if (!el) return;
+  const groups = [
+    {title:'Grid charge', prefix:'ac_charge_period', power:'ac_charge_power', soc:'ac_charge_soc_limit'},
+    {title:'Charge priority', prefix:'charge_priority_period', power:'charge_priority_power', soc:'charge_priority_soc_limit'},
+    {title:'Forced discharge', prefix:'forced_discharge_period', power:'forced_discharge_power', soc:'forced_discharge_soc_limit'}
+  ];
+  el.innerHTML = groups.map(g => {
+    const slots = [1,2,3].map(n => ({n, start:regByName(`${g.prefix}_${n}_start`), end:regByName(`${g.prefix}_${n}_end`)}));
+    const power = regByName(g.power);
+    const soc = regByName(g.soc);
+    return `<div style="margin-bottom:1.25rem;">
+      <h4 style="margin-bottom:0.5rem;">${g.title}</h4>
+      ${power ? `<div class="form-grid" style="margin-bottom:0.5rem;">
+        <div class="field"><label>${power.desc || g.power} (${power.unit})</label><input type="number" data-sched="${g.power}" min="${power.min}" max="${power.max}" step="1"></div>
+        ${soc ? `<div class="field"><label>${soc.desc || g.soc} (${soc.unit})</label><input type="number" data-sched="${g.soc}" min="${soc.min}" max="${soc.max}" step="1"></div>` : ''}
+      </div>` : ''}
+      <table class="striped border padded text-align-center" style="width:100%;">
+        <thead><tr class="font-bold"><td style="width:25%">Slot</td><td style="width:37.5%">From</td><td style="width:37.5%">To</td></tr></thead>
+        <tbody>${slots.map(s => `<tr>
+          <td>Slot ${s.n}</td>
+          <td><input type="time" data-sched="${g.prefix}_${s.n}_start" style="width:100%;"></td>
+          <td><input type="time" data-sched="${g.prefix}_${s.n}_end" style="width:100%;"></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('[data-sched]').forEach(inp => {
+    const key = inp.dataset.sched;
+    const reg = regByName(key);
+    if (!reg) return;
+    const raw = autoSettings[key];
+    if (raw === undefined || raw === null || raw === '') return;
+    if (reg.unit === 'time') {
+      inp.value = decodeTime(raw);
+    } else {
+      inp.value = raw;
+    }
+  });
+}
+async function saveSchedule() {
+  const msg = document.getElementById('auto-msg');
+  const el = document.getElementById('schedule-editor');
+  if (!el) return;
+  const values = {};
+  el.querySelectorAll('[data-sched]').forEach(inp => {
+    const key = inp.dataset.sched;
+    const reg = regByName(key);
+    if (!reg) return;
+    if (inp.value === '') return;
+    if (reg.unit === 'time') {
+      const enc = encodeTime(inp.value);
+      if (enc !== '') values[key] = enc;
+    } else {
+      values[key] = inp.value;
+    }
+  });
+  if (!Object.keys(values).length) { msg.textContent = 'Nothing to save.'; return; }
+  msg.textContent = 'Saving schedule...'; msg.style.color = 'var(--light-text-color)';
+  try {
+    await Promise.all(Object.entries(values).map(([name, value]) =>
+      fetch(API + '/api/settings/' + encodeURIComponent(name), {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})
+      }).then(r => { if (!r.ok) throw new Error(name + ': ' + r.statusText); })
+    ));
+    msg.textContent = 'Schedule saved.'; msg.style.color = 'var(--green-color)';
+  } catch (e) {
+    msg.textContent = 'Error saving schedule: ' + e.message; msg.style.color = 'var(--red-color)';
+  }
+}
+
 function renderRules() {
   const container = document.getElementById('rules-list');
-  if (!autoRules.length) { container.innerHTML = '<p class="text-light">No rules yet.</p>'; return; }
+  if (!autoRules.length) { container.innerHTML = '<p class="text-light">No rules yet. Click “Add Rule” to create one.</p>'; return; }
   container.innerHTML = autoRules.map((rule, idx) => {
     const tw = rule.time_window || {};
-    const conds = (rule.conditions || []).map(c => `${c.sensor} ${c.min ?? ''}-${c.max ?? ''}`).join(', ') || 'none';
+    const conds = (rule.conditions || []).map(c => `${sensorLabel(c.sensor)} ${c.min ?? ''}–${c.max ?? ''}`).join(', ') || 'always';
     const action = rule.action || {};
-    const actionText = action.value !== undefined ? `${action.value} ${autoRegisters.find(r => r.name === action.register)?.unit || ''}` : 'range table';
-    return `<div class="card rule-card"><div class="card-section"><h3>${rule.name || 'Unnamed'}</h3><div class="rule-meta">Time: ${tw.start || '00:00'} - ${tw.end || '23:59'} | Conditions: ${conds} | Action: ${action.register || '?'} = ${actionText}${rule.dry_run ? '<span style="color:var(--yellow-color)"> [DRY RUN]</span>' : ''}</div><div class="actions" style="margin:0;"><button class="btn" onclick="editRule(${idx})">Edit</button><button class="btn negative" onclick="deleteRule('${rule.id}')">Delete</button></div></div></div>`;
+    const reg = regByName(action.register);
+    let actionText;
+    if (action.ranges && action.ranges.length) {
+      actionText = `${action.ranges.length} range${action.ranges.length>1?'s':''} (${sensorLabel(action.range_sensor)})`;
+    } else {
+      actionText = `${action.value ?? '?'} ${reg ? reg.unit : ''}`;
+    }
+    return `<div class="card rule-card"><div class="card-section">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+        <h3>${rule.name || 'Unnamed'}${rule.dry_run ? ' <span style="color:var(--yellow-color); font-size:0.8rem;">[DRY RUN]</span>' : ''}</h3>
+        <div class="actions" style="margin:0;">
+          <button class="btn" onclick="openRuleEditor(${idx})">Edit</button>
+          <button class="btn negative" onclick="deleteRule('${rule.id}')">Delete</button>
+        </div>
+      </div>
+      <div class="rule-meta">Time: ${tw.start || '00:00'} – ${tw.end || '23:59'} · When: ${conds} · Set ${action.register || '?'} = ${actionText}</div>
+    </div></div>`;
   }).join('');
 }
-function addRuleTemplate() {
-  autoRules.push({id:'rule_'+Date.now(), name:'New rule', enabled:true, dry_run:true, time_window:{start:'21:00', end:'06:00'}, conditions:[{sensor:'battery_voltage', min:0, max:54}], action:{register:'ac_charge_power', value:85}});
-  renderRules(); saveRules();
-}
-function editRule(idx) {
+
+function openRuleEditor(idx) {
+  editingRuleIdx = idx;
   const rule = autoRules[idx];
-  const name = prompt('Rule name:', rule.name);
-  if (name === null) return;
-  rule.name = name;
-  rule.dry_run = !confirm('Disable dry-run? (Cancel keeps dry-run for safety)');
-  saveRules(); renderRules();
+  document.getElementById('rule-editor-title').textContent = rule.name || 'Edit Rule';
+  document.getElementById('rule-editor').style.display = 'block';
+  renderRuleEditorBody(rule);
+  document.getElementById('rule-editor').scrollIntoView({behavior:'smooth'});
+}
+function closeRuleEditor() {
+  document.getElementById('rule-editor').style.display = 'none';
+  editingRuleIdx = -1;
+}
+function renderRuleEditorBody(rule) {
+  const body = document.getElementById('rule-editor-body');
+  const tw = rule.time_window || {};
+  const conds = rule.conditions || [];
+  const action = rule.action || {};
+  const regOptions = autoRegisters.map(r => `<option value="${r.name}" ${r.name===action.register?'selected':''}>${r.name} (${r.unit}) — ${r.desc||''}</option>`).join('');
+  const sensorOptions = AUTO_SENSORS.map(s => `<option value="${s.name}">${s.label} (${s.unit})</option>`).join('');
+
+  body.innerHTML = `
+    <div class="form-grid">
+      <div class="field"><label>Rule name</label><input type="text" id="re-name" value="${rule.name || ''}"></div>
+      <div class="field"><label>Dry run (test only, no writes)</label><label style="flex-direction:row; align-items:center; gap:0.5rem;"><input type="checkbox" id="re-dryrun" ${rule.dry_run?'checked':''}> <span>Enabled</span></label></div>
+    </div>
+    <h4 style="margin:1rem 0 0.5rem;">When — time of day</h4>
+    <div class="form-grid">
+      <div class="field"><label>From</label><input type="time" id="re-tw-start" value="${tw.start || '00:00'}"></div>
+      <div class="field"><label>To</label><input type="time" id="re-tw-end" value="${tw.end || '23:59'}"></div>
+    </div>
+    <h4 style="margin:1rem 0 0.5rem;">And when — conditions</h4>
+    <div id="re-conditions"></div>
+    <button class="btn" id="re-add-cond" style="margin-top:0.5rem;">+ Add condition</button>
+    <h4 style="margin:1rem 0 0.5rem;">Set — action</h4>
+    <div class="form-grid">
+      <div class="field"><label>Register</label><select id="re-action-reg">${regOptions}</select></div>
+      <div class="field"><label>Mode</label><select id="re-action-mode">
+        <option value="value" ${action.value!==undefined?'selected':''}>Fixed value</option>
+        <option value="ranges" ${action.ranges&&action.ranges.length?'selected':''}>Range table</option>
+      </select></div>
+    </div>
+    <div id="re-action-value-wrap" style="margin-top:0.5rem;"></div>
+    <div id="re-action-ranges-wrap" style="margin-top:0.5rem;"></div>
+    <div class="actions">
+      <button class="btn" id="re-save">Save Rule</button>
+      <button class="btn" id="re-cancel">Cancel</button>
+    </div>
+  `;
+
+  const condWrap = document.getElementById('re-conditions');
+  function renderConds() {
+    condWrap.innerHTML = conds.map((c, i) => `
+      <div class="form-grid" style="margin-bottom:0.5rem; align-items:end;">
+        <div class="field"><label>Sensor</label><select data-cond="${i}" data-cond-field="sensor">${sensorOptions.replace(`value="${c.sensor}"`, `value="${c.sensor}" selected`)}</select></div>
+        <div class="field"><label>Min</label><input type="number" data-cond="${i}" data-cond-field="min" value="${c.min ?? ''}" placeholder="—"></div>
+        <div class="field"><label>Max</label><input type="number" data-cond="${i}" data-cond-field="max" value="${c.max ?? ''}" placeholder="—"></div>
+        <button class="btn negative" data-cond-del="${i}">✕</button>
+      </div>`).join('') || '<p class="text-light">No conditions — rule always applies during the time window.</p>';
+  }
+  renderConds();
+
+  function renderAction() {
+    const mode = document.getElementById('re-action-mode').value;
+    const reg = regByName(document.getElementById('re-action-reg').value);
+    const unit = reg ? reg.unit : '';
+    const min = reg ? reg.min : '';
+    const max = reg ? reg.max : '';
+    document.getElementById('re-action-value-wrap').style.display = mode === 'value' ? 'block' : 'none';
+    document.getElementById('re-action-ranges-wrap').style.display = mode === 'ranges' ? 'block' : 'none';
+    if (mode === 'value') {
+      document.getElementById('re-action-value-wrap').innerHTML = `<div class="field"><label>Value (${unit})</label><input type="number" id="re-action-value" value="${action.value ?? ''}" min="${min}" max="${max}" step="1"></div>`;
+    } else {
+      const ranges = action.ranges || [];
+      document.getElementById('re-action-ranges-wrap').innerHTML = `
+        <div class="field" style="margin-bottom:0.5rem;"><label>Range sensor</label><select id="re-range-sensor">${sensorOptions.replace(`value="${action.range_sensor||''}"`, `value="${action.range_sensor||''}" selected`)}</select></div>
+        <div id="re-ranges"></div>
+        <button class="btn" id="re-add-range" style="margin-top:0.5rem;">+ Add range</button>
+      `;
+      const rw = document.getElementById('re-ranges');
+      function renderRanges() {
+        rw.innerHTML = ranges.map((r, i) => `
+          <div class="form-grid" style="margin-bottom:0.5rem; align-items:end;">
+            <div class="field"><label>Min</label><input type="number" data-range="${i}" data-range-field="min" value="${r.min ?? ''}" placeholder="—"></div>
+            <div class="field"><label>Max</label><input type="number" data-range="${i}" data-range-field="max" value="${r.max ?? ''}" placeholder="—"></div>
+            <div class="field"><label>Value (${unit})</label><input type="number" data-range="${i}" data-range-field="value" value="${r.value ?? ''}"></div>
+            <button class="btn negative" data-range-del="${i}">✕</button>
+          </div>`).join('') || '<p class="text-light">No ranges yet.</p>';
+      }
+      renderRanges();
+      document.getElementById('re-add-range').onclick = () => { ranges.push({min:null,max:null,value:0}); renderRanges(); };
+      rw.addEventListener('click', e => {
+        const del = e.target.closest('[data-range-del]');
+        if (del) { ranges.splice(Number(del.dataset.rangeDel), 1); renderRanges(); }
+      });
+      rw.addEventListener('input', e => {
+        const t = e.target.closest('[data-range]');
+        if (!t) return;
+        const i = Number(t.dataset.range);
+        const f = t.dataset.rangeField;
+        ranges[i][f] = t.value === '' ? null : Number(t.value);
+      });
+    }
+  }
+  renderAction();
+
+  document.getElementById('re-add-cond').onclick = () => { conds.push({sensor:'battery_voltage', min:null, max:null}); renderConds(); };
+  condWrap.addEventListener('click', e => {
+    const del = e.target.closest('[data-cond-del]');
+    if (del) { conds.splice(Number(del.dataset.condDel), 1); renderConds(); }
+  });
+  condWrap.addEventListener('input', e => {
+    const t = e.target.closest('[data-cond]');
+    if (!t) return;
+    const i = Number(t.dataset.cond);
+    const f = t.dataset.condField;
+    conds[i][f] = t.value === '' ? null : (f === 'sensor' ? t.value : Number(t.value));
+  });
+  condWrap.addEventListener('change', e => {
+    const t = e.target.closest('[data-cond]');
+    if (!t) return;
+    const i = Number(t.dataset.cond);
+    const f = t.dataset.condField;
+    conds[i][f] = t.value === '' ? null : (f === 'sensor' ? t.value : Number(t.value));
+  });
+  document.getElementById('re-action-mode').onchange = renderAction;
+  document.getElementById('re-action-reg').onchange = renderAction;
+
+  document.getElementById('re-save').onclick = () => {
+    rule.name = document.getElementById('re-name').value || 'Unnamed';
+    rule.dry_run = document.getElementById('re-dryrun').checked;
+    rule.time_window = { start: document.getElementById('re-tw-start').value || '00:00', end: document.getElementById('re-tw-end').value || '23:59' };
+    rule.conditions = conds.filter(c => c.sensor);
+    const mode = document.getElementById('re-action-mode').value;
+    const regName = document.getElementById('re-action-reg').value;
+    if (mode === 'value') {
+      const v = document.getElementById('re-action-value').value;
+      rule.action = { register: regName, value: v === '' ? null : Number(v) };
+    } else {
+      const rs = document.getElementById('re-range-sensor').value;
+      rule.action = { register: regName, range_sensor: rs, ranges: (action.ranges || []).filter(r => r.value !== null && r.value !== undefined) };
+    }
+    closeRuleEditor();
+    renderRules();
+    saveRules();
+  };
+  document.getElementById('re-cancel').onclick = closeRuleEditor;
+}
+
+function addRuleTemplate() {
+  const rule = {id:'rule_'+Date.now(), name:'New rule', enabled:true, dry_run:true, time_window:{start:'21:00', end:'06:00'}, conditions:[{sensor:'battery_voltage', min:0, max:54}], action:{register:'ac_charge_power', value:85}};
+  autoRules.push(rule);
+  renderRules();
+  openRuleEditor(autoRules.length - 1);
 }
 async function deleteRule(id) {
   if (!confirm('Delete this rule?')) return;
@@ -906,7 +1237,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-add-rule').addEventListener('click', addRuleTemplate);
   document.getElementById('btn-load-rules').addEventListener('click', loadAutomation);
   document.getElementById('btn-test-rules').addEventListener('click', testRules);
-  document.getElementById('btn-save-auto-enabled').addEventListener('click', toggleAutomationEnabled);
+  document.getElementById('btn-save-schedule').addEventListener('click', saveSchedule);
+  document.getElementById('auto-enabled').addEventListener('change', toggleAutomationEnabled);
+  document.getElementById('btn-rule-editor-close').addEventListener('click', closeRuleEditor);
 
   document.querySelectorAll('.config-tab').forEach(b => b.addEventListener('click', () => showConfigPanel(b.dataset.config)));
   document.getElementById('btn-save-config').addEventListener('click', saveConfiguration);

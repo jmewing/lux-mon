@@ -476,8 +476,9 @@ class Outputs:
         grid_out = _sa_value(decoded, "grid_export_power") or 0.0
         self._upsert_hourly(cur, prefix, hour, "Grid power", grid_in * interval_hours, grid_out * interval_hours)
 
-        # Load
-        load = _sa_value(decoded, "inv_power") or 0.0
+        # Load — use EPS output power (the actual load port on off-grid/EPS setups).
+        # inv_power (grid port) is 0 when running in EPS/off-grid mode.
+        load = _sa_value(decoded, "eps_power") or _sa_value(decoded, "inv_power") or 0.0
         self._upsert_hourly(cur, prefix, hour, "Load power", load * interval_hours, None)
 
         # PV
