@@ -7,12 +7,47 @@ Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi don
 ## What It Does
 
 - **Passively listens** to your inverter's WiFi dongle — zero bus contention
+- **Actively polls** as a fallback for non-broadcasting dongles
 - **Stores** time-series data in **MariaDB/MySQL** (InfluxDB optional)
 - **Exposes** a **REST API** for scripting, morning briefings, Home Assistant, etc.
 - **Streams live snapshots** over a **WebSocket** (`/ws`) so the web dashboard updates instantly
+- **Writes inverter settings** via a safe automation rule engine with dry-run, clamping, and action logging
 - **Home Assistant energy dashboard** ready — publishes MQTT sensors with `state_class: total_increasing` for solar, grid, and battery flows
 - **Runs anywhere** — your Mac, a Raspberry Pi, a Docker container
 - **Dashboard-ready** — works with Grafana or any SQL-based visualization tool
+
+## Status
+
+This project is actively running on a **Dell R420 (`automation`, 192.168.12.10)** monitoring an EG4 6000XP inverter (serial `5203740777`) via the WiFi dongle at `192.168.12.224:8000`.
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| Collector | ✅ Live | 111 input registers decoded, ~30s writes to MariaDB + InfluxDB + MQTT |
+| REST API | ✅ Live | FastAPI on port 8080, systemd-managed |
+| Storage | ✅ Live | MariaDB, InfluxDB v2, hourly energy rollups |
+| Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals, settings, automations |
+| Active polling | ✅ Built | Fallback for non-broadcasting dongles |
+| Runtime settings | ✅ Live | DB-backed, editable from dashboard ⚙️ tab |
+| Docker image | ✅ Published | `jmewing/lux-mon:v1.0.1` (amd64 + arm64) on Docker Hub and GHCR |
+| RS-485 / BMS | ✅ Live | `lux-mon-rs485` daemon, EG4 A5/5A battery BMS driver deployed |
+| Alerts | ✅ Live | SMTP + webhook notifications, rate-limited, UI configurable |
+| Home Assistant | ✅ Integrated | MQTT auto-discovery, energy dashboard sensors |
+| Backup/restore | ✅ Built | Nightly systemd timer + one-command restore |
+| Grafana | ✅ Built | Pre-loaded `lux-mon-charts` dashboard and data source |
+| Automation rules | ✅ Built | Time + sensor conditions that write holding registers |
+
+### In progress / near-term
+
+- **Inverter Edit Mode page** — manual Read/Set for every editable EG4 6000XP holding register, mirroring the EG4 Monitor Maintenance tab.
+- **Automation page overhaul** — rebuild around a premade option list + wizard (like SolarAssistant's Power Management), with restore-value support and time/day conditions.
+- **Holding register map corrections** — align `collector/protocol.py` with the `LXP_REGISTERS.txt` reference, add missing registers, fix ranges, and correct AC charge current to register 168.
+
+### Roadmap
+
+- Quick Charge button that actually works (EG4 Monitor-style timed grid charge)
+- Generator charge support once the generator input is reconnected
+- Battery protection automations (SOC threshold + restore)
+- More inverter models via pluggable Modbus RTU drivers
 
 ## Architecture
 
@@ -139,10 +174,16 @@ The API server runs on port 8080 and provides:
 | `GET /api/settings` | All runtime settings |
 | `GET /api/settings/{name}` | Single setting value |
 | `PUT /api/settings/{name}` | Update a setting (JSON body: `{"value": "..."}`) |
+| `GET /api/automation/registers` | List writable holding registers for automation actions |
 | `GET /api/automation/rules` | List automation rules and global enable flag |
 | `POST /api/automation/rules` | Replace the full rule set (JSON array) |
+| `POST /api/automation/enable` | Globally enable/disable the automation engine |
 | `POST /api/automation/test` | Dry-run evaluate rules against the latest snapshot |
 | `GET /api/automation/log` | Recent automation actions / dry-runs |
+| `POST /api/backup` | Create a backup archive |
+| `GET /api/backups` | List backup archives |
+| `POST /api/prune` | Prune old detail data |
+| `GET /api/storage` | Show DB table sizes and disk usage |
 
 The built-in dashboard (`/`) includes an **Automations** page where you can enable the engine, add rules with time windows and sensor conditions, and test them in dry-run mode before allowing live inverter writes.
 
@@ -152,7 +193,7 @@ Rules are stored as JSON in the `automation_rules` setting and evaluated after e
 
 - `time_window`: `{"start": "21:00", "end": "06:00"}` (wraps past midnight)
 - `conditions`: list of `{"sensor": "battery_voltage", "min": 0, "max": 54}` checks
-- `action`: `{"register": "ac_charge_power", "value": 85}` or a `ranges` table
+- `action`: `{"register": "ac_charge_battery_current", "value": 85}` or a `ranges` table
 - `dry_run`: when `true`, the rule logs what it *would* write but never sends a Modbus command
 
 Only registers listed in `collector/protocol.py:HOLDING_REGISTERS` can be written, and every value is clamped to the register's documented min/max. Example rule matching SolarAssistant's night grid-charge behavior:
@@ -166,7 +207,7 @@ Only registers listed in `collector/protocol.py:HOLDING_REGISTERS` can be writte
   "time_window": {"start": "21:00", "end": "06:00"},
   "conditions": [],
   "action": {
-    "register": "ac_charge_power",
+    "register": "ac_charge_battery_current",
     "range_sensor": "battery_voltage",
     "ranges": [
       {"min": 0,   "max": 54.0, "value": 85},
@@ -178,6 +219,8 @@ Only registers listed in `collector/protocol.py:HOLDING_REGISTERS` can be writte
 ```
 
 Enable the engine globally with the `automation_enabled` setting (or the dashboard toggle). Set `dry_run: false` on a rule only when you are ready for live inverter writes.
+
+**Design note:** Readable values (SOC, voltage, current, power) are telemetry and are included automatically. Set values (charge current, SOC limits, time slots, modes) are only written when explicitly changed via the website or when an automation rule says "this is what we want it to be." lux-mon never writes a setting just because it happens to be readable.
 
 The API also serves a built-in web dashboard at `/` with real-time gauges, power flow, historic charts, battery details, energy totals, and runtime settings.
 
@@ -483,32 +526,8 @@ This project builds on the excellent reverse-engineering work of:
 - [jaredmauch/eg4-bridge](https://github.com/jaredmauch/eg4-bridge) — Maintained EG4 fork
 - [larduino/EG4-6000XP-Home-Assistant-Local-Control](https://github.com/larduino/EG4-6000XP-Home-Assistant-Local-Control) — EG4 6000XP register map
 
-Copies of these are mirrored in `docs/reference/` for preservation.
+Copies of these are mirrored in `docs/reference/` for preservation. The authoritative reverse-engineered Modbus address map for the LXP/EG4 inverter family is `docs/reference/lxp-bridge/doc/LXP_REGISTERS.txt`.
 
 ## License
 
 MIT
-
-## Status
-
-This project is actively running on a Raspberry Pi 4 ("alpha") monitoring an EG4 6000XP inverter.
-
-| Component | Status | Details |
-|-----------|--------|---------|
-| Collector | ✅ Live | 111 registers decoded, every 5s to MariaDB |
-| REST API | ✅ Live | FastAPI on port 8080, systemd-managed |
-| Storage | ✅ Live | MariaDB, ~17K snapshots/day, ~110MB/day |
-| Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals, settings |
-| Active polling | ✅ Built | Fallback for non-broadcasting dongles |
-| Runtime settings | ✅ Live | DB-backed, editable from dashboard ⚙️ tab |
-| Docker image | ✅ Published | `jmewing/lux-mon:v1.0.1` (amd64 + arm64) on Docker Hub and GHCR |
-| RS-485 / BMS | ✅ Live | `lux-mon-rs485` daemon, EG4 A5/5A battery BMS driver deployed |
-| Alerts | ✅ Live | SMTP + webhook notifications, rate-limited, UI configurable |
-| Home Assistant | ✅ Integrated | MQTT auto-discovery, energy dashboard sensors |
-| Backup/restore | ✅ Built | Nightly systemd timer + one-command restore |
-| Grafana | ✅ Built | Pre-loaded `lux-mon-charts` dashboard and data source |
-
-**Current runtimes**
-- Primary: Mac mini (`assistant`, 192.168.12.5) via Docker/Colima since 2026-08-05
-- Historical: Raspberry Pi 4 (`alpha`, Ubuntu 26.04 LTS) — warm standby
-- See `MEMORY.md` in the workspace for full deployment history.
