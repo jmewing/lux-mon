@@ -18,11 +18,11 @@ Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi don
 
 ## Status
 
-This project is actively running on a **Dell R420 (`automation`, 192.168.12.10)** monitoring an EG4 6000XP inverter (serial `5203740777`) via the WiFi dongle at `192.168.12.224:8000`.
+This project is actively running on private hardware monitoring an EG4 6000XP inverter.
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| Collector | ✅ Live | 111 input registers decoded, ~30s writes to MariaDB + InfluxDB + MQTT |
+| Collector | ✅ Live | 111 input registers decoded, writes to MariaDB + InfluxDB + MQTT |
 | REST API | ✅ Live | FastAPI on port 8080, systemd-managed |
 | Storage | ✅ Live | MariaDB, InfluxDB v2, hourly energy rollups |
 | Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals, settings, automations |
