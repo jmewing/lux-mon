@@ -68,7 +68,7 @@ jobs:
           images: ${{ steps.images.outputs.list }}
           tags: |
             type=raw,value=${{ steps.vars.outputs.version }}
-            type=raw,value=latest,enable=${{ steps.vars.outputs.version == 'v1.0' }}
+            type=raw,value=latest,enable=${{ !contains(steps.vars.outputs.version, '-') }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
