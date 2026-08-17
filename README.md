@@ -28,7 +28,7 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 | Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals, settings, automations |
 | Active polling | ✅ Built | Fallback for non-broadcasting dongles |
 | Runtime settings | ✅ Live | DB-backed, editable from dashboard ⚙️ tab |
-| Docker image | ✅ Published | `jmewing/lux-mon:v1.0.1` (amd64 + arm64) on Docker Hub and GHCR |
+| Docker image | ✅ Published | Stable: `jmewing/lux-mon:v1.0.1`; Beta: `jmewing/lux-mon:v1.1.0-beta.1` (amd64 + arm64) on Docker Hub and GHCR |
 | RS-485 / BMS | ✅ Live | `lux-mon-rs485` daemon, EG4 A5/5A battery BMS driver deployed |
 | Alerts | ✅ Live | SMTP + webhook notifications, rate-limited, UI configurable |
 | Home Assistant | ✅ Integrated | MQTT auto-discovery, energy dashboard sensors |
@@ -121,13 +121,25 @@ pre-built image instead, set `LUX_IMAGE` in `.env` and omit `--build`.
 
 Pre-built multi-arch images (amd64 + arm64) are published to:
 
-- **Docker Hub:** `jmewing/lux-mon:v1.0.1`
-- **GitHub Container Registry:** `ghcr.io/jmewing/lux-mon:v1.0.1`
+- **Stable (v1.0.x):**
+  - **Docker Hub:** `jmewing/lux-mon:v1.0.1`
+  - **GitHub Container Registry:** `ghcr.io/jmewing/lux-mon:v1.0.1`
+- **Development / beta (v1.1.0 inverter-write preview):**
+  - **Docker Hub:** `jmewing/lux-mon:v1.1.0-beta.1`
+  - **GitHub Container Registry:** `ghcr.io/jmewing/lux-mon:v1.1.0-beta.1`
 
-Example `.env`:
+`latest` always points to the most recent stable release.
+
+Example `.env` for the stable image:
 
 ```bash
 LUX_IMAGE=jmewing/lux-mon:v1.0.1
+```
+
+Example `.env` for the beta image:
+
+```bash
+LUX_IMAGE=jmewing/lux-mon:v1.1.0-beta.1
 ```
 
 Then run:
