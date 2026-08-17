@@ -44,8 +44,8 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 
 ### Roadmap
 
-- Quick Charge button that actually works (EG4 Monitor-style timed grid charge)
-- Generator charge support once the generator input is reconnected
+- Quick Charge button (EG4 Monitor-style timed grid charge)
+- Generator and AC-coupled charge support
 - Battery protection automations (SOC threshold + restore)
 - More inverter models via pluggable Modbus RTU drivers
 
@@ -95,13 +95,13 @@ LUX_INSTALL_DIR=/opt/lux-mon \
 LUX_USER=$(whoami) \
 LUX_MARIADB_PASSWORD='luxmon' \
 LUX_INFLUX_ADMIN_PASSWORD='choose-a-password' \
-LUX_DONGLE_HOST=192.168.12.224 \
+LUX_DONGLE_HOST=192.168.1.100 \
 bash scripts/install.sh
 ```
 
 After install:
-- API: http://your-host:8080/api/status
-- Grafana: http://your-host:3000/grafana/d/lux-mon-charts/lux-mon-charts
+- API: http://YOUR-HOST:8080/api/status
+- Grafana: http://YOUR-HOST:3000/grafana/d/lux-mon-charts/lux-mon-charts
 - Add an Apache/Nginx reverse proxy on port 80 if desired.
 
 ### Docker Compose (full stack)
@@ -427,7 +427,7 @@ luxmon/luxmon_solar/set/<setting>
 and writes valid values to MariaDB immediately. Example:
 
 ```bash
-mosquitto_pub -h 192.168.12.8 -t luxmon/luxmon_solar/set/alerts_soc_low -m 25
+mosquitto_pub -h 192.168.1.100 -t luxmon/luxmon_solar/set/alerts_soc_low -m 25
 ```
 
 Acknowledgments and errors are published on:
