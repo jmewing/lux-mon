@@ -45,3 +45,10 @@ docker-compose.override.yaml
 backups/
 PROJECT.md
 PLAN.md
+
+# Experimental / diagnostic scratch scripts (not part of the shipped feature)
+collector/diff_capture.py
+collector/diff_sampler.py
+collector/qc_force_test.py
+collector/qc_sampler.py
+collector/qc_trigger_test.py

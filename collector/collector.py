@@ -25,6 +25,8 @@ import time
 import logging
 import signal
 import sys
+import json
+import hashlib
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Callable
 from threading import Thread, Event
@@ -35,6 +37,7 @@ from .drivers import ModelDriver
 from .drivers.registry import get_driver, DEFAULT_MODEL
 from .outputs import Outputs, OutputConfig
 from .automation import AutomationEngine
+from .quick_charge import QuickChargeManager
 
 
 def _env_or(key: str, default=None, cast=None):
@@ -156,10 +159,11 @@ def _load_transport_options() -> dict:
 
 
 def _load_db_serials(cfg: CollectorConfig) -> None:
-    """Fill datalog/inverter serials from MariaDB settings if env didn't set them.
+    """Fill datalog/inverter serials from MariaDB settings.
 
-    Environment variables take precedence so deployments can keep using .env
-    while the web UI can store the values in the database.
+    The database is authoritative: a value stored in the DB overrides the
+    environment. Environment variables act only as a bootstrap/fallback for
+    fresh installs where the DB row has not been set yet.
     """
     try:
         import pymysql
@@ -174,10 +178,12 @@ def _load_db_serials(cfg: CollectorConfig) -> None:
             autocommit=True,
         )
         try:
-            if not cfg.datalog_serial:
-                cfg.datalog_serial = get(conn, "datalog_serial") or ""
-            if not cfg.inverter_serial:
-                cfg.inverter_serial = get(conn, "inverter_serial") or ""
+            db_datalog = get(conn, "datalog_serial")
+            db_inverter = get(conn, "inverter_serial")
+            if db_datalog not in (None, ""):
+                cfg.datalog_serial = db_datalog
+            if db_inverter not in (None, ""):
+                cfg.inverter_serial = db_inverter
         finally:
             conn.close()
     except Exception:
@@ -207,10 +213,11 @@ def _load_db_setting(name: str, cfg: CollectorConfig) -> Optional[str]:
 
 
 def _load_db_output_settings(cfg: CollectorConfig) -> None:
-    """Fill output backend settings from MariaDB if env didn't set them.
+    """Fill output backend settings from MariaDB.
 
-    Only fills keys that are empty/default in the environment so that .env
-    continues to override the database.
+    The database is authoritative: a value stored in the DB overrides the
+    environment. Environment variables act only as a bootstrap/fallback for
+    fresh installs where the DB row has not been set yet.
     """
     out = cfg.outputs
     try:
@@ -227,10 +234,10 @@ def _load_db_output_settings(cfg: CollectorConfig) -> None:
         )
         try:
             def _override(key: str, current, cast=None):
-                if current is True or (isinstance(current, str) and current):
-                    return current
+                # DB is authoritative: use the DB value when present, otherwise
+                # keep the environment/bootstrap value.
                 db_val = get(conn, key)
-                if db_val is None:
+                if db_val is None or db_val == "":
                     return current
                 if cast == bool:
                     return str(db_val).lower() in ("1", "true", "yes")
@@ -239,7 +246,12 @@ def _load_db_output_settings(cfg: CollectorConfig) -> None:
                         return int(db_val)
                     except ValueError:
                         return current
-                return str(db_val) if db_val is not None else current
+                if cast == float:
+                    try:
+                        return float(db_val)
+                    except ValueError:
+                        return current
+                return str(db_val)
 
             out.mariadb_enabled = _override("mariadb_enabled", out.mariadb_enabled, bool)
             out.influx_enabled = _override("influx_enabled", out.influx_enabled, bool)
@@ -282,6 +294,79 @@ def _load_db_output_settings(cfg: CollectorConfig) -> None:
             conn.close()
     except Exception:
         logger.exception("Failed to load output settings from MariaDB")
+
+
+def _load_db_core_settings(cfg: CollectorConfig) -> None:
+    """Fill core collector settings (dongle, transport, write interval) from DB.
+
+    The database is authoritative: a value stored in the DB overrides the
+    environment. Environment variables act only as a bootstrap/fallback.
+    """
+    try:
+        import pymysql
+        from .settings import get
+
+        conn = pymysql.connect(
+            host=cfg.outputs.mariadb_host,
+            port=cfg.outputs.mariadb_port,
+            user=cfg.outputs.mariadb_user,
+            password=cfg.outputs.mariadb_password,
+            database=cfg.outputs.mariadb_database,
+            autocommit=True,
+        )
+        try:
+            def _db(key: str, current, cast=None):
+                db_val = get(conn, key)
+                if db_val is None or db_val == "":
+                    return current
+                if cast == int:
+                    try:
+                        return int(db_val)
+                    except ValueError:
+                        return current
+                if cast == float:
+                    try:
+                        return float(db_val)
+                    except ValueError:
+                        return current
+                return str(db_val)
+
+            cfg.dongle_host = _db("dongle_host", cfg.dongle_host)
+            cfg.dongle_port = _db("dongle_port", cfg.dongle_port, int)
+            cfg.write_interval = _db("write_interval_sec", cfg.write_interval, int)
+            cfg.transport = _db("transport", cfg.transport)
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("Failed to load core settings from MariaDB")
+
+
+def _seed_db_from_env(cfg: CollectorConfig) -> None:
+    """Seed the DB settings table from environment variables (bootstrap).
+
+    Populates missing/empty DB rows with the current environment values so the
+    DB-authoritative collector reads the correct container-internal hostnames
+    and secrets on first run.
+    """
+    try:
+        import pymysql
+        from .settings import seed_from_env
+        conn = pymysql.connect(
+            host=cfg.outputs.mariadb_host,
+            port=cfg.outputs.mariadb_port,
+            user=cfg.outputs.mariadb_user,
+            password=cfg.outputs.mariadb_password,
+            database=cfg.outputs.mariadb_database,
+            autocommit=True,
+        )
+        try:
+            n = seed_from_env(conn)
+            if n:
+                logger.info("Seeded %d settings from environment", n)
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("Failed to seed DB from environment")
 
 
 def _create_transport(cfg: CollectorConfig, on_frame: Callable[[LuxFrame], None], driver: ModelDriver):
@@ -340,10 +425,13 @@ class PassiveCollector:
         self._writer: Optional[Thread] = None
         self._outputs: Optional[Outputs] = None
         self._automation: Optional[AutomationEngine] = None
+        self._quick_charge: Optional[QuickChargeManager] = None
         self._latest_input_raw: Dict = {}
         self._latest_hold_raw: Dict = {}
         self._latest_decoded: Dict = {}
         self._last_write = 0.0
+        self._config_fingerprint: Optional[str] = None
+        self._loaded_restart_values: Dict[str, str] = {}
 
         # Register handler for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -352,6 +440,130 @@ class PassiveCollector:
     def _signal_handler(self, signum, frame):
         logger.info("Received signal %s, shutting down...", signum)
         self.stop()
+
+    # ── Live config reload (DB-authoritative) ───────────────────────────────
+    #
+    # The database is the source of truth for runtime settings. On each write
+    # cycle we compare a fingerprint of the DB settings against what we loaded
+    # at startup. If it changed, we re-apply the config in place (C1) for
+    # live-safe settings, or exit cleanly (Docker restarts us) for settings
+    # that require a new driver/transport object.
+
+    # Settings that can be re-applied in place without a process restart.
+    _LIVE_SAFE_KEYS = (
+        "dongle_host", "dongle_port", "datalog_serial", "inverter_serial",
+        "write_interval_sec",
+        "influx_enabled", "influx_url", "influx_database", "influx_token",
+        "influx_org", "influx_username", "influx_password",
+        "mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_username",
+        "mqtt_password", "mqtt_topic_prefix", "mqtt_ha_discovery",
+        "mqtt_device_name", "mqtt_device_id",
+        "temperature_unit",
+        "alerts_enabled", "alerts_soc_low", "alerts_soc_critical",
+        "alerts_battery_temp_high", "alerts_inverter_temp_high",
+        "alerts_grid_lost_threshold_sec",
+        "alerts_email_enabled", "alerts_email_smtp_host",
+        "alerts_email_smtp_port", "alerts_email_username",
+        "alerts_email_password", "alerts_email_from", "alerts_email_to",
+        "alerts_email_tls", "alerts_webhook_enabled", "alerts_webhook_url",
+    )
+
+    # Settings that require a new driver/transport object (process restart).
+    _RESTART_KEYS = ("transport", "inverter_model")
+
+    def _read_db_settings(self) -> Dict[str, str]:
+        """Read all settings from MariaDB, or {} on failure."""
+        try:
+            import pymysql
+            from .settings import get_all
+            conn = pymysql.connect(
+                host=self.cfg.outputs.mariadb_host,
+                port=self.cfg.outputs.mariadb_port,
+                user=self.cfg.outputs.mariadb_user,
+                password=self.cfg.outputs.mariadb_password,
+                database=self.cfg.outputs.mariadb_database,
+                autocommit=True,
+            )
+            try:
+                return get_all(conn)
+            finally:
+                conn.close()
+        except Exception:
+            logger.exception("Failed to read settings from MariaDB")
+            return {}
+
+    def _compute_config_fingerprint(self) -> str:
+        """Hash the DB settings that affect collector behavior."""
+        import hashlib
+        settings = self._read_db_settings()
+        relevant = {k: settings.get(k, "") for k in self._LIVE_SAFE_KEYS + self._RESTART_KEYS}
+        blob = json.dumps(relevant, sort_keys=True)
+        return hashlib.sha256(blob.encode()).hexdigest()
+
+    def _reload_config(self) -> None:
+        """Re-apply DB settings to self.cfg and rebuild outputs + transport in place."""
+        logger.info("Config change detected; reloading settings from MariaDB")
+        _load_db_serials(self.cfg)
+        _load_db_output_settings(self.cfg)
+        _load_db_core_settings(self.cfg)
+
+        # Rebuild outputs (closes old backends, opens new ones).
+        if self._outputs:
+            try:
+                self._outputs.close()
+            except Exception:
+                logger.exception("Failed to close old outputs")
+        self.cfg.outputs._write_interval = float(self.cfg.write_interval)
+        self._outputs = Outputs(self.cfg.outputs, tz_name="UTC")
+
+        # Rebuild transport (stop old, start new).
+        if self._transport:
+            try:
+                self._transport.stop()
+            except Exception:
+                logger.exception("Failed to stop old transport")
+        self._transport = _create_transport(self.cfg, self._handle_frame, self.driver)
+        self._transport.start()
+        logger.info("Config reloaded: transport=%s, %s:%d",
+                    self.cfg.transport, self.cfg.dongle_host, self.cfg.dongle_port)
+
+    def _check_config_change(self) -> None:
+        """Compare the current DB config fingerprint against the loaded one.
+
+        On change, re-apply live-safe settings in place, or exit cleanly for
+        settings that require a new driver/transport (Docker restarts us).
+        """
+        if self._config_fingerprint is None:
+            return
+        try:
+            new_fp = self._compute_config_fingerprint()
+        except Exception:
+            logger.exception("Failed to compute config fingerprint")
+            return
+        if new_fp == self._config_fingerprint:
+            return
+
+        # Determine whether a restart-required key changed.
+        settings = self._read_db_settings()
+        restart_needed = any(
+            settings.get(k, "") != self._loaded_restart_values.get(k, "")
+            for k in self._RESTART_KEYS
+        )
+
+        if restart_needed:
+            logger.info("Restart-required setting changed (transport/inverter_model); exiting for Docker restart")
+            self.stop()
+            return
+
+        # Live-safe change: re-apply in place.
+        try:
+            self._reload_config()
+            self._config_fingerprint = new_fp
+            self._loaded_restart_values = {
+                k: settings.get(k, "") for k in self._RESTART_KEYS
+            }
+        except Exception:
+            logger.exception("Failed to reload config in place")
 
     def start(self) -> None:
         """Start the transport and writer threads."""
@@ -376,11 +588,27 @@ class PassiveCollector:
             table_prefix=self.cfg.outputs.mariadb_table_prefix,
         )
 
+        # Initialize quick-charge manager (one-shot timed grid charge).
+        self._quick_charge = QuickChargeManager(
+            db_host=self.cfg.outputs.mariadb_host,
+            db_port=self.cfg.outputs.mariadb_port,
+            db_user=self.cfg.outputs.mariadb_user,
+            db_password=self.cfg.outputs.mariadb_password,
+            db_name=self.cfg.outputs.mariadb_database,
+            table_prefix=self.cfg.outputs.mariadb_table_prefix,
+        )
+
         self._transport = _create_transport(self.cfg, self._handle_frame, self.driver)
         self._transport.start()
 
         self._writer = Thread(target=self._writer_loop, name="lux-writer", daemon=True)
         self._writer.start()
+
+        # Record the config fingerprint so we can detect live changes.
+        self._config_fingerprint = self._compute_config_fingerprint()
+        self._loaded_restart_values = {
+            k: self._read_db_settings().get(k, "") for k in self._RESTART_KEYS
+        }
 
     def stop(self) -> None:
         """Signal the collector to stop and release resources."""
@@ -421,6 +649,9 @@ class PassiveCollector:
     def _writer_loop(self) -> None:
         """Periodic writer thread: decode registers and write to storage."""
         while not self._stop.wait(self.cfg.write_interval):
+            # Detect live config changes (DB-authoritative) and re-apply.
+            self._check_config_change()
+
             if not self._latest_input_raw:
                 logger.warning("No input data received yet, skipping write")
                 continue
@@ -451,6 +682,20 @@ class PassiveCollector:
                         )
                     except Exception:
                         logger.exception("Automation evaluation failed")
+
+                # Check for an expired quick charge and restore the prior value.
+                if self._quick_charge and self.cfg.datalog_serial and self.cfg.inverter_serial:
+                    try:
+                        result = self._quick_charge.tick(
+                            dongle_host=self.cfg.dongle_host,
+                            dongle_port=self.cfg.dongle_port,
+                            datalog_serial=self.cfg.datalog_serial,
+                            inverter_serial=self.cfg.inverter_serial,
+                        )
+                        if result:
+                            logger.info("Quick charge tick: %s", result)
+                    except Exception:
+                        logger.exception("Quick charge tick failed")
 
                 if self._on_snapshot:
                     try:
@@ -528,9 +773,14 @@ def run_collector(
             if value is not None and hasattr(cfg, key):
                 setattr(cfg, key, value)
 
-    # Fill serials and output settings from DB if not provided by environment.
+    # Seed the DB from environment (bootstrap) so the DB-authoritative
+    # collector reads the correct container-internal values + secrets.
+    _seed_db_from_env(cfg)
+
+    # Fill serials and output settings from DB (DB is authoritative).
     _load_db_serials(cfg)
     _load_db_output_settings(cfg)
+    _load_db_core_settings(cfg)
 
     # Legacy LUX_POLL_MODE=true maps to tcp_active for backwards compatibility
     poll_mode = os.environ.get("LUX_POLL_MODE", "").lower() in ("1", "true", "yes")
@@ -540,7 +790,7 @@ def run_collector(
             "LUX_POLL_MODE=true is deprecated; set LUX_TRANSPORT=tcp_active instead"
         )
 
-    inverter_model = _env_or("LUX_INVERTER_MODEL") or _load_db_setting("inverter_model", cfg) or DEFAULT_MODEL
+    inverter_model = _load_db_setting("inverter_model", cfg) or _env_or("LUX_INVERTER_MODEL") or DEFAULT_MODEL
     try:
         driver = get_driver(inverter_model)
         logger.info("Using inverter driver: %s", driver.label)
