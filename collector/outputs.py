@@ -38,8 +38,9 @@ _REGISTER_TO_SA = {
     "grid_export_power": ("Grid power", "inverter_0_out"),
     "grid_import_power": ("Grid power", "inverter_0_in"),
     "grid_power_net": ("Grid power", "combined"),
-    "inv_power": ("Load power", "combined"),
-    "eps_power": ("Generator power", "combined"),
+    "inv_power": ("Inverter power", "inverter_0"),
+    "eps_power": ("EPS power", "inverter_0"),
+    "load_power": ("Load power", "combined"),
     "charge_power": ("Battery power", "inverter_0_in"),
     "discharge_power": ("Battery power", "inverter_0_out"),
     "battery_power_net": ("Battery power", "combined"),
@@ -211,6 +212,15 @@ def _build_computed(decoded: dict) -> Dict[str, float]:
     discharge = _sa_value(decoded, "discharge_power") or 0.0
     if charge > 0 or discharge > 0:
         computed["battery_power_net"] = charge - discharge
+
+    # Load power (derived). The LuxPower/EG4 protocol has no dedicated load
+    # register; load is the power balance across all sources/sinks:
+    #   load = pv + discharge + grid_import - charge - grid_export
+    # In EPS/off-grid mode eps_power already equals the load, but in grid
+    # passthrough eps_power is 0 and the load rides on grid_import minus the
+    # battery charge current (plus inverter self-consumption).
+    load = (pv_total + discharge + grid_import) - (charge + grid_export)
+    computed["load_power"] = max(0.0, load)
 
     # AC output voltage: use EPS phase R (S/T registers in current map appear unreliable)
     eps_r = _sa_value(decoded, "eps_voltage_r")
@@ -444,6 +454,17 @@ class Outputs:
                 for key, info in decoded.items()
                 if isinstance(info, dict) and "value" in info
             ]
+            # Merge computed/derived power values (e.g. load_power) so the API's
+            # /api/history endpoint can serve them alongside raw registers.
+            # Only power values (watts) are written; energy totals (kWh) and
+            # derived currents/voltages are intentionally excluded to avoid
+            # unit confusion in the registers table.
+            computed = _build_computed(decoded)
+            for key in ("load_power", "pv_power_total", "grid_power_net", "battery_power_net"):
+                value = computed.get(key)
+                if value is None:
+                    continue
+                rows.append((snapshot_id, key, float(value), "W"))
             if rows:
                 cur.executemany(
                     f"INSERT INTO {prefix}registers (snapshot_id, name, value, unit) VALUES (%s, %s, %s, %s)",
@@ -476,9 +497,14 @@ class Outputs:
         grid_out = _sa_value(decoded, "grid_export_power") or 0.0
         self._upsert_hourly(cur, prefix, hour, "Grid power", grid_in * interval_hours, grid_out * interval_hours)
 
-        # Load — use EPS output power (the actual load port on off-grid/EPS setups).
-        # inv_power (grid port) is 0 when running in EPS/off-grid mode.
-        load = _sa_value(decoded, "eps_power") or _sa_value(decoded, "inv_power") or 0.0
+        # Load — derived power balance (see _build_computed).
+        # load = pv + discharge + grid_import - charge - grid_export
+        pv_load = (
+            (_sa_value(decoded, "pv1_power") or 0.0)
+            + (_sa_value(decoded, "pv2_power") or 0.0)
+            + (_sa_value(decoded, "pv3_power") or 0.0)
+        )
+        load = max(0.0, (pv_load + discharge + grid_in) - (charge + grid_out))
         self._upsert_hourly(cur, prefix, hour, "Load power", load * interval_hours, None)
 
         # PV

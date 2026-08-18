@@ -33,29 +33,38 @@ MODBUS_WRITE_MULTI = 16
 # modify.  Values listed are raw 16-bit integers; use the scale field to
 # convert to/from engineering units.
 HOLDING_REGISTERS: Dict[int, dict] = {
+    # ── Power command (percent) registers 60-67 ──
     60: {"name": "active_power_percent",     "unit": "%",   "scale": 1.0,   "desc": "Active power command percent", "min": 0, "max": 100},
     61: {"name": "reactive_power_percent",   "unit": "%",   "scale": 1.0,   "desc": "Reactive power command percent", "min": 0, "max": 100},
     62: {"name": "power_factor_command",     "unit": "",    "scale": 1.0,   "desc": "Power factor command", "min": -100, "max": 100},
     63: {"name": "soft_start_slope",         "unit": "%/s", "scale": 1.0,   "desc": "Soft start slope", "min": 0, "max": 100},
     64: {"name": "charge_power_percent",     "unit": "%",   "scale": 1.0,   "desc": "Charge power percent", "min": 0, "max": 100},
     65: {"name": "discharge_power_percent",  "unit": "%",   "scale": 1.0,   "desc": "Discharge power percent", "min": 0, "max": 100},
-    66: {"name": "ac_charge_power",          "unit": "A",   "scale": 1.0,   "desc": "AC / grid charge current", "min": 0, "max": 140},
+    # NOTE: register 66 is AC_CHARGE_POWER_CMD (a *percent* command), NOT amps.
+    # The real AC charge current (amps) is register 168 (AC_CHARGE_BATTERY_CURRENT).
+    66: {"name": "ac_charge_power_percent",  "unit": "%",   "scale": 1.0,   "desc": "AC charge power command percent", "min": 0, "max": 100},
     67: {"name": "ac_charge_soc_limit",      "unit": "%",   "scale": 1.0,   "desc": "AC charge SOC limit", "min": 0, "max": 100},
-    # 68-73 are time-of-day slots encoded as HH:MM
-    68: {"name": "ac_charge_period_1_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 1 start (HH*256+MM)", "min": 0, "max": 2359},
-    69: {"name": "ac_charge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 1 end (HH*256+MM)", "min": 0, "max": 2359},
-    70: {"name": "ac_charge_period_2_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 2 start (HH*256+MM)", "min": 0, "max": 2359},
-    71: {"name": "ac_charge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 2 end (HH*256+MM)", "min": 0, "max": 2359},
-    72: {"name": "ac_charge_period_3_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 3 start (HH*256+MM)", "min": 0, "max": 2359},
-    73: {"name": "ac_charge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 3 end (HH*256+MM)", "min": 0, "max": 2359},
-    74: {"name": "charge_priority_power",      "unit": "A",   "scale": 1.0, "desc": "Charge priority current", "min": 0, "max": 140},
-    75: {"name": "charge_priority_soc_limit",  "unit": "%",   "scale": 1.0, "desc": "Charge priority SOC limit", "min": 0, "max": 100},
-    76: {"name": "charge_priority_period_1_start", "unit": "time", "scale": 1.0, "desc": "Charge priority period 1 start", "min": 0, "max": 2359},
-    77: {"name": "charge_priority_period_1_end",   "unit": "time", "scale": 1.0, "desc": "Charge priority period 1 end", "min": 0, "max": 2359},
-    78: {"name": "charge_priority_period_2_start", "unit": "time", "scale": 1.0, "desc": "Charge priority period 2 start", "min": 0, "max": 2359},
-    79: {"name": "charge_priority_period_2_end",   "unit": "time", "scale": 1.0, "desc": "Charge priority period 2 end", "min": 0, "max": 2359},
-    80: {"name": "charge_priority_period_3_start", "unit": "time", "scale": 1.0, "desc": "Charge priority period 3 start", "min": 0, "max": 2359},
-    81: {"name": "charge_priority_period_3_end",   "unit": "time", "scale": 1.0, "desc": "Charge priority period 3 end", "min": 0, "max": 2359},
+
+    # ── AC charge time-of-day slots 68-73 (MM*256+HH: hour in LOW byte, minute in HIGH byte) ──
+    # NOTE: encoding is hour in LSB, minute in MSB. 22:00 = 22 (0x0016), NOT 5632.
+    68: {"name": "ac_charge_period_1_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 1 start (MM*256+HH)", "min": 0, "max": 2359},
+    69: {"name": "ac_charge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 1 end (MM*256+HH)", "min": 0, "max": 2359},
+    70: {"name": "ac_charge_period_2_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 2 start (MM*256+HH)", "min": 0, "max": 2359},
+    71: {"name": "ac_charge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 2 end (MM*256+HH)", "min": 0, "max": 2359},
+    72: {"name": "ac_charge_period_3_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 3 start (MM*256+HH)", "min": 0, "max": 2359},
+    73: {"name": "ac_charge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 3 end (MM*256+HH)", "min": 0, "max": 2359},
+
+    # ── Forced charge (charge priority) 74-81 ──
+    74: {"name": "forced_charge_power",        "unit": "A",   "scale": 1.0, "desc": "Forced charge current", "min": 0, "max": 140},
+    75: {"name": "forced_charge_soc_limit",   "unit": "%",   "scale": 1.0, "desc": "Forced charge SOC limit", "min": 0, "max": 100},
+    76: {"name": "forced_charge_period_1_start", "unit": "time", "scale": 1.0, "desc": "Forced charge period 1 start", "min": 0, "max": 2359},
+    77: {"name": "forced_charge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "Forced charge period 1 end", "min": 0, "max": 2359},
+    78: {"name": "forced_charge_period_2_start", "unit": "time", "scale": 1.0, "desc": "Forced charge period 2 start", "min": 0, "max": 2359},
+    79: {"name": "forced_charge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "Forced charge period 2 end", "min": 0, "max": 2359},
+    80: {"name": "forced_charge_period_3_start", "unit": "time", "scale": 1.0, "desc": "Forced charge period 3 start", "min": 0, "max": 2359},
+    81: {"name": "forced_charge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "Forced charge period 3 end", "min": 0, "max": 2359},
+
+    # ── Forced discharge 82-89 ──
     82: {"name": "forced_discharge_power",     "unit": "A",   "scale": 1.0, "desc": "Forced discharge current", "min": 0, "max": 140},
     83: {"name": "forced_discharge_soc_limit", "unit": "%",   "scale": 1.0, "desc": "Forced discharge SOC limit", "min": 0, "max": 100},
     84: {"name": "forced_discharge_period_1_start", "unit": "time", "scale": 1.0, "desc": "Forced discharge period 1 start", "min": 0, "max": 2359},
@@ -64,6 +73,62 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     87: {"name": "forced_discharge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "Forced discharge period 2 end", "min": 0, "max": 2359},
     88: {"name": "forced_discharge_period_3_start", "unit": "time", "scale": 1.0, "desc": "Forced discharge period 3 start", "min": 0, "max": 2359},
     89: {"name": "forced_discharge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "Forced discharge period 3 end", "min": 0, "max": 2359},
+
+    # ── EPS output 90-91 ──
+    90: {"name": "eps_voltage_set",           "unit": "V",   "scale": 0.1,  "desc": "EPS output voltage setpoint", "min": 0, "max": 3000},
+    91: {"name": "eps_frequency_set",         "unit": "Hz",  "scale": 0.01, "desc": "EPS output frequency setpoint", "min": 0, "max": 6000},
+
+    # ── Lead-acid battery 99-109 ──
+    99:  {"name": "lead_acid_charge_voltage", "unit": "V",   "scale": 0.1,  "desc": "Lead-acid charge voltage reference", "min": 50, "max": 58},
+    100: {"name": "lead_acid_discharge_cut_voltage", "unit": "V", "scale": 0.1, "desc": "Lead-acid discharge cutoff voltage", "min": 40, "max": 56},
+    101: {"name": "lead_acid_charge_rate",    "unit": "A",   "scale": 1.0,  "desc": "Lead-acid charge rate", "min": 0, "max": 4480},
+    102: {"name": "lead_acid_discharge_rate", "unit": "A",   "scale": 1.0,  "desc": "Lead-acid discharge rate", "min": 0, "max": 4480},
+    103: {"name": "feed_in_grid_power_percent", "unit": "%", "scale": 1.0,  "desc": "Feed-in grid power percent", "min": 0, "max": 255},
+    105: {"name": "discharge_cutoff_soc_eod", "unit": "%",   "scale": 1.0,  "desc": "Discharge cutoff SOC (end of discharge)", "min": 10, "max": 90},
+
+    # ── SOC low limit EPS discharge 125 ──
+    125: {"name": "soc_low_limit_eps_discharge", "unit": "%", "scale": 1.0, "desc": "SOC low limit for EPS discharge", "min": 0, "max": 90},
+
+    # ── Lead-acid voltage / battery config 144-151 ──
+    144: {"name": "floating_voltage",        "unit": "V",   "scale": 0.1,  "desc": "Floating voltage", "min": 50, "max": 58},
+    146: {"name": "ac_input_range",          "unit": "",    "scale": 1.0,  "desc": "AC input range (0=APL, 1=UPS)", "min": 0, "max": 1},
+    147: {"name": "battery_capacity",        "unit": "Ah",  "scale": 1.0,  "desc": "Battery capacity", "min": 1, "max": 65535},
+    148: {"name": "nominal_battery_voltage", "unit": "V",   "scale": 0.1,  "desc": "Nominal battery voltage", "min": 0, "max": 600},
+    149: {"name": "equalization_voltage",    "unit": "V",   "scale": 0.1,  "desc": "Equalization voltage", "min": 50, "max": 59},
+    150: {"name": "equalization_period",     "unit": "days","scale": 1.0,  "desc": "Equalization period", "min": 0, "max": 365},
+    151: {"name": "equalization_time",       "unit": "h",   "scale": 1.0,  "desc": "Equalization time", "min": 0, "max": 24},
+
+    # ── AC First mode time slots 152-157 ──
+    152: {"name": "ac_first_period_1_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 1 start (MM*256+HH)", "min": 0, "max": 2359},
+    153: {"name": "ac_first_period_1_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 1 end (MM*256+HH)", "min": 0, "max": 2359},
+    154: {"name": "ac_first_period_2_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 2 start (MM*256+HH)", "min": 0, "max": 2359},
+    155: {"name": "ac_first_period_2_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 2 end (MM*256+HH)", "min": 0, "max": 2359},
+    156: {"name": "ac_first_period_3_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 3 start (MM*256+HH)", "min": 0, "max": 2359},
+    157: {"name": "ac_first_period_3_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 3 end (MM*256+HH)", "min": 0, "max": 2359},
+
+    # ── AC charge battery voltage/SOC thresholds 158-161 ──
+    158: {"name": "ac_charge_start_battery_voltage", "unit": "V", "scale": 0.1, "desc": "AC charge start battery voltage", "min": 0, "max": 600},
+    159: {"name": "ac_charge_end_battery_voltage",   "unit": "V", "scale": 0.1, "desc": "AC charge end battery voltage", "min": 0, "max": 600},
+    160: {"name": "ac_charge_start_battery_soc",     "unit": "%", "scale": 1.0, "desc": "AC charge start battery SOC", "min": 0, "max": 100},
+    161: {"name": "ac_charge_end_battery_soc",       "unit": "%", "scale": 1.0, "desc": "AC charge end battery SOC", "min": 0, "max": 100},
+
+    # ── Battery warning / protection 162-167 ──
+    162: {"name": "battery_warning_voltage",   "unit": "V",   "scale": 0.1,  "desc": "Battery warning voltage", "min": 0, "max": 600},
+    163: {"name": "battery_warning_recovery_voltage", "unit": "V", "scale": 0.1, "desc": "Battery warning recovery voltage", "min": 0, "max": 600},
+    164: {"name": "battery_warning_soc",       "unit": "%",   "scale": 1.0,  "desc": "Battery warning SOC", "min": 0, "max": 100},
+    165: {"name": "battery_warning_recovery_soc", "unit": "%", "scale": 1.0,  "desc": "Battery warning recovery SOC", "min": 0, "max": 100},
+    166: {"name": "battery_low_to_utility_voltage", "unit": "V", "scale": 0.1, "desc": "Battery low-to-utility voltage", "min": 0, "max": 600},
+    167: {"name": "battery_low_to_utility_soc", "unit": "%", "scale": 1.0, "desc": "Battery low-to-utility SOC", "min": 0, "max": 100},
+
+    # ── AC charge battery current (amps) 168 ──
+    # This is the register the EG4 Monitor "AC Charge Battery Current(A)" writes.
+    168: {"name": "ac_charge_battery_current", "unit": "A",   "scale": 1.0,  "desc": "AC charge battery current (amps)", "min": 0, "max": 125},
+
+    # ── On-grid EOD voltage 169 ──
+    169: {"name": "on_grid_eod_voltage",       "unit": "V",   "scale": 0.1,  "desc": "On-grid end-of-discharge voltage", "min": 40, "max": 58},
+
+    # ── Generator 177 ──
+    177: {"name": "max_generator_input_power", "unit": "W",   "scale": 1.0,  "desc": "Max generator input power", "min": 0, "max": 65534},
 }
 
 # Build reverse lookups by name

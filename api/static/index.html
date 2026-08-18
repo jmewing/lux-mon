@@ -745,7 +745,7 @@ function processEnergy(res) {
   return periods.map(p => {
     const d = data[p];
     const get = (cat, dir) => (d[cat] ? (d[cat][dir + '_kwh'] || 0) : 0);
-    return { period: p, pv: get('PV power','in'), battery_in: get('Battery power','in'), battery_out: get('Battery power','out'), grid_in: get('Grid power','in'), grid_out: get('Grid power','out'), load: get('Load power','out') };
+    return { period: p, pv: get('PV power','in'), battery_in: get('Battery power','in'), battery_out: get('Battery power','out'), grid_in: get('Grid power','in'), grid_out: get('Grid power','out'), load: get('Load power','in') };
   });
 }
 async function loadCharts30d() {
@@ -1161,8 +1161,11 @@ async function loadConfiguration() {
   document.querySelectorAll('#page-configuration [data-key]').forEach(el => {
     const key = el.dataset.key;
     if (settings[key] !== undefined) {
-      if (el.type === 'checkbox') el.checked = !!settings[key];
-      else el.value = settings[key];
+      // Each setting is an object {value, db_value, source, ...}; extract .value.
+      const raw = settings[key];
+      const val = (raw !== null && typeof raw === 'object') ? raw.value : raw;
+      if (el.type === 'checkbox') el.checked = !!val;
+      else el.value = val;
     }
   });
 }

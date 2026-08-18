@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import glob
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -37,6 +38,8 @@ class CacheStaticFiles(StarletteStaticFiles):
         return response
 
 TZ = ZoneInfo("America/Chicago")
+
+logger = logging.getLogger("luxmon.api")
 
 app = FastAPI(title="lux-mon API", version="0.1.0")
 
@@ -400,19 +403,23 @@ class SettingUpdate(BaseModel):
 
 @app.get("/api/settings")
 def api_settings():
-    """Return all settings (defaults + overrides from DB) with metadata."""
-    from collector.settings import get_all, seed_defaults, SETTING_META
+    """Return all settings (effective value: env > DB > default) with metadata."""
+    from collector.settings import get_all, seed_defaults, SETTING_META, effective_value, SETTING_ENV
 
     conn = _get_conn()
     try:
         seed_defaults(conn)
         settings = get_all(conn)
-        # Attach metadata for each setting
+        # Attach metadata for each setting, resolving the effective value so the
+        # page reflects what is actually running (env overrides DB).
         enriched = {}
         for key, value in settings.items():
             meta = SETTING_META.get(key, {})
+            effective = effective_value(key, value)
             enriched[key] = {
-                "value": value,
+                "value": effective,
+                "db_value": value,
+                "source": "env" if (key in SETTING_ENV and os.environ.get(SETTING_ENV[key][0]) not in (None, "")) else ("db" if value not in (None, "") else "default"),
                 "label": meta.get("label", key),
                 "type": meta.get("type", "text"),
                 "section": meta.get("section", "general"),
@@ -429,31 +436,68 @@ def api_settings():
 
 @app.get("/api/settings/{name}")
 def api_setting_get(name: str):
-    """Get a single setting value."""
-    from collector.settings import get
+    """Get a single setting's effective value (env > DB > default)."""
+    from collector.settings import get, effective_value, DEFAULTS
 
     conn = _get_conn()
     try:
         value = get(conn, name)
-        if value is None:
+        if value is None and name not in DEFAULTS:
             raise HTTPException(404, f"Setting '{name}' not found")
-        return {"name": name, "value": value}
+        effective = effective_value(name, value)
+        return {"name": name, "value": effective}
     finally:
         conn.close()
 
 
 @app.put("/api/settings/{name}")
 def api_setting_put(name: str, body: SettingUpdate):
-    """Update a setting value."""
-    from collector.settings import set_
+    """Update a setting value (DB + .env mirror)."""
+    from collector.settings import set_, SETTING_ENV
 
     conn = _get_conn()
     try:
         str_value = str(body.value) if body.value is not None else ""
         set_(conn, name, str_value)
+        _sync_env_file(name, str_value)
         return {"name": name, "value": str_value, "updated": True}
     finally:
         conn.close()
+
+
+def _sync_env_file(name: str, value: str) -> None:
+    """Mirror a setting change into the .env file (bootstrap mirror).
+
+    The .env file is only a bootstrap/fallback for fresh installs; the DB is
+    authoritative at runtime. Keeping it in sync means a future
+    `docker compose down`/`up` reproduces the same configuration.
+    """
+    from collector.settings import SETTING_ENV
+
+    if name not in SETTING_ENV:
+        return
+    env_var, _cast = SETTING_ENV[name]
+    env_path = Path(os.environ.get("LUX_ENV_FILE", "/srv/lux-stack/.env"))
+    if not env_path.exists():
+        logger.warning("Env file %s not found; skipping .env sync", env_path)
+        return
+
+    try:
+        lines = env_path.read_text().splitlines()
+        new_lines = []
+        found = False
+        for line in lines:
+            if line.startswith(env_var + "="):
+                new_lines.append(f"{env_var}={value}")
+                found = True
+            else:
+                new_lines.append(line)
+        if not found:
+            new_lines.append(f"{env_var}={value}")
+        env_path.write_text("\n".join(new_lines) + "\n")
+        logger.info("Synced %s=%s to %s", env_var, value, env_path)
+    except Exception:
+        logger.exception("Failed to sync %s to .env", env_var)
 
 
 # ── backup / prune / storage ────────────────────────────────────────────────
@@ -833,6 +877,90 @@ def api_automation_log(limit: int = Query(50, ge=1, le=500)):
         return {"log": [_row_to_dict(row, columns) for row in rows], "count": len(rows)}
     finally:
         conn.close()
+
+
+# ── quick charge / generator charge ────────────────────────────────────────
+
+from collector.quick_charge import QuickChargeManager
+
+
+def _load_quick_charge() -> QuickChargeManager:
+    return QuickChargeManager(
+        db_host=DB_CONFIG["host"],
+        db_port=DB_CONFIG["port"],
+        db_user=DB_CONFIG["user"],
+        db_password=DB_CONFIG["password"],
+        db_name=DB_CONFIG["database"],
+    )
+
+
+def _resolve_dongle() -> dict:
+    """Resolve dongle connection params from env or DB settings."""
+    host = os.getenv("LUX_DONGLE_HOST") or _load_db_setting("dongle_host") or "192.168.1.100"
+    port = int(os.getenv("LUX_DONGLE_PORT") or _load_db_setting("dongle_port") or "8000")
+    datalog = os.getenv("LUX_DATALOG_SERIAL") or _load_db_setting("datalog_serial") or ""
+    inverter = os.getenv("LUX_INVERTER_SERIAL") or _load_db_setting("inverter_serial") or ""
+    return {
+        "dongle_host": host,
+        "dongle_port": port,
+        "datalog_serial": datalog,
+        "inverter_serial": inverter,
+    }
+
+
+class QuickChargeBody(BaseModel):
+    amps: Optional[int] = None
+    minutes: Optional[int] = None
+    dry_run: bool = False
+
+
+@app.get("/api/quick-charge/status")
+def api_quick_charge_status():
+    """Return the current quick-charge state and defaults."""
+    qc = _load_quick_charge()
+    return qc.status()
+
+
+@app.post("/api/quick-charge/start")
+def api_quick_charge_start(body: QuickChargeBody):
+    """Start a quick charge (write AC charge current for N minutes)."""
+    dongle = _resolve_dongle()
+    if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
+        raise HTTPException(400, "datalog_serial / inverter_serial not configured")
+
+    qc = _load_quick_charge()
+    result = qc.start(
+        dongle_host=dongle["dongle_host"],
+        dongle_port=dongle["dongle_port"],
+        datalog_serial=dongle["datalog_serial"],
+        inverter_serial=dongle["inverter_serial"],
+        amps=body.amps,
+        minutes=body.minutes,
+        dry_run=body.dry_run,
+    )
+    if not result.get("ok"):
+        raise HTTPException(500, result.get("error", "quick charge failed"))
+    return result
+
+
+@app.post("/api/quick-charge/stop")
+def api_quick_charge_stop(dry_run: bool = False):
+    """Stop an active quick charge, restoring the prior value."""
+    dongle = _resolve_dongle()
+    if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
+        raise HTTPException(400, "datalog_serial / inverter_serial not configured")
+
+    qc = _load_quick_charge()
+    result = qc.stop(
+        dongle_host=dongle["dongle_host"],
+        dongle_port=dongle["dongle_port"],
+        datalog_serial=dongle["datalog_serial"],
+        inverter_serial=dongle["inverter_serial"],
+        dry_run=dry_run,
+    )
+    if not result.get("ok"):
+        raise HTTPException(500, result.get("error", "quick charge stop failed"))
+    return result
 
 
 # ── static dashboard ────────────────────────────────────────────────────────
