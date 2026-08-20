@@ -666,13 +666,13 @@ function updateDetail(r) {
   renderDetailHTML();
 }
 
-function createLineChart(id, datasets, opts={}) {
+function createLineChart(id, labels, datasets, opts={}) {
   const ctx = document.getElementById(id);
   if (!ctx) return;
   if (charts[id]) charts[id].destroy();
   charts[id] = new Chart(ctx.getContext('2d'), {
     type:'line',
-    data:{datasets},
+    data:{labels, datasets},
     options:{
       responsive:true,
       maintainAspectRatio:false,
@@ -708,14 +708,15 @@ async function loadMainCharts() {
   try {
     const res = await fetchJson(API + '/api/history?minutes=1440&max_points=300&fields=pv1_power,pv2_power,charge_power,discharge_power,grid_import_power,grid_export_power,load_power,battery_voltage,soc');
     const rows = res.snapshots || [];
+    const labels = rows.map(r => r.timestamp);
     const mk = (label, field, color, fill=true) => ({
       label,
-      data: rows.map(r => r.registers[field] != null ? {x:r.timestamp, y:r.registers[field]} : null),
+      data: rows.map(r => r.registers[field] != null ? r.registers[field] : null),
       spanGaps: false,
       borderColor: color, backgroundColor: color + (fill?'33':''), fill, tension:0.2, pointRadius:0
     });
-    createLineChart('chart-pv-today', [mk('PV1','pv1_power','#eab308'), mk('PV2','pv2_power','#facc15')]);
-    createLineChart('chart-overview-24h', [
+    createLineChart('chart-pv-today', labels, [mk('PV1','pv1_power','#eab308'), mk('PV2','pv2_power','#facc15')]);
+    createLineChart('chart-overview-24h', labels, [
       mk('Solar','pv1_power','#eab308'),
       mk('Battery charge','charge_power','#a855f7'),
       mk('Battery discharge','discharge_power','#22c55e'),
@@ -731,13 +732,13 @@ async function loadMainCharts() {
         const d = r.registers['discharge_power'];
         const c = r.registers['charge_power'];
         if (d == null && c == null) return null;
-        return { x: r.timestamp, y: (d || 0) - (c || 0) };
+        return (d || 0) - (c || 0);
       }),
       spanGaps: false,
       borderColor: '#22c55e', backgroundColor: '#22c55e', fill: false, tension: 0.2, pointRadius: 0
     };
-    createLineChart('chart-battery-power', [batPower]);
-    createLineChart('chart-battery-soc', [mk('SOC','soc','#a855f7', false)]);
+    createLineChart('chart-battery-power', labels, [batPower]);
+    createLineChart('chart-battery-soc', labels, [mk('SOC','soc','#a855f7', false)]);
   } catch (e) { console.error('loadMainCharts error', e); }
 }
 
