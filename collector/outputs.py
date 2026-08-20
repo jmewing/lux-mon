@@ -308,6 +308,29 @@ class Outputs:
             logger.exception("Failed to connect to MariaDB")
             self._mariadb_conn = None
 
+    def _ensure_mariadb(self) -> bool:
+        """Return True if the MariaDB connection is usable, reconnecting if needed.
+
+        The collector holds a long-lived connection; if MariaDB restarts (e.g. a
+        host reboot) the underlying socket dies but the connection object stays
+        truthy, so writes would silently fail forever. This pings the connection
+        and transparently re-establishes it (and re-runs schema init) on drop.
+        """
+        if self._mariadb_conn is not None:
+            try:
+                self._mariadb_conn.ping(reconnect=True)
+                return True
+            except Exception:
+                logger.warning("MariaDB connection lost, reconnecting")
+                try:
+                    self._mariadb_conn.close()
+                except Exception:
+                    pass
+                self._mariadb_conn = None
+        # (Re)connect from scratch.
+        self._init_mariadb()
+        return self._mariadb_conn is not None
+
     def _init_mariadb_schema(self) -> None:
         import pymysql
         prefix = self.cfg.mariadb_table_prefix
@@ -408,7 +431,7 @@ class Outputs:
     # ── Public write entrypoint ─────────────────────────────────────
     def write(self, decoded: dict, raw_registers: dict[int, int]) -> None:
         """Write a decoded snapshot to all enabled backends."""
-        if self._mariadb_conn:
+        if self.cfg.mariadb_enabled:
             self._write_mariadb(decoded, raw_registers)
         # Use temperature-unit-converted copy for display backends
         out_decoded = self._convert_temperatures(decoded)
@@ -440,37 +463,49 @@ class Outputs:
     # ── MariaDB writing ─────────────────────────────────────────────
     def _write_mariadb(self, decoded: dict, raw_registers: dict[int, int]) -> None:
         import pymysql
+        if not self._ensure_mariadb():
+            logger.warning("MariaDB unavailable, skipping snapshot write")
+            return
         prefix = self.cfg.mariadb_table_prefix
         raw_json = json.dumps(raw_registers)
 
-        with self._mariadb_conn.cursor() as cur:
-            cur.execute(
-                f"INSERT INTO {prefix}snapshots (ts, raw_registers) VALUES (NOW(3), %s)",
-                (raw_json,),
-            )
-            snapshot_id = cur.lastrowid
-            rows = [
-                (snapshot_id, key, float(info["value"]), info.get("unit", ""))
-                for key, info in decoded.items()
-                if isinstance(info, dict) and "value" in info
-            ]
-            # Merge computed/derived power values (e.g. load_power) so the API's
-            # /api/history endpoint can serve them alongside raw registers.
-            # Only power values (watts) are written; energy totals (kWh) and
-            # derived currents/voltages are intentionally excluded to avoid
-            # unit confusion in the registers table.
-            computed = _build_computed(decoded)
-            for key in ("load_power", "pv_power_total", "grid_power_net", "battery_power_net"):
-                value = computed.get(key)
-                if value is None:
-                    continue
-                rows.append((snapshot_id, key, float(value), "W"))
-            if rows:
-                cur.executemany(
-                    f"INSERT INTO {prefix}registers (snapshot_id, name, value, unit) VALUES (%s, %s, %s, %s)",
-                    rows,
+        try:
+            with self._mariadb_conn.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO {prefix}snapshots (ts, raw_registers) VALUES (NOW(3), %s)",
+                    (raw_json,),
                 )
-            self._update_hourly_energy(cur, decoded, prefix)
+                snapshot_id = cur.lastrowid
+                rows = [
+                    (snapshot_id, key, float(info["value"]), info.get("unit", ""))
+                    for key, info in decoded.items()
+                    if isinstance(info, dict) and "value" in info
+                ]
+                # Merge computed/derived power values (e.g. load_power) so the API's
+                # /api/history endpoint can serve them alongside raw registers.
+                # Only power values (watts) are written; energy totals (kWh) and
+                # derived currents/voltages are intentionally excluded to avoid
+                # unit confusion in the registers table.
+                computed = _build_computed(decoded)
+                for key in ("load_power", "pv_power_total", "grid_power_net", "battery_power_net"):
+                    value = computed.get(key)
+                    if value is None:
+                        continue
+                    rows.append((snapshot_id, key, float(value), "W"))
+                if rows:
+                    cur.executemany(
+                        f"INSERT INTO {prefix}registers (snapshot_id, name, value, unit) VALUES (%s, %s, %s, %s)",
+                        rows,
+                    )
+                self._update_hourly_energy(cur, decoded, prefix)
+        except Exception:
+            logger.exception("MariaDB write failed, will reconnect on next attempt")
+            try:
+                self._mariadb_conn.close()
+            except Exception:
+                pass
+            self._mariadb_conn = None
+            return
 
         logger.info("Wrote MariaDB snapshot %d with %d registers", snapshot_id, len(rows))
 
