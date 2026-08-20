@@ -710,7 +710,8 @@ async function loadMainCharts() {
     const rows = res.snapshots || [];
     const mk = (label, field, color, fill=true) => ({
       label,
-      data: rows.map(r => r.registers[field] != null ? {x:r.timestamp, y:r.registers[field]} : null).filter(p => p),
+      data: rows.map(r => r.registers[field] != null ? {x:r.timestamp, y:r.registers[field]} : null),
+      spanGaps: false,
       borderColor: color, backgroundColor: color + (fill?'33':''), fill, tension:0.2, pointRadius:0
     });
     createLineChart('chart-pv-today', [mk('PV1','pv1_power','#eab308'), mk('PV2','pv2_power','#facc15')]);
@@ -731,7 +732,8 @@ async function loadMainCharts() {
         const c = r.registers['charge_power'];
         if (d == null && c == null) return null;
         return { x: r.timestamp, y: (d || 0) - (c || 0) };
-      }).filter(p => p),
+      }),
+      spanGaps: false,
       borderColor: '#22c55e', backgroundColor: '#22c55e', fill: false, tension: 0.2, pointRadius: 0
     };
     createLineChart('chart-battery-power', [batPower]);
