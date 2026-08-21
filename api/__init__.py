@@ -242,7 +242,7 @@ def api_summary():
                 "grid_import_today", "grid_export_today",
                 "grid_voltage_r", "grid_frequency",
                 "eps_power", "eps_energy_today",
-                "temp_inverter", "temp_battery", "temp_radiator_1",
+                "temp_inverter", "temp_battery", "temp_radiator_1", "temp_radiator_2",
                 "cell_voltage_min", "cell_voltage_max",
                 "cell_temp_min", "cell_temp_max",
                 "runtime", "cycle_count",
