@@ -727,12 +727,19 @@ class PassiveCollector:
         "soh": 100,
     }
 
+    # Fields that are legitimately signed (negative values are meaningful,
+    # e.g. battery_current is negative while discharging). These must NOT be
+    # clamped to 0 by _clamp_values.
+    _SIGNED_FIELDS = {
+        "battery_current",
+    }
+
     def _clamp_values(self, decoded: dict) -> None:
         """Clamp decoded values to physical sanity limits in-place."""
         for key, limit in self._SANITY_LIMITS.items():
             if key in decoded:
                 val = decoded[key]["value"]
-                if val < 0:
+                if val < 0 and key not in self._SIGNED_FIELDS:
                     decoded[key]["value"] = 0.0
                 elif val > limit:
                     logger.warning(
