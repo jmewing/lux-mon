@@ -457,7 +457,7 @@ def api_forecast(
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT ts, predicted_watts, cloud_cover, source
+                SELECT ts, predicted_watts, corrected_watts, cloud_cover, source
                 FROM lux_solar_forecast
                 WHERE ts >= NOW()
                   AND ts < NOW() + INTERVAL %s HOUR
@@ -473,10 +473,11 @@ def api_forecast(
                 # interpret them as UTC (consistent with ISO-8601).
                 "ts": ts.replace(tzinfo=timezone.utc).isoformat() if ts else None,
                 "predicted_watts": float(predicted_watts),
+                "corrected_watts": float(corrected_watts) if corrected_watts is not None else None,
                 "cloud_cover": float(cloud_cover) if cloud_cover is not None else None,
                 "source": source,
             }
-            for ts, predicted_watts, cloud_cover, source in rows
+            for ts, predicted_watts, corrected_watts, cloud_cover, source in rows
         ]
 
         generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()

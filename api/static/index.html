@@ -723,10 +723,10 @@ async function loadMainCharts() {
       const fcRows = fcRes.data || [];
       if (fcRows.length) {
         forecastDataset = {
-          label: 'Forecast',
-          data: fcRows.map(r => ({ x: r.ts, y: r.predicted_watts })),
+          label: 'Forecast (corrected)',
+          data: fcRows.map(r => ({ x: r.ts, y: r.corrected_watts != null ? r.corrected_watts : r.predicted_watts })),
           spanGaps: false,
-          borderColor: '#22c55e',
+          borderColor: '#eab308',
           backgroundColor: 'transparent',
           borderDash: [6, 4],
           fill: false,
