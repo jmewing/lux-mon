@@ -149,10 +149,16 @@ a.status:hover > div .label { color: var(--link-color); }
                 <div class="label" id="solar-label">Solar PV</div>
                 <div class="property" id="sa-solar-total">--</div>
                 <div class="property small"><span class="name">Peak:</span><span id="sa-solar-peak">--</span></div>
-                <div class="property small"><span class="name">Next peak:</span><span id="sa-solar-forecast-peak">--</span></div>
-                <div class="property small"><span class="name">Forecast today:</span><span id="sa-solar-forecast-today">--</span></div>
               </div>
             </a></div>
+            <div><div class="status" aria-labelledby="forecast-label">
+              <img src="/images/solar-forecast.svg" role="presentation" id="img-forecast">
+              <div>
+                <div class="label" id="forecast-label">Solar Forecast</div>
+                <div class="property" id="forecast-today">--</div>
+                <div class="property small"><span class="name">Next peak:</span><span id="forecast-peak">--</span></div>
+              </div>
+            </div></div>
             <div><a href="#" class="status" data-detail="grid" aria-labelledby="grid-label">
               <img src="/images/grid-ok.svg" role="presentation" id="img-grid">
               <div>
@@ -711,8 +717,8 @@ async function loadForecastCard() {
     const res = await fetchJson(API + '/api/forecast?hours=48');
     const rows = res.data || [];
     if (!rows.length) {
-      setText('sa-solar-forecast-peak', '--');
-      setText('sa-solar-forecast-today', '--');
+      setText('forecast-peak', '--');
+      setText('forecast-today', '--');
       return;
     }
     // Find the max predicted watts in the next 24h.
@@ -734,12 +740,12 @@ async function loadForecastCard() {
     });
     const todayKwh = todayRows.reduce((sum, r) => sum + (r.predicted_watts || 0), 0) / 1000;
 
-    setText('sa-solar-forecast-peak', peak !== null ? fmtInt(peak) + ' W ' + fmtTime(peakTs).replace('Updated ', '') : '--');
-    setText('sa-solar-forecast-today', fmt(todayKwh, 1) + ' kWh');
+    setText('forecast-peak', peak !== null ? fmtInt(peak) + ' W at ' + fmtTime(peakTs).replace('Updated ', '') : '--');
+    setText('forecast-today', fmt(todayKwh, 1) + ' kWh predicted');
   } catch (e) {
     console.error('loadForecastCard error', e);
-    setText('sa-solar-forecast-peak', '--');
-    setText('sa-solar-forecast-today', '--');
+    setText('forecast-peak', '--');
+    setText('forecast-today', '--');
   }
 }
 
