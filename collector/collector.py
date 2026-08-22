@@ -432,6 +432,7 @@ class PassiveCollector:
         self._last_write = 0.0
         self._config_fingerprint: Optional[str] = None
         self._loaded_restart_values: Dict[str, str] = {}
+        self._last_forecast_refresh = 0.0
 
         # Register handler for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -703,10 +704,62 @@ class PassiveCollector:
                     except Exception:
                         logger.exception("Snapshot callback failed")
 
+                # Periodic solar forecast refresh (Option A).
+                self._maybe_refresh_forecast()
+
             except Exception:
                 logger.exception("Failed to write snapshot")
 
         logger.info("Writer loop exiting")
+
+    def _maybe_refresh_forecast(self) -> None:
+        """Refresh the solar forecast on a configurable interval.
+
+        Reads forecast settings fresh from MariaDB each cycle, so enabling or
+        changing forecast settings takes effect without a restart.
+        """
+        try:
+            from .forecast import config_from_settings, refresh
+            from .settings import get_all
+            import pymysql
+
+            settings = self._read_db_settings()
+            if not settings:
+                return
+            cfg = config_from_settings(settings)
+            if not cfg.enabled:
+                return
+
+            now = time.time()
+            interval = max(60.0, float(cfg.refresh_min) * 60.0)
+            if now - self._last_forecast_refresh < interval:
+                return
+
+            conn = pymysql.connect(
+                host=self.cfg.outputs.mariadb_host,
+                port=self.cfg.outputs.mariadb_port,
+                user=self.cfg.outputs.mariadb_user,
+                password=self.cfg.outputs.mariadb_password,
+                database=self.cfg.outputs.mariadb_database,
+                autocommit=True,
+            )
+            try:
+                prefix = self.cfg.outputs.mariadb_table_prefix
+                influx_cfg = None
+                if self.cfg.outputs.influx_enabled and self.cfg.outputs.influx_token:
+                    influx_cfg = {
+                        "url": self.cfg.outputs.influx_url,
+                        "token": self.cfg.outputs.influx_token,
+                        "org": self.cfg.outputs.influx_org,
+                        "bucket": self.cfg.outputs.influx_bucket,
+                    }
+                written = refresh(conn, prefix, settings, influx_cfg)
+                if written is not None:
+                    self._last_forecast_refresh = now
+            finally:
+                conn.close()
+        except Exception:
+            logger.exception("Forecast refresh failed")
 
     # ── Sanity clamping ──────────────────────────────────────────────
     _SANITY_LIMITS: Dict = {

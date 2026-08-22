@@ -200,6 +200,18 @@ DEFAULTS = {
     "quick_charge_amps": "85",              # Quick charge target current (A)
     "quick_charge_minutes": "60",           # Quick charge duration (min)
     "quick_charge_state": "{}",             # JSON quick-charge runtime state
+
+    # ── Solar Forecast ──
+    "forecast_enabled": "false",            # Enable solar PV forecast
+    "forecast_latitude": "30.0591",         # Site latitude (deg N)
+    "forecast_longitude": "-95.9324",       # Site longitude (deg E)
+    "array_kwp": "1.56",                    # Rated array capacity (kWp, front-side)
+    "array_azimuth": "180",                 # Panel azimuth (deg; 180 = due south)
+    "array_tilt": "21",                     # Panel tilt (deg from horizontal)
+    "array_bifacial_gain": "0.10",          # Bifacial back-side gain fraction (0.10 = +10%)
+    "forecast_provider": "open-meteo",      # open-meteo | forecast.solar
+    "forecast_hours": "48",                 # Forecast horizon (hours ahead)
+    "forecast_refresh_min": "120",          # Minutes between forecast refreshes
 }
 
 
@@ -637,6 +649,84 @@ SETTING_META = {
         "section": "quick_charge",
         "min": 1, "max": 1440,
         "hint": "Minutes — how long the quick charge runs before restoring",
+    },
+
+    # ── Solar Forecast ──
+    "forecast_enabled": {
+        "label": "Enable Solar Forecast",
+        "type": "select",
+        "section": "forecast",
+        "options": [
+            ("false", "Disabled"),
+            ("true", "Enabled"),
+        ],
+        "hint": "Fetch and store a PV production forecast",
+    },
+    "forecast_latitude": {
+        "label": "Latitude",
+        "type": "number",
+        "section": "forecast",
+        "min": -90, "max": 90, "step": 0.0001,
+        "hint": "Site latitude (degrees North)",
+    },
+    "forecast_longitude": {
+        "label": "Longitude",
+        "type": "number",
+        "section": "forecast",
+        "min": -180, "max": 180, "step": 0.0001,
+        "hint": "Site longitude (degrees East)",
+    },
+    "array_kwp": {
+        "label": "Array Capacity",
+        "type": "number",
+        "section": "forecast",
+        "min": 0.1, "max": 1000, "step": 0.01,
+        "hint": "kWp — rated array capacity (front-side)",
+    },
+    "array_azimuth": {
+        "label": "Array Azimuth",
+        "type": "number",
+        "section": "forecast",
+        "min": 0, "max": 360, "step": 1,
+        "hint": "Degrees — panel facing (180 = due south)",
+    },
+    "array_tilt": {
+        "label": "Array Tilt",
+        "type": "number",
+        "section": "forecast",
+        "min": 0, "max": 90, "step": 1,
+        "hint": "Degrees — panel tilt from horizontal",
+    },
+    "array_bifacial_gain": {
+        "label": "Bifacial Gain",
+        "type": "number",
+        "section": "forecast",
+        "min": 0, "max": 0.5, "step": 0.01,
+        "hint": "Fraction — back-side gain (0.10 = +10%)",
+    },
+    "forecast_provider": {
+        "label": "Forecast Provider",
+        "type": "select",
+        "section": "forecast",
+        "options": [
+            ("open-meteo", "Open-Meteo (free, no key)"),
+            ("forecast.solar", "Forecast.Solar (free, no key)"),
+        ],
+        "hint": "Weather/irradiance data source",
+    },
+    "forecast_hours": {
+        "label": "Forecast Horizon",
+        "type": "number",
+        "section": "forecast",
+        "min": 1, "max": 168, "step": 1,
+        "hint": "Hours — how far ahead to forecast",
+    },
+    "forecast_refresh_min": {
+        "label": "Refresh Interval",
+        "type": "number",
+        "section": "forecast",
+        "min": 15, "max": 1440, "step": 5,
+        "hint": "Minutes — how often to refresh the forecast",
     },
 }
 

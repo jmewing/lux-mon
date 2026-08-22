@@ -149,6 +149,8 @@ a.status:hover > div .label { color: var(--link-color); }
                 <div class="label" id="solar-label">Solar PV</div>
                 <div class="property" id="sa-solar-total">--</div>
                 <div class="property small"><span class="name">Peak:</span><span id="sa-solar-peak">--</span></div>
+                <div class="property small"><span class="name">Next peak:</span><span id="sa-solar-forecast-peak">--</span></div>
+                <div class="property small"><span class="name">Forecast today:</span><span id="sa-solar-forecast-today">--</span></div>
               </div>
             </a></div>
             <div><a href="#" class="status" data-detail="grid" aria-labelledby="grid-label">
@@ -702,6 +704,43 @@ function createBarChart(id, labels, datasets, opts={}) {
       }
     }
   });
+}
+
+async function loadForecastCard() {
+  try {
+    const res = await fetchJson(API + '/api/forecast?hours=48');
+    const rows = res.data || [];
+    if (!rows.length) {
+      setText('sa-solar-forecast-peak', '--');
+      setText('sa-solar-forecast-today', '--');
+      return;
+    }
+    // Find the max predicted watts in the next 24h.
+    const next24h = rows.filter(r => new Date(r.ts) <= new Date(Date.now() + 24 * 3600 * 1000));
+    let peak = null;
+    let peakTs = null;
+    for (const r of next24h) {
+      if (peak === null || r.predicted_watts > peak) {
+        peak = r.predicted_watts;
+        peakTs = r.ts;
+      }
+    }
+    // Sum today's predicted energy (kWh).
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayRows = rows.filter(r => {
+      const d = new Date(r.ts);
+      return d >= todayStart && d < new Date(todayStart.getTime() + 24 * 3600 * 1000);
+    });
+    const todayKwh = todayRows.reduce((sum, r) => sum + (r.predicted_watts || 0), 0) / 1000;
+
+    setText('sa-solar-forecast-peak', peak !== null ? fmtInt(peak) + ' W ' + fmtTime(peakTs).replace('Updated ', '') : '--');
+    setText('sa-solar-forecast-today', fmt(todayKwh, 1) + ' kWh');
+  } catch (e) {
+    console.error('loadForecastCard error', e);
+    setText('sa-solar-forecast-peak', '--');
+    setText('sa-solar-forecast-today', '--');
+  }
 }
 
 async function loadMainCharts() {
@@ -1270,10 +1309,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   refresh();
+  loadForecastCard();
   loadMainCharts();
   connectWS();
   setInterval(refresh, 15000);
-});
+  setInterval(loadForecastCard, 300000);;
 </script>
 </body>
 </html>

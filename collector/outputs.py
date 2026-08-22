@@ -410,6 +410,16 @@ class Outputs:
                         ON UPDATE CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB
             """)
+            cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS {prefix}solar_forecast (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    ts DATETIME NOT NULL,
+                    predicted_watts DOUBLE NOT NULL,
+                    cloud_cover DOUBLE DEFAULT NULL,
+                    source VARCHAR(32) DEFAULT NULL,
+                    UNIQUE KEY idx_ts (ts)
+                ) ENGINE=InnoDB
+            """)
 
     # ── InfluxDB ────────────────────────────────────────────────────
     def _init_influx(self) -> None:

@@ -9,3 +9,5 @@ uvicorn[standard]>=0.27.0
 pydantic>=2.0.0
 python-dotenv>=1.0.0
 aiofiles>=23.0.0
+pvlib>=0.11.0
+pandas>=2.0.0

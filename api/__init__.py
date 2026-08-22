@@ -441,6 +441,54 @@ def api_energy(
 
 
 
+@app.get("/api/forecast")
+def api_forecast(
+    hours: int = Query(48, ge=1, le=168, description="Hours of forecast to return"),
+):
+    """Return the stored solar PV forecast from MariaDB.
+
+    Returns hourly predicted PV watts, newest forecast first. Optionally filter
+    to a specific number of hours from now.
+    """
+    from datetime import datetime, timedelta
+
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT ts, predicted_watts, cloud_cover, source
+                FROM lux_solar_forecast
+                WHERE ts >= NOW()
+                  AND ts < NOW() + INTERVAL %s HOUR
+                ORDER BY ts ASC
+                """,
+                (hours,),
+            )
+            rows = cur.fetchall()
+
+        data = [
+            {
+                "ts": ts.isoformat() if ts else None,
+                "predicted_watts": float(predicted_watts),
+                "cloud_cover": float(cloud_cover) if cloud_cover is not None else None,
+                "source": source,
+            }
+            for ts, predicted_watts, cloud_cover, source in rows
+        ]
+
+        generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        return {
+            "hours": hours,
+            "count": len(data),
+            "generated_at": generated_at,
+            "unit": "W",
+            "data": data,
+        }
+    finally:
+        conn.close()
+
+
 # ── settings ────────────────────────────────────────────────────────────────
 
 class SettingUpdate(BaseModel):
