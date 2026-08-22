@@ -525,7 +525,7 @@ function makeChart(id, yMax, xType) {
 
   const xOpts = desiredX === 'time' ? {
     type: 'time',
-    time: { parser: 'iso8601', unit: 'hour', displayFormats: { hour: 'HH:mm' }, tooltipFormat: 'HH:mm' },
+    time: { unit: 'hour', displayFormats: { hour: 'HH:mm' }, tooltipFormat: 'HH:mm' },
     ticks: { color: '#64748b', maxTicksLimit: 8, font: {size:9} },
     grid: { color: '#1e293b' }
   } : {
