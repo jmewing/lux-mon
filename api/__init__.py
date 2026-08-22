@@ -469,7 +469,9 @@ def api_forecast(
 
         data = [
             {
-                "ts": ts.isoformat() if ts else None,
+                # MariaDB stores UTC naive datetimes; append Z so clients
+                # interpret them as UTC (consistent with ISO-8601).
+                "ts": ts.replace(tzinfo=timezone.utc).isoformat() if ts else None,
                 "predicted_watts": float(predicted_watts),
                 "cloud_cover": float(cloud_cover) if cloud_cover is not None else None,
                 "source": source,
