@@ -2945,7 +2945,8 @@
     },
     {
       "aliasColors": {
-        "PV power predicted": "yellow"
+        "PV power predicted": "yellow",
+        "PV power predicted corrected": "green"
       },
       "bars": false,
       "dashLength": 10,
@@ -3030,13 +3031,51 @@
             ]
           ],
           "tags": []
+        },
+        {
+          "alias": "PV power predicted corrected",
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "linear"
+              ],
+              "type": "fill"
+            }
+          ],
+          "measurement": "PV power predicted corrected",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"combined\") AS combined FROM \"PV power predicted corrected\" WHERE $timeFilter GROUP BY time($__interval) fill(previous)",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "value"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": []
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "PV power predicted",
+      "title": "PV power predicted (yellow) vs corrected (green)",
       "tooltip": {
         "shared": true,
         "sort": 0,
