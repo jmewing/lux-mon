@@ -22,6 +22,38 @@ from collector.mqtt_commands import MqttCommands, CONTROLLABLE_SETTINGS
 logger = logging.getLogger("luxmon.outputs")
 
 
+# Working-mode status codes (Register 0) → human-readable label.
+# Source: EG4-18KPV-12LV Modbus protocol, Table 9 "Working modes definition".
+_STATE_LABELS = {
+    0x00: "Standby",
+    0x01: "Fault",
+    0x02: "Programming",
+    0x04: "PV on-grid",
+    0x08: "PV charging battery",
+    0x0C: "PV charging battery + on-grid",
+    0x10: "Battery on-grid",
+    0x14: "PV + battery on-grid",
+    0x20: "AC charge (grid → battery)",
+    0x28: "PV + AC charge",
+    0x40: "Battery off-grid",
+    0x80: "PV off-grid",
+    0x88: "PV charge + off-grid",
+    0xC0: "PV + battery off-grid",
+}
+
+
+def _state_label(value) -> str:
+    """Return a human-readable label for a raw working-mode state value."""
+    try:
+        code = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+    label = _STATE_LABELS.get(code)
+    if label is None:
+        return f"Unknown ({code})"
+    return f"{label} ({code})"
+
+
 # Mapping from lux-mon decoded register names to SolarAssistant-style
 # InfluxDB measurement/field names.
 #
@@ -645,6 +677,10 @@ class Outputs:
                 if val is not None:
                     state_payload[key] = val
         state_payload.update(computed)
+
+        # Human-readable working-mode label alongside the raw state code.
+        if "state" in state_payload:
+            state_payload["state_label"] = _state_label(state_payload["state"])
 
         state_topic = f"{base}/{device}/state"
         self._mqtt_client.publish(state_topic, json.dumps(state_payload), qos=0, retain=False)
