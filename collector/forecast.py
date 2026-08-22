@@ -200,6 +200,75 @@ def _cloud_factor(cloud_cover: Optional[float]) -> float:
 
 # ── Forecast assembly ──────────────────────────────────────────────────────
 
+def fetch_open_meteo_archive(cfg: ForecastConfig, start_date: str, end_date: str) -> Optional[Dict[str, Any]]:
+    """Fetch historical hourly cloud cover + shortwave radiation from the
+    Open-Meteo archive API (past days).
+
+    `start_date` / `end_date` are YYYY-MM-DD strings (inclusive).
+    """
+    url = "https://archive-api.open-meteo.com/v1/archive"
+    params = {
+        "latitude": cfg.latitude,
+        "longitude": cfg.longitude,
+        "start_date": start_date,
+        "end_date": end_date,
+        "hourly": "cloud_cover,shortwave_radiation",
+        "timezone": "UTC",
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        hourly = data.get("hourly", {})
+        return {
+            "times": hourly.get("time", []),
+            "cloud_cover": hourly.get("cloud_cover", []),
+            "shortwave": hourly.get("shortwave_radiation", []),
+        }
+    except Exception:
+        logger.exception("Open-Meteo archive fetch failed")
+        return None
+
+
+def _assemble_rows(cfg: ForecastConfig, times: List[str],
+                   cloud: List[Optional[float]],
+                   shortwave: List[Optional[float]],
+                   source: str) -> List[Dict[str, Any]]:
+    """Shared assembly: clear-sky PV + cloud/shortwave factor -> rows.
+
+    Used by both the live forecast (build_forecast) and the historical
+    backfill (backfill_historical).
+    """
+    clear_sky = _clear_sky_pv(cfg, times)
+
+    rows: List[Dict[str, Any]] = []
+    for i, t in enumerate(times):
+        cc = cloud[i] if i < len(cloud) else None
+        sw = shortwave[i] if i < len(shortwave) else None
+
+        if clear_sky is not None:
+            base = clear_sky[i]
+            factor = _cloud_factor(cc)
+            if sw is not None and sw > 0:
+                factor = min(1.0, max(0.0, float(sw) / 1000.0))
+            watts = base * factor
+        else:
+            watts = cfg.array_kwp * (float(sw or 0) / 1000.0) * 1000.0
+
+        watts = watts * (1.0 + cfg.bifacial_gain)
+
+        rows.append(
+            {
+                "ts": t,
+                "predicted_watts": round(float(watts), 1),
+                "cloud_cover": cc if cc is not None else None,
+                "source": source,
+            }
+        )
+
+    return rows
+
+
 def build_forecast(cfg: ForecastConfig) -> Optional[List[Dict[str, Any]]]:
     """Build the full predicted-PV series.
 
@@ -222,42 +291,41 @@ def build_forecast(cfg: ForecastConfig) -> Optional[List[Dict[str, Any]]]:
     cloud = cloud[: cfg.hours]
     shortwave = shortwave[: cfg.hours]
 
-    clear_sky = _clear_sky_pv(cfg, times)
+    return _assemble_rows(cfg, times, cloud, shortwave, cfg.provider)
 
-    rows: List[Dict[str, Any]] = []
-    for i, t in enumerate(times):
-        cc = cloud[i] if i < len(cloud) else None
-        sw = shortwave[i] if i < len(shortwave) else None
 
-        if clear_sky is not None:
-            base = clear_sky[i]
-            # Cloud factor from forecast cloud cover.
-            factor = _cloud_factor(cc)
-            # If shortwave radiation is available, use it as a direct
-            # irradiance signal (more accurate than cloud cover alone).
-            if sw is not None and sw > 0:
-                # Normalize: shortwave is GHI in W/m^2; scale clear-sky by
-                # the ratio of forecast GHI to a nominal clear-sky GHI.
-                # Fall back to cloud factor when shortwave is zero/None.
-                factor = min(1.0, max(0.0, float(sw) / 1000.0))
-            watts = base * factor
-        else:
-            # No pvlib: fall back to a crude shortwave-based estimate.
-            watts = cfg.array_kwp * (float(sw or 0) / 1000.0) * 1000.0
+def backfill_historical(conn, prefix: str, cfg: ForecastConfig,
+                        influx_cfg: Optional[Dict[str, str]] = None) -> int:
+    """Backfill historical forecast rows from the Open-Meteo archive API.
 
-        # Bifacial back-side gain.
-        watts = watts * (1.0 + cfg.bifacial_gain)
+    Fetches the last `cfg.bias_lookback_days` days of historical weather,
+    builds predicted watts with the same clear-sky model, and stores them in
+    MariaDB (and optionally InfluxDB) so the Option B bias map has history to
+    calibrate against immediately.
 
-        rows.append(
-            {
-                "ts": t,
-                "predicted_watts": round(float(watts), 1),
-                "cloud_cover": cc if cc is not None else None,
-                "source": cfg.provider,
-            }
-        )
+    Returns the number of rows written.
+    """
+    end = datetime.now(timezone.utc).date() - timedelta(days=1)
+    start = end - timedelta(days=cfg.bias_lookback_days - 1)
+    start_str = start.isoformat()
+    end_str = end.isoformat()
 
-    return rows
+    weather = fetch_open_meteo_archive(cfg, start_str, end_str)
+    if not weather or not weather.get("times"):
+        logger.warning("No archive weather data returned; backfill aborted")
+        return 0
+
+    times = weather["times"]
+    cloud = weather.get("cloud_cover") or [None] * len(times)
+    shortwave = weather.get("shortwave") or [None] * len(times)
+
+    rows = _assemble_rows(cfg, times, cloud, shortwave, "open-meteo-archive")
+    if not rows:
+        return 0
+
+    written = store_forecast(conn, prefix, rows, influx_cfg)
+    logger.info("Historical forecast backfilled: %d rows stored", written)
+    return written
 
 
 # ── Option B: historical-PV calibration ────────────────────────────────────
@@ -292,8 +360,8 @@ def _fetch_actual_hourly(conn, prefix: str, since: datetime) -> Dict[Tuple[int, 
     # aggregate with AVG over hourly buckets.
     query = f"""
         SELECT
-            DATE_FORMAT(r.ts, '%%Y-%%m-%%d %%H:00:00') AS hour_ts,
-            HOUR(r.ts) AS hour_of_day,
+            DATE_FORMAT(CONVERT_TZ(r.ts, 'SYSTEM', '+00:00'), '%%Y-%%m-%%d %%H:00:00') AS hour_ts,
+            HOUR(CONVERT_TZ(r.ts, 'SYSTEM', '+00:00')) AS hour_of_day,
             AVG(r.value) AS avg_watts
         FROM {prefix}registers r
         WHERE r.name = 'pv_power_total'
@@ -357,13 +425,19 @@ def _compute_bias_map(conn, prefix: str, cfg: ForecastConfig) -> Dict[Tuple[int,
     Uses the last `cfg.bias_lookback_days` days of data. Returns a dict mapping
     (hour_of_day, cloud_bucket) -> bias ratio. Buckets with fewer than
     `cfg.bias_min_samples` samples are omitted (no correction applied).
-    """
-    since = datetime.now(timezone.utc) - timedelta(days=cfg.bias_lookback_days)
-    # MariaDB stores naive UTC datetimes; convert to naive for the query.
-    since_naive = since.replace(tzinfo=None)
 
-    actual = _fetch_actual_hourly(conn, prefix, since_naive)
-    forecast = _fetch_forecast_hourly(conn, prefix, since_naive)
+    Timezone note: `lux_registers` stores timestamps in local time (CDT),
+    while `lux_solar_forecast` stores UTC. We convert actuals to UTC in the
+    query so both series align on the same hour-of-day.
+    """
+    # Actuals are stored in local time (container TZ = America/Chicago).
+    since_local = datetime.now() - timedelta(days=cfg.bias_lookback_days)
+    # Forecast is stored in UTC.
+    since_utc = datetime.now(timezone.utc) - timedelta(days=cfg.bias_lookback_days)
+    since_utc_naive = since_utc.replace(tzinfo=None)
+
+    actual = _fetch_actual_hourly(conn, prefix, since_local)
+    forecast = _fetch_forecast_hourly(conn, prefix, since_utc_naive)
 
     bias_map: Dict[Tuple[int, int], float] = {}
     for key in set(actual.keys()) & set(forecast.keys()):
@@ -537,6 +611,15 @@ def _store_influxdb(influx_url: str, influx_token: str, influx_org: str,
 
 # ── High-level refresh entrypoint ──────────────────────────────────────────
 
+def _has_archive_history(conn, prefix: str) -> bool:
+    """Return True if the forecast table already has archive-sourced rows."""
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT COUNT(*) FROM {prefix}solar_forecast WHERE source = 'open-meteo-archive'"
+        )
+        return cur.fetchone()[0] > 0
+
+
 def refresh(conn, prefix: str, settings: Dict[str, str],
             influx_cfg: Optional[Dict[str, str]] = None) -> Optional[int]:
     """Fetch, build, and store a fresh forecast. Returns rows written or None.
@@ -547,6 +630,14 @@ def refresh(conn, prefix: str, settings: Dict[str, str],
     if not cfg.enabled:
         logger.debug("Forecast disabled; skipping refresh")
         return None
+
+    # One-time backfill of historical forecast so Option B has data to
+    # calibrate against immediately (runs only until archive rows exist).
+    if cfg.bias_enabled and not _has_archive_history(conn, prefix):
+        try:
+            backfill_historical(conn, prefix, cfg, influx_cfg)
+        except Exception:
+            logger.exception("Historical backfill failed")
 
     rows = build_forecast(cfg)
     if not rows:
