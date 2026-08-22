@@ -212,6 +212,9 @@ DEFAULTS = {
     "forecast_provider": "open-meteo",      # open-meteo | forecast.solar
     "forecast_hours": "48",                 # Forecast horizon (hours ahead)
     "forecast_refresh_min": "120",          # Minutes between forecast refreshes
+    "forecast_bias_enabled": "true",        # Enable historical-PV calibration (Option B)
+    "forecast_bias_lookback_days": "7",      # Days of history for bias correction
+    "forecast_bias_min_samples": "3",       # Min samples per bucket before correcting
 }
 
 
@@ -727,6 +730,30 @@ SETTING_META = {
         "section": "forecast",
         "min": 15, "max": 1440, "step": 5,
         "hint": "Minutes — how often to refresh the forecast",
+    },
+    "forecast_bias_enabled": {
+        "label": "Historical Calibration",
+        "type": "select",
+        "section": "forecast",
+        "options": [
+            ("true", "Enabled"),
+            ("false", "Disabled"),
+        ],
+        "hint": "Correct today's forecast using recent actual-vs-forecast error",
+    },
+    "forecast_bias_lookback_days": {
+        "label": "Calibration Lookback",
+        "type": "number",
+        "section": "forecast",
+        "min": 1, "max": 30, "step": 1,
+        "hint": "Days — how much history to average for the correction",
+    },
+    "forecast_bias_min_samples": {
+        "label": "Min Samples Per Bucket",
+        "type": "number",
+        "section": "forecast",
+        "min": 1, "max": 30, "step": 1,
+        "hint": "Minimum hourly samples before a bucket is trusted",
     },
 }
 
