@@ -2,1320 +2,1301 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
 <title>lux-mon — Solar Dashboard</title>
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Exo:ital,wght@0,100..900;1,100..900&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Exo:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet" type="text/css"></noscript>
+<link rel="stylesheet" href="/app.css">
+<link rel="preload" href="/images/logo-luxmon.svg" as="image">
+<link rel="preload" href="/images/inverter-ok.svg" as="image">
+<link rel="preload" href="/images/solar-forecast.svg" as="image">
+<link rel="preload" href="/images/grid-ok.svg" as="image">
+<link rel="preload" href="/images/battery-mid.svg" as="image">
+<link rel="preload" href="/images/battery-full.svg" as="image">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <style>
-  :root {
-    --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --muted: #94a3b8;
-    --accent: #38bdf8; --green: #4ade80; --yellow: #facc15; --red: #f87171;
-    --orange: #fb923c; --purple: #c084fc; --border: #334155;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    background: var(--bg); color: var(--text); min-height: 100vh;
-  }
-  .app { max-width: 1200px; margin: 0 auto; padding: 1rem; }
-
-  .header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;
-  }
-  .header h1 { font-size: 1.4rem; font-weight: 600; }
-  .header .updated { color: var(--muted); font-size: 0.75rem; }
-
-  .tabs {
-    display: flex; gap: 0; margin-bottom: 1rem;
-    border-bottom: 2px solid var(--border);
-  }
-  .tab {
-    padding: 0.5rem 1.25rem; cursor: pointer; font-size: 0.85rem;
-    color: var(--muted); border-bottom: 2px solid transparent;
-    margin-bottom: -2px; transition: all 0.2s;
-    user-select: none;
-  }
-  .tab:hover { color: var(--text); }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
-
-  .card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 0.75rem; padding: 1rem;
-  }
-  .card .label { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
-
-  /* ── Overview: 4 gauge cards across top ── */
-  .overview-gauges {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 0.75rem; margin-bottom: 0.75rem;
-  }
-  .ov-gauge-card {
-    text-align: center; padding: 1rem 0.75rem 0.75rem;
-  }
-  .ov-gauge-card .gauge-icon {
-    font-size: 1.5rem; margin-bottom: 0.25rem;
-  }
-  .ov-gauge-card .gauge-title {
-    color: var(--muted); font-size: 0.7rem; text-transform: uppercase;
-    letter-spacing: 0.05em; margin-bottom: 0.5rem;
-  }
-  .ov-gauge-card .gauge-svg {
-    width: 100%; max-width: 140px; height: auto; margin: 0 auto;
-  }
-  .ov-gauge-card .gauge-value {
-    font-size: 1.5rem; font-weight: 700; margin-top: -0.25rem;
-  }
-  .ov-gauge-card .gauge-detail {
-    color: var(--muted); font-size: 0.65rem; margin-top: 0.15rem;
-    min-height: 1em;
-  }
-
-  /* ── Overview: full-width combined chart ── */
-  .overview-chart {
-    margin-bottom: 0.75rem;
-  }
-  .overview-chart .chart-time-label {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 0.5rem;
-  }
-  .overview-chart .chart-time-label .label { margin: 0; }
-  .overview-chart .chart-time-label .time-range {
-    display: flex; gap: 0.25rem;
-  }
-  .overview-chart canvas { width: 100%; height: 300px; max-height: 300px; }
-
-  .time-btn {
-    padding: 0.25rem 0.6rem; font-size: 0.7rem; border: 1px solid var(--border);
-    background: var(--card); color: var(--muted); border-radius: 0.4rem;
-    cursor: pointer; transition: all 0.15s;
-  }
-  .time-btn:hover { color: var(--text); border-color: var(--muted); }
-  .time-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
-  .range-btn {
-    padding: 0.25rem 0.6rem; font-size: 0.7rem; border: 1px solid var(--border);
-    background: var(--card); color: var(--muted); border-radius: 0.4rem;
-    cursor: pointer; transition: all 0.15s;
-  }
-  .range-btn:hover { color: var(--text); border-color: var(--muted); }
-  .range-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
-
-  /* ── Status bar ── */
-  .status-bar {
-    display: flex; gap: 1rem; flex-wrap: wrap;
-    font-size: 0.75rem; color: var(--muted);
-  }
-  .status-bar span { display: flex; align-items: center; gap: 0.25rem; }
-  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-  .dot.green { background: var(--green); }
-  .dot.yellow { background: var(--yellow); }
-  .dot.red { background: var(--red); }
-
-  /* ── Charts Tab ── */
-  .chart-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem; margin-bottom: 0.75rem;
-  }
-  .chart-card canvas { width: 100%; height: 250px; max-height: 250px; }
-  @media (max-width: 700px) { .chart-row { grid-template-columns: 1fr; } }
-
-  .time-range {
-    display: flex; gap: 0.25rem; margin-bottom: 0.75rem; flex-wrap: wrap;
-  }
-
-  /* ── Battery Tab ── */
-  .gauges {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 0.6rem; margin-bottom: 0.75rem;
-  }
-  .gauge-card {
-    text-align: center; padding: 0.75rem 0.5rem 0.5rem;
-  }
-  .gauge-svg {
-    width: 100%; max-width: 120px; height: auto; margin: 0 auto;
-  }
-  .gauge-label {
-    color: var(--muted); font-size: 0.65rem; text-transform: uppercase;
-    letter-spacing: 0.05em; margin-top: 0.1rem;
-  }
-
-  /* ── Totals Tab ── */
-  .totals-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-  .totals-table th, .totals-table td {
-    padding: 0.5rem 0.75rem; text-align: right;
-    border-bottom: 1px solid var(--border);
-  }
-  .totals-table th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 0.7rem; }
-  .totals-table th:first-child, .totals-table td:first-child { text-align: left; }
-  .totals-table tr:hover td { background: rgba(255,255,255,0.03); }
-
-  /* ── Settings page ── */
-  .settings-page { max-width: 800px; }
-  .settings-section { margin-bottom: 0.75rem; }
-  .settings-section h3 {
-    font-size: 0.95rem; font-weight: 600; margin-bottom: 0.75rem;
-    padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
-  }
-  .settings-note {
-    color: var(--muted); font-size: 0.7rem; margin: -0.5rem 0 0.75rem;
-    font-style: italic;
-  }
-  .settings-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 0.75rem;
-  }
-  .setting-field label {
-    display: block; font-size: 0.7rem; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;
-  }
-  .setting-field input,
-  .setting-field select {
-    width: 100%; padding: 0.5rem 0.6rem;
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 0.4rem; color: var(--text); font-size: 0.9rem;
-    font-family: inherit; transition: border-color 0.2s;
-    appearance: none;
-  }
-  .setting-field input[type="checkbox"] { width: auto; }
-  .switch {
-    position: relative; display: inline-block; width: 42px; height: 24px;
-  }
-  .switch input { opacity: 0; width: 0; height: 0; }
-  .slider {
-    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-    background-color: var(--border); border-radius: 24px;
-    transition: 0.2s;
-  }
-  .slider:before {
-    position: absolute; content: ""; height: 18px; width: 18px;
-    left: 3px; bottom: 3px; background-color: white; border-radius: 50%;
-    transition: 0.2s;
-  }
-  .switch input:checked + .slider { background-color: var(--accent); }
-  .switch input:checked + .slider:before { transform: translateX(18px); }
-  .setting-field select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 0.6rem center;
-    padding-right: 2rem; cursor: pointer;
-  }
-  .setting-field select option { background: var(--card); color: var(--text); }
-  .setting-field input:focus,
-  .setting-field select:focus { outline: none; border-color: var(--accent); }
-  .setting-field .hint { font-size: 0.65rem; color: var(--muted); margin-top: 0.15rem; }
-  .settings-actions {
-    margin-top: 1rem; display: flex; gap: 0.75rem; align-items: center;
-  }
-  .save-btn {
-    padding: 0.6rem 1.5rem; font-size: 0.85rem; font-weight: 600;
-    background: var(--accent); color: var(--bg); border: none;
-    border-radius: 0.5rem; cursor: pointer; transition: opacity 0.2s;
-    font-family: inherit;
-  }
-  .save-btn:hover { opacity: 0.85; }
-  .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  #saveStatus { font-size: 0.8rem; color: var(--muted); }
-
-  @media (max-width: 900px) {
-    .overview-gauges { grid-template-columns: repeat(3, 1fr); }
-  }
-  @media (max-width: 500px) {
-    .overview-gauges { grid-template-columns: repeat(2, 1fr); }
-  }
-  @media (max-width: 600px) {
-    .gauges { grid-template-columns: repeat(2, 1fr); }
-    .tab { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
-  }
+:root {
+  --text-color: #f1f5f9;
+  --light-text-color: #94a3b8;
+  --link-color: #38bdf8;
+  --background-color: #0b1120;
+  --midground-color: #111827;
+  --foreground-color: #1f2937;
+  --border-color: #334155;
+  --light-border-color: #475569;
+  --header-bg-color: #161616;
+  --header-tab-unselected: rgba(15, 23, 42, 0.8);
+  --blue-color: #38bdf8;
+  --green-color: #22c55e;
+  --yellow-color: #eab308;
+  --red-color: #ef4444;
+  --grey-color: #94a3b8;
+  --card-shadow-color: rgba(0,0,0,0.4);
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-2: 0 4px 12px rgba(0,0,0,0.4);
+  --focus-outline: 2px solid #38bdf8;
+  --btn1-background-color: #27354f;
+  --btn2-background-color: #1f2937;
+  --btn3-background-color: #172033;
+}
+body { font-family: Exo, system-ui, sans-serif; background-color: var(--background-color); background-image: url("/images/header-bg.gif"); background-repeat: repeat; color: var(--text-color); }
+.header { background-color: var(--header-bg-color); background-image: url("/images/header-bg.gif"); background-repeat: repeat; border-bottom: 1px solid var(--border-color); }
+.header .container { padding: 20px 32px 0; max-width: 1600px; margin: 0 auto; }
+.header .container .logo { background-image: url("/images/logo-luxmon.svg") !important; width: 160px; height: 40px; background-repeat: no-repeat; background-size: contain; margin-bottom: 20px; }
+.header .container .menu .menu-item { background-color: var(--header-tab-unselected); color: var(--text-color); border-radius: 6px 6px 0 0; }
+.header .container .menu .menu-item.active { background-color: var(--background-color); }
+.header .container .menu .menu-item .item-img svg { color: var(--light-text-color); }
+.main .content { max-width: 1600px; margin: 0 auto; padding: 16px 32px 32px; }
+.card { background: var(--foreground-color); border-color: var(--border-color); box-shadow: var(--shadow-2); }
+.card .card-section:not(:first-child) { border-color: var(--border-color); }
+a.status, a.status:visited { color: var(--text-color); }
+.status > img { border-color: var(--border-color); background: linear-gradient(90deg, var(--btn2-background-color), var(--btn3-background-color)); }
+a.status:hover img { background: linear-gradient(90deg, var(--btn1-background-color), var(--btn2-background-color)); }
+a.status:hover > div .label { color: var(--link-color); }
+.gauge .semi-circle.red { background: linear-gradient(-75deg, #f97316, #ef4444, #f87171, #ef4444); }
+.gauge .semi-circle.blue { background: linear-gradient(-45deg, #38bdf8, #2563eb, #60a5fa, #3b82f6); }
+.gauge .semi-circle.yellow { background: linear-gradient(-120deg, #fde047, #eab308, #facc15, #fef08a); }
+.gauge .semi-circle.green { background: linear-gradient(120deg, #4ade80, #16a34a, #22c55e, #86efac); }
+.gauge .semi-circle:before { background: var(--foreground-color); }
+.gauge .semi-circle--mask:before { background: var(--background-color); }
+.page-header { height: auto; min-height: 48px; }
+.chart h4 { color: var(--text-color); }
+.btn, button, .button { background: var(--btn2-background-color); border-color: var(--border-color); color: var(--text-color); }
+.btn:hover, button:hover { background: var(--btn1-background-color); border-color: var(--light-border-color); }
+.config-tab.active { background: var(--blue-color); color: #0b1120; }
+.nav-item { display: none; }
+/* tab switching via .section */
+.section { display: none; }
+.section.active { display: block; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+.props { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+.prop-label { font-size: 0.75rem; color: var(--light-text-color); }
+.prop-value { font-size: 1.1rem; font-weight: 600; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+.field { display: flex; flex-direction: column; gap: 0.35rem; }
+.field label { font-size: 0.75rem; color: var(--light-text-color); }
+.field input, .field select, .field textarea {
+  background: var(--midground-color); border: 1px solid var(--border-color); border-radius: 0.5rem;
+  padding: 0.55rem 0.7rem; color: var(--text-color); font-size: 0.9rem;
+}
+.actions { display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; }
+.rule-card { margin-bottom: 0.75rem; }
+.rule-meta { font-size: 0.8rem; color: var(--light-text-color); }
+.config-panel { display: none; }
+.config-panel.active { display: block; }
+.back-link { color: var(--link-color); cursor: pointer; font-size: 0.85rem; margin-bottom: 0.75rem; display: inline-flex; gap: 0.4rem; }
+@media (max-width: 78em) {
+  .main .content { padding: 8px 16px 16px; }
+  .header .container { padding: 10px 16px 0; }
+}
 </style>
 </head>
-<body>
-<div class="app">
-  <div class="header">
-    <h1>☀️ lux-mon</h1>
-    <div class="updated" id="updated">Loading…</div>
-  </div>
-
-  <div class="tabs">
-    <div class="tab active" data-tab="overview">Overview</div>
-    <div class="tab" data-tab="charts">Charts</div>
-    <div class="tab" data-tab="battery">Battery</div>
-    <div class="tab" data-tab="totals">Totals</div>
-    <div class="tab" data-tab="settings" style="margin-left:auto;padding:0.5rem 0.75rem;font-size:1.1rem" title="Settings">⚙️</div>
-  </div>
-
-  <!-- Overview Tab — SolarAssistant-inspired layout -->
-  <div class="tab-content active" id="tab-overview">
-    <!-- 4 gauge cards: Solar | Grid | Load | Battery -->
-    <div class="overview-gauges" id="overviewGauges"></div>
-
-    <!-- Full-width 24h combined chart -->
-    <div class="card overview-chart">
-      <div class="chart-time-label">
-        <div class="label">Power Flow — Last 24 Hours</div>
-        <div class="time-range" id="overviewTimeRange">
-          <button class="time-btn" data-min="60">1h</button>
-          <button class="time-btn" data-min="360">6h</button>
-          <button class="time-btn" data-min="720">12h</button>
-          <button class="time-btn active" data-min="1440">24h</button>
-        </div>
-      </div>
-      <canvas id="chart-overview-combined"></canvas>
-    </div>
-
-    <!-- Status bar -->
-    <div class="status-bar" id="statusBar"></div>
-  </div>
-
-  <!-- Charts Tab -->
-  <div class="tab-content" id="tab-charts">
-    <div class="time-range" id="chartTimeRange">
-      <button class="time-btn" data-min="60">1h</button>
-      <button class="time-btn" data-min="180">3h</button>
-      <button class="time-btn active" data-min="360">6h</button>
-      <button class="time-btn" data-min="720">12h</button>
-      <button class="time-btn" data-min="1440">24h</button>
-    </div>
-    <div class="chart-row">
-      <div class="card chart-card">
-        <div class="label">Solar PV Power</div>
-        <canvas id="chart-pv"></canvas>
-      </div>
-      <div class="card chart-card">
-        <div class="label">Grid Power</div>
-        <div id="gridStatus" style="font-size:0.75rem;color:var(--muted);margin-bottom:0.3rem"></div>
-        <canvas id="chart-grid"></canvas>
-      </div>
-      <div class="card chart-card">
-        <div class="label">Battery Power</div>
-        <canvas id="chart-battpower"></canvas>
-      </div>
-      <div class="card chart-card">
-        <div class="label">Battery Voltage & SOC</div>
-        <canvas id="chart-battvsoc"></canvas>
-      </div>
-      <div class="card chart-card">
-        <div class="label">Load (EPS)</div>
-        <canvas id="chart-load"></canvas>
-      </div>
-      <div class="card chart-card">
-        <div class="label">Temperatures</div>
-        <canvas id="chart-temps"></canvas>
-      </div>
-    </div>
-  </div>
-
-  <!-- Battery Tab -->
-  <div class="tab-content" id="tab-battery">
-    <div class="gauges" id="battGauges"></div>
-    <div class="chart-row">
-      <div class="card chart-card">
-        <div class="label">Cell Voltages</div>
-        <canvas id="chart-cells"></canvas>
-      </div>
-      <div class="card chart-card">
-        <div class="label">Cell Temperatures</div>
-        <canvas id="chart-celltemps"></canvas>
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:0.75rem">
-      <div class="label">BMS Status</div>
-      <div id="bmsStatus" style="font-size:0.8rem;margin-top:0.5rem"></div>
-    </div>
-  </div>
-
-  <!-- Totals Tab -->
-  <div class="tab-content" id="tab-totals">
-    <div class="card" style="margin-bottom:0.75rem">
-      <div class="label">Today's Energy</div>
-      <div id="todayTotals"></div>
-    </div>
-    <div class="card" style="margin-bottom:0.75rem">
-      <div class="label">Energy History</div>
-      <div style="margin-bottom:0.5rem">
-        <button class="range-btn" data-range="daily" onclick="loadEnergyHistory('daily', 14)">Daily</button>
-        <button class="range-btn" data-range="weekly" onclick="loadEnergyHistory('weekly', 12)">Weekly</button>
-        <button class="range-btn" data-range="monthly" onclick="loadEnergyHistory('monthly', 12)">Monthly</button>
-      </div>
-      <div id="energyHistory"></div>
-    </div>
-    <div class="card">
-      <div class="label">All-Time Totals</div>
-      <div id="allTimeTotals"></div>
-    </div>
-  </div>
-
-  <!-- Settings Tab -->
-  <div class="tab-content" id="tab-settings">
-    <div class="settings-page">
-      <div class="card settings-section" id="settingsSectionInverter">
-        <h3>Inverter</h3>
-        <div class="settings-grid" id="settingsInverter"></div>
-      </div>
-      <div class="card settings-section" id="settingsSectionBattery">
-        <h3>Battery</h3>
-        <div class="settings-grid" id="settingsBattery"></div>
-      </div>
-      <div class="card settings-section" id="settingsSectionGrid">
-        <h3>Grid</h3>
-        <div class="settings-grid" id="settingsGrid"></div>
-      </div>
-      <div class="card settings-section" id="settingsSectionDashboard">
-        <h3>Dashboard</h3>
-        <p class="settings-note">Values above are only visual settings for the various dashboards. They don't affect inverter operation.</p>
-        <div class="settings-grid" id="settingsDashboard"></div>
-      </div>
-      <div class="card settings-section" id="settingsSectionSystem">
-        <h3>System</h3>
-        <div class="settings-grid" id="settingsSystem"></div>
-      </div>
-      <div class="card settings-section" id="settingsSectionCollector">
-        <h3>Collector</h3>
-        <div class="settings-grid" id="settingsCollector"></div>
-      </div>
-      <div class="card settings-section" id="settingsSectionInfluxdb">
-        <h3>InfluxDB Output</h3>
-        <p class="settings-note">Publishes SolarAssistant-compatible measurements to InfluxDB for Grafana dashboards.</p>
-        <div class="settings-grid" id="settingsInfluxdb"></div>
-      </div>
-      <div class="card settings-section" id="settingsSectionMqtt">
-        <h3>MQTT / Home Assistant</h3>
-        <p class="settings-note">Publishes state and Home Assistant MQTT discovery configs.</p>
-        <div class="settings-grid" id="settingsMqtt"></div>
-      </div>
-      <div class="card settings-section" id="settingsSectionAlerts">
-        <h3>Alerts</h3>
-        <p class="settings-note">Threshold-based alerts published to MQTT and stored in MariaDB.</p>
-        <div class="settings-grid" id="settingsAlerts"></div>
-      </div>
-      <div class="card settings-section" id="settingsSectionMaintenance">
-        <h3>Maintenance</h3>
-        <p class="settings-note">Backup MariaDB + settings, prune old detail data, and check storage.</p>
-        <div class="settings-grid">
-          <div class="setting-row" style="grid-column: 1 / -1; display:flex; gap:0.5rem; flex-wrap:wrap;">
-            <button id="btnBackup" class="save-btn">💾 Backup Now</button>
-            <button id="btnPrune" class="save-btn">🧹 Prune Old Data</button>
-            <button id="btnRefreshStorage" class="save-btn">📊 Refresh Storage</button>
-            <span id="maintenanceStatus"></span>
-          </div>
-          <pre id="storageInfo" style="grid-column: 1 / -1; background:#0f172a; padding:0.75rem; border-radius:0.5rem; font-size:0.8rem; overflow:auto;">Click Refresh Storage to load usage.</pre>
-          <div id="backupsList" style="grid-column: 1 / -1;"></div>
-        </div>
-      </div>
-      <div class="settings-actions">
-        <button id="saveSettings" class="save-btn">💾 Save All Settings</button>
-        <span id="saveStatus"></span>
-      </div>
+<body class="with-header dark-theme" data-gateway-timezone="America/Chicago">
+<div class="header">
+  <div class="container">
+    <div class="logo icon-logo"></div>
+    <div role="navigation" aria-label="main" class="menu" id="top-menu">
+      <a href="#" class="menu-item active" data-page="main">
+        <div class="item-img icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" height="24" width="24"><path d="M1.5 16.5h8s1 0 1 1v5s0 1 -1 1h-8s-1 0 -1 -1v-5s0 -1 1 -1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="m22.5 23.5 -8 0s-1 0 -1 -1l0 -11s0 -1 1 -1l8 0s1 0 1 1l0 11s0 1 -1 1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="m22.5 7.5 -8 0s-1 0 -1 -1l0 -5s0 -1 1 -1l8 0s1 0 1 1l0 5s0 1 -1 1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M1.5 0.5h8s1 0 1 1v11s0 1 -1 1h-8s-1 0 -1 -1v-11s0 -1 1 -1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path></svg></div>
+        <span class="item-caption">Dashboard</span>
+      </a>
+      <a href="#" class="menu-item" data-page="charts">
+        <div class="item-img icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" height="24" width="24"><path d="M4.5 20a0.5 0.5 0 0 0 -0.5 -0.5H2a0.5 0.5 0 0 0 -0.5 0.5v3.5h3Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M10.5 15a0.5 0.5 0 0 0 -0.5 -0.5H8a0.5 0.5 0 0 0 -0.5 0.5v8.5h3Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M16.5 18a0.5 0.5 0 0 0 -0.5 -0.5h-2a0.5 0.5 0 0 0 -0.5 0.5v5.5h3Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M22.5 10a0.5 0.5 0 0 0 -0.5 -0.5h-2a0.5 0.5 0 0 0 -0.5 0.5v13.5h3Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="m0.504 23.5 23 0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M3.918 8.586 6.59 5.914" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="m9.732 5.508 2.544 1.484" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="m15.577 6.764 3.854 -3.028" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M19.004 2.5a2 2 0 1 0 4 0 2 2 0 1 0 -4 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M12.004 8a2 2 0 1 0 4 0 2 2 0 1 0 -4 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M6.004 4.5a2 2 0 1 0 4 0 2 2 0 1 0 -4 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M0.504 10a2 2 0 1 0 4 0 2 2 0 1 0 -4 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path></svg></div>
+        <span class="item-caption">Charts</span>
+      </a>
+      <a href="#" class="menu-item" data-page="historical">
+        <div class="item-img icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" height="24" width="24"><path d="M12 0.5a11.5 11.5 0 1 0 0 23 11.5 11.5 0 1 0 0 -23" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M12 6.5v5.5l4 2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path></svg></div>
+        <span class="item-caption">Historical</span>
+      </a>
+      <a href="#" class="menu-item" data-page="automations">
+        <div class="item-img icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" height="24" width="24"><path d="m20 9.498 -10 14 2 -9 -8 0 10 -14 -2 9 8 0z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path></svg></div>
+        <span class="item-caption">Automation</span>
+      </a>
+      <a href="#" class="menu-item" data-page="configuration">
+        <div class="item-img icon"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" height="24" width="24"><path d="M20.254 13.5H22.5a1 1 0 0 0 1 -1v-1a1 1 0 0 0 -1 -1h-2.247a11.8 11.8 0 0 0 -1 -2.922l1.589 -1.588a1 1 0 0 0 0 -1.414l-1.418 -1.414a1 1 0 0 0 -1.414 0l-1.59 1.589a11.769 11.769 0 0 0 -2.92 -1V1.5a1 1 0 0 0 -1 -1h-1a1 1 0 0 0 -1 1v2.249a11.777 11.777 0 0 0 -2.921 1l-1.59 -1.587a1 1 0 0 0 -1.414 0L3.16 4.577a1 1 0 0 0 0 1.414L4.75 7.58a11.821 11.821 0 0 0 -1 2.921H1.5a1 1 0 0 0 -1 1v1a1 1 0 0 0 1 1h2.246a11.821 11.821 0 0 0 1 2.921l-1.59 1.59a1 1 0 0 0 0 1.414l1.419 1.414a1 1 0 0 0 1.414 0l1.589 -1.59a11.8 11.8 0 0 0 2.922 1v2.25a1 1 0 0 0 1 1h1a1 1 0 0 0 1 -1v-2.245a11.8 11.8 0 0 0 2.92 -1l1.591 1.589a1 1 0 0 0 1.414 0l1.414 -1.414a1 1 0 0 0 0 -1.414l-1.589 -1.59a11.821 11.821 0 0 0 1.004 -2.926Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path><path d="M7.5 12.001a4.5 4.5 0 1 0 9 0 4.5 4.5 0 1 0 -9 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1"></path></svg></div>
+        <span class="item-caption">Configuration</span>
+      </a>
     </div>
   </div>
 </div>
 
+<main role="main" id="main" class="main">
+  <div class="content has-page-header" id="content-wrap">
+
+    <!-- Main Dashboard -->
+    <div id="page-main" class="section active">
+      <div class="page-header">
+        <div class="toolbar" style="width:100%; justify-content:flex-end;">
+          <span id="last-updated" class="text-light" style="font-size:0.8rem;">--</span>
+        </div>
+      </div>
+      <div class="card-grid dashboard">
+        <div class="card" role="status">
+          <div class="card-section dashboard-info">
+            <div><a href="#" class="status" data-detail="inverter" aria-labelledby="inverter-label">
+              <img src="/images/inverter-ok.svg" role="presentation" id="img-inverter">
+              <div>
+                <div class="label" id="inverter-label">Inverter</div>
+                <div class="property" id="sa-inv-state">--</div>
+                <div class="property small" id="sa-inv-temp">--</div>
+              </div>
+            </a></div>
+            <div><a href="#" class="status" data-detail="solar" aria-labelledby="solar-label">
+              <img src="/images/solar-forecast.svg" role="presentation" id="img-solar">
+              <div>
+                <div class="label" id="solar-label">Solar PV</div>
+                <div class="property" id="sa-solar-total">--</div>
+                <div class="property small"><span class="name">Peak:</span><span id="sa-solar-peak">--</span></div>
+              </div>
+            </a></div>
+            <div><a href="#" class="status" data-detail="grid" aria-labelledby="grid-label">
+              <img src="/images/grid-ok.svg" role="presentation" id="img-grid">
+              <div>
+                <div class="label" id="grid-label">Grid</div>
+                <div class="property" id="sa-grid-v">--</div>
+                <div class="property font-small" id="sa-grid-prop">--</div>
+              </div>
+            </a></div>
+            <div><a href="#" class="status" data-detail="battery" aria-labelledby="battery-label">
+              <img src="/images/battery-mid.svg" role="presentation" id="img-battery">
+              <div>
+                <div class="label" id="battery-label">Battery</div>
+                <div class="property" id="sa-bat-v">--</div>
+                <div class="property" id="sa-bat-soc">--</div>
+                <div class="property battery-change" id="sa-bat-power">--</div>
+              </div>
+            </a></div>
+          </div>
+          <div class="card-section dashboard-gauges">
+            <div><div class="gauge" data-detail="load" aria-labelledby="load-gauge">
+              <div class="mask"><div class="semi-circle blue"></div><div class="semi-circle--mask" id="gauge-load-mask" style="transform: rotate(0deg)"></div></div>
+              <div class="value" id="gauge-load">--</div><div class="label" id="load-gauge">Load</div>
+            </div></div>
+            <div><div class="gauge" data-detail="solar" aria-labelledby="solar-gauge">
+              <div class="mask"><div class="semi-circle yellow"></div><div class="semi-circle--mask" id="gauge-solar-mask" style="transform: rotate(0deg)"></div></div>
+              <div class="value" id="gauge-solar">--</div><div class="label" id="solar-gauge">Solar PV</div>
+            </div></div>
+            <div><div class="gauge" data-detail="grid" aria-labelledby="grid-gauge">
+              <div class="mask"><div class="semi-circle red"></div><div class="semi-circle--mask" id="gauge-grid-mask" style="transform: rotate(0deg)"></div></div>
+              <div class="value" id="gauge-grid">--</div><div class="label" id="grid-gauge">Grid</div>
+            </div></div>
+            <div><div class="gauge" data-detail="battery" aria-labelledby="battery-gauge">
+              <div class="mask"><div class="semi-circle red"></div><div class="semi-circle--mask" id="gauge-battery-mask" style="transform: rotate(0deg)"></div></div>
+              <div class="value" id="gauge-battery">--</div><div class="label" id="battery-gauge">Battery</div>
+            </div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div id="weather-bar" role="figure" style="min-height: 300px; height: 300px; width: 100%" class="card-section height-flex height-50-single-column">
+            <h4>PV Today</h4>
+            <div class="chart" style="height: calc(100% - 40px);"><canvas id="chart-pv-today"></canvas></div>
+          </div>
+          <div id="overview-chart" role="figure" style="min-height: 300px; height: 300px; width: 100%" class="chart card-section height-flex height-50-single-column">
+            <h4>Overview — Last 24 Hours</h4>
+            <div style="height: calc(100% - 40px);"><canvas id="chart-overview-24h"></canvas></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div id="battery-power-chart" role="figure" style="min-height: 350px; height: 300px; width: 100%" class="chart card-section height-flex height-60-single-column">
+            <h4>Battery power</h4>
+            <div style="height: calc(100% - 40px);"><canvas id="chart-battery-power"></canvas></div>
+          </div>
+          <div id="battery-soc-chart" role="figure" style="min-height: 250px; height: 200px; width: 100%" class="chart card-section height-flex height-40-single-column">
+            <h4>Battery state of charge</h4>
+            <div style="height: calc(100% - 40px);"><canvas id="chart-battery-soc"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detail View -->
+    <div id="page-detail" class="section">
+      <div class="page-header"><div class="toolbar" style="width:100%; justify-content:flex-start;"><span class="back-link" onclick="showPage('main')">← Back to Dashboard</span></div></div>
+      <div class="page-header"><div class="title"><h2 id="detail-title">Detail</h2></div></div>
+      <div id="detail-content"></div>
+    </div>
+
+    <!-- Charts Dashboard -->
+    <div id="page-charts" class="section">
+      <div class="page-header"><div class="title"><h2>Charts Dashboard</h2></div></div>
+      <p class="text-light" style="margin-bottom:1em;">Last 30 days per subsystem</p>
+      <div class="card-grid dashboard">
+        <div class="card chart card-section height-flex"><h4>Battery Charge / Discharge</h4><div style="height:300px"><canvas id="chart-battery-30d"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Grid Import / Export</h4><div style="height:300px"><canvas id="chart-grid-30d"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Inverter Power</h4><div style="height:300px"><canvas id="chart-inverter-30d"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Solar Input</h4><div style="height:300px"><canvas id="chart-solar-30d"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- Historical Dashboard -->
+    <div id="page-historical" class="section">
+      <div class="page-header"><div class="title"><h2>Historical Dashboard</h2></div></div>
+      <p class="text-light" style="margin-bottom:1em;">Last year and daily totals</p>
+      <div class="card chart card-section" style="margin-bottom:1em;"><h4>Daily Totals — PV / Battery / Grid / Load</h4><div style="height:320px"><canvas id="hist-totals"></canvas></div></div>
+      <div class="card-grid dashboard">
+        <div class="card chart card-section height-flex"><h4>Battery (1 Year)</h4><div style="height:300px"><canvas id="hist-battery"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Grid (1 Year)</h4><div style="height:300px"><canvas id="hist-grid"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Inverter (1 Year)</h4><div style="height:300px"><canvas id="hist-inverter"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Solar (1 Year)</h4><div style="height:300px"><canvas id="hist-solar"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- Automation Dashboard -->
+    <div id="page-automations" class="section">
+      <div class="page-header"><div class="title"><h2>Power Management</h2></div></div>
+
+      <!-- Global control -->
+      <div class="card" style="margin-bottom:1em;">
+        <div class="card-section">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+            <div>
+              <h3>Automation Engine</h3>
+              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Rules run after every snapshot. Use <strong>dry run</strong> to test safely.</p>
+            </div>
+            <label class="field" style="flex-direction:row; align-items:center; gap:0.5rem; margin:0;"><input type="checkbox" id="auto-enabled"> <span>Enable</span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timer schedule (charge / discharge time slots) -->
+      <div class="card" style="margin-bottom:1em;">
+        <div class="card-section">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
+            <div>
+              <h3>Timer Schedule</h3>
+              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Configure when the inverter charges from grid and when it prioritises battery.</p>
+            </div>
+            <button class="btn" id="btn-save-schedule">Save Schedule</button>
+          </div>
+          <div id="schedule-editor"></div>
+        </div>
+      </div>
+
+      <!-- Automation rules -->
+      <div class="card" style="margin-bottom:1em;">
+        <div class="card-section">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+            <h3>Automation Rules</h3>
+            <div class="actions" style="margin:0;">
+              <button class="btn" id="btn-add-rule">Add Rule</button>
+              <button class="btn" id="btn-test-rules">Dry-Run Test</button>
+              <button class="btn" id="btn-load-rules">Reload</button>
+            </div>
+          </div>
+          <div id="rules-list" style="margin-top:0.75rem;"></div>
+        </div>
+      </div>
+
+      <!-- Rule editor modal -->
+      <div id="rule-editor" style="display:none;">
+        <div class="card" style="margin-bottom:1em;">
+          <div class="card-section">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+              <h3 id="rule-editor-title">Edit Rule</h3>
+              <button class="btn" id="btn-rule-editor-close">Close</button>
+            </div>
+            <div id="rule-editor-body" style="margin-top:0.75rem;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Automation log -->
+      <div class="card" style="margin-top:1em;">
+        <div class="card-section"><h3>Automation Log</h3><div id="auto-log" style="max-height:300px; overflow:auto; font-size:0.85rem;"></div></div>
+      </div>
+      <div id="auto-msg" style="margin-top:0.75rem; font-size:0.9rem;"></div>
+    </div>
+
+    <!-- Configuration Dashboard -->
+    <div id="page-configuration" class="section">
+      <div class="page-header"><div class="title"><h2>Configuration Dashboard</h2></div></div>
+      <div class="sub-nav" style="margin-bottom:1em;">
+        <button class="btn config-tab active" data-config="inverter">Inverter</button>
+        <button class="btn config-tab" data-config="system">System</button>
+        <button class="btn config-tab" data-config="network">Network</button>
+        <button class="btn config-tab" data-config="mqtt">MQTT</button>
+        <button class="btn config-tab" data-config="backup">Backup</button>
+      </div>
+
+      <div id="config-inverter" class="config-panel active">
+        <div class="card"><div class="card-section"><h3>Inverter Connection</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
+            <div class="field"><label>Dongle Host</label><input type="text" data-key="dongle_host" placeholder="192.168.1.100"></div>
+            <div class="field"><label>Dongle Port</label><input type="number" data-key="dongle_port" placeholder="8000"></div>
+            <div class="field"><label>Datalog Serial</label><input type="text" data-key="datalog_serial" placeholder="BJxxxxxxxx"></div>
+            <div class="field"><label>Inverter Serial</label><input type="text" data-key="inverter_serial" placeholder="5xxxxxxxx"></div>
+            <div class="field"><label>Inverter Model</label><input type="text" data-key="inverter_model" placeholder="eg4_6000xp"></div>
+          </div>
+        </div></div>
+        <div class="card" style="margin-top:1em;"><div class="card-section"><h3>Limits & Preferences</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
+            <div class="field"><label>Max PV Power (W)</label><input type="number" data-key="pv_max_power"></div>
+            <div class="field"><label>Max Grid Power (W)</label><input type="number" data-key="grid_max_power"></div>
+            <div class="field"><label>Max Charge Power (W)</label><input type="number" data-key="charge_max_power"></div>
+            <div class="field"><label>Max Discharge Power (W)</label><input type="number" data-key="discharge_max_power"></div>
+            <div class="field"><label>Temperature Unit</label><select data-key="temperature_unit"><option value="celsius">Celsius</option><option value="fahrenheit">Fahrenheit</option></select></div>
+          </div>
+        </div></div>
+      </div>
+
+      <div id="config-system" class="config-panel">
+        <div class="card"><div class="card-section"><h3>System Time & Date</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
+            <div class="field"><label>Timezone</label><input type="text" data-key="timezone" placeholder="America/Chicago"></div>
+            <div class="field"><label>Date</label><input type="date" data-key="system_date"></div>
+            <div class="field"><label>Time</label><input type="time" data-key="system_time"></div>
+          </div>
+          <div class="actions"><button class="btn" id="btn-sync-time">Sync to Browser</button><button class="btn" id="btn-ntp-sync">Sync NTP</button></div>
+        </div></div>
+        <div class="card" style="margin-top:1em;"><div class="card-section"><h3>Data Retention</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
+            <div class="field"><label>Snapshot retention (days)</label><input type="number" data-key="retention_days" placeholder="365"></div>
+            <div class="field"><label>Write interval (seconds)</label><input type="number" data-key="write_interval" placeholder="5"></div>
+          </div>
+        </div></div>
+      </div>
+
+      <div id="config-network" class="config-panel">
+        <div class="card"><div class="card-section"><h3>Wi-Fi</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
+            <div class="field"><label>SSID</label><input type="text" data-key="wifi_ssid"></div>
+            <div class="field"><label>Password</label><input type="password" data-key="wifi_password"></div>
+          </div>
+        </div></div>
+        <div class="card" style="margin-top:1em;"><div class="card-section"><h3>Ethernet</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
+            <div class="field"><label>Mode</label><select data-key="eth_mode"><option value="dhcp">DHCP</option><option value="static">Static</option></select></div>
+            <div class="field"><label>IP Address</label><input type="text" data-key="eth_ip" placeholder="192.168.1.10"></div>
+            <div class="field"><label>Gateway</label><input type="text" data-key="eth_gateway" placeholder="192.168.1.1"></div>
+            <div class="field"><label>DNS</label><input type="text" data-key="eth_dns" placeholder="1.1.1.1"></div>
+          </div>
+        </div></div>
+        <p class="text-light" style="font-size:0.8rem; margin-top:0.5rem;">Network changes may require a system restart and must be applied by the host OS.</p>
+      </div>
+
+      <div id="config-mqtt" class="config-panel">
+        <div class="card"><div class="card-section"><h3>MQTT Broker</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
+            <div class="field"><label>Host</label><input type="text" data-key="mqtt_host" placeholder="localhost"></div>
+            <div class="field"><label>Port</label><input type="number" data-key="mqtt_port" placeholder="1883"></div>
+            <div class="field"><label>Username</label><input type="text" data-key="mqtt_username"></div>
+            <div class="field"><label>Password</label><input type="password" data-key="mqtt_password"></div>
+            <div class="field"><label>Topic Prefix</label><input type="text" data-key="mqtt_topic_prefix" placeholder="luxmon"></div>
+          </div>
+        </div></div>
+      </div>
+
+      <div id="config-backup" class="config-panel">
+        <div class="card"><div class="card-section"><h3>Backup & Maintenance</h3>
+          <p class="text-light" style="margin-bottom:0.75rem;">Create a backup of the database and configuration.</p>
+          <div class="actions">
+            <button class="btn" id="btn-backup-now">Backup Now</button>
+            <button class="btn" id="btn-prune-old">Prune Old Data</button>
+            <button class="btn" id="btn-download-backup">Download Latest</button>
+          </div>
+        </div></div>
+        <div class="card" style="margin-top:1em;"><div class="card-section"><h3>Backup Schedule</h3>
+          <div class="form-grid" style="margin-top:0.75rem;">
+            <div class="field"><label>Automatic backups</label><select data-key="backup_enabled"><option value="false">Disabled</option><option value="true">Enabled</option></select></div>
+            <div class="field"><label>Backup time</label><input type="time" data-key="backup_time" value="02:00"></div>
+            <div class="field"><label>Keep backups (days)</label><input type="number" data-key="backup_retention_days" placeholder="30"></div>
+            <div class="field"><label>Remote backup URL</label><input type="text" data-key="backup_remote_url" placeholder="sftp://user@host:/path"></div>
+          </div>
+        </div></div>
+      </div>
+
+      <div class="actions" style="margin-top:1.5rem;">
+        <button class="btn" id="btn-save-config">Save Configuration</button>
+        <span id="config-msg" class="text-light" style="font-size:0.85rem;"></span>
+      </div>
+    </div>
+
+  </div>
+</main>
+
 <script>
-// ── State ──
-let currentTab = 'overview';
-let chartRange = 360;
-let overviewChartRange = 1440;
-let gaugesBuilt = false;
-let battGaugesBuilt = false;
-const charts = {};
-const API = '';
-
-// ── Formatters ──
-function fmt(n, d=1) { if (n == null) return '—'; return Number(n).toFixed(d); }
-function fmtW(w) { const n = Number(w); if (Math.abs(n) >= 1000) return (n/1000).toFixed(1)+' kW'; return n.toFixed(0)+' W'; }
-function fmtV(v) { return Number(v).toFixed(1)+' V'; }
-function fmtA(a) { return Number(a).toFixed(1)+' A'; }
-function fmtC(c) { return Number(c).toFixed(0)+'°C'; }
-function fmtF(c) { const f = Number(c) * 9/5 + 32; return f.toFixed(0)+'°F'; }
-function fmtTemp(c) {
-  if (c == null) return '—';
-  const unit = window._settings?.temperature_unit || 'celsius';
-  return unit === 'fahrenheit' ? fmtF(c) : fmtC(c);
-}
-function tempUnitLabel() {
-  return (window._settings?.temperature_unit || 'celsius') === 'fahrenheit' ? '°F' : '°C';
-}
-function fmtPct(p) { return Number(p).toFixed(0)+'%'; }
-function fmtkWh(k) { return Number(k).toFixed(1)+' kWh'; }
-function fmtDays(s) { return Math.round(Number(s)/86400)+' days'; }
-function fmtHz(h) { return Number(h).toFixed(1)+' Hz'; }
-
-// ── Radial Gauge helpers ──
-function gaugeColor(pct) {
-  if (pct >= 80) return 'var(--green)';
-  if (pct >= 50) return 'var(--yellow)';
-  if (pct >= 25) return 'var(--orange)';
-  return 'var(--red)';
+const API = location.origin;
+let liveData = {};
+let settings = {};
+let charts = {};
+let ws;
+let todayPeakPv = 0;
+let currentDetail = null;
+let detailRendered = false;
+const imageCache = {};
+function preloadImage(src) {
+  if (imageCache[src]) return imageCache[src];
+  const img = new Image();
+  img.src = src;
+  imageCache[src] = img;
+  return img;
 }
 
-function polarToCartesian(cx, cy, r, angleDeg) {
-  const rad = angleDeg * Math.PI / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+function fmt(num, digits=1) {
+  if (num === undefined || num === null || Number.isNaN(num)) return null;
+  return Number(num).toFixed(digits);
+}
+function fmtInt(num) {
+  if (num === undefined || num === null || Number.isNaN(num)) return null;
+  return Math.round(num).toString();
+}
+function fmtTime(iso) {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+function val(r, key, fallback) {
+  if (!r || !r.registers) return fallback;
+  const k = r.registers[key];
+  return k && k.value !== undefined ? k.value : fallback;
+}
+async function fetchJson(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(res.statusText);
+  return res.json();
 }
 
-function describeArc(cx, cy, r, startAngle, endAngle) {
-  const s = polarToCartesian(cx, cy, r, endAngle);
-  const e = polarToCartesian(cx, cy, r, startAngle);
-  const large = endAngle - startAngle > 180 ? 1 : 0;
-  return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 0 ${e.x} ${e.y}`;
+// Update text only if value exists (no flicker)
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el && text !== null && text !== undefined) el.textContent = text;
 }
 
-const R = 38, STROKE = 5, CX = 50, CY = 50;
-const START_ANGLE = 180, END_ANGLE = 360, SWEEP = 180;
-const BG_ARC = describeArc(CX, CY, R, START_ANGLE, END_ANGLE);
+const STATE_MAP = {0:'Standby',1:'Self-test',2:'Normal',3:'Alarm',4:'Fault',5:'Bypass',6:'Battery',7:'ECO',8:'Shutdown'};
 
-function fillArcPath(pct) {
-  if (pct <= 0) return '';
-  const fillAngle = START_ANGLE + (pct / 100) * SWEEP;
-  return describeArc(CX, CY, R, START_ANGLE, fillAngle);
-}
+function renderMain(r) {
+  liveData = r;
+  setText('last-updated', 'Updated ' + fmtTime(r.timestamp));
 
-function buildGaugeSVG(id) {
-  return `<svg class="gauge-svg" viewBox="0 0 100 60">
-    <path d="${BG_ARC}" fill="none" stroke="var(--border)" stroke-width="${STROKE}" stroke-linecap="round"/>
-    <path id="${id}-arc" d="" fill="none" stroke="var(--green)" stroke-width="${STROKE}" stroke-linecap="round"/>
-    <text id="${id}-val" x="50" y="48" text-anchor="middle" fill="var(--text)" font-size="14" font-weight="700">—</text>
-    <text id="${id}-unit" x="50" y="58" text-anchor="middle" fill="var(--muted)" font-size="7"></text>
-  </svg>`;
-}
+  const state = val(r,'state',0);
+  setText('sa-inv-state', STATE_MAP[state] || ('State '+state));
+  const invTemp = val(r,'temp_inverter');
+  setText('sa-inv-temp', invTemp !== undefined ? fmt(invTemp) + ' °C' : null);
 
-function updateGauge(id, pct, color, valueText, unit) {
-  const arc = document.getElementById(id+'-arc');
-  const val = document.getElementById(id+'-val');
-  const unt = document.getElementById(id+'-unit');
-  if (!arc || !val) return;
-  const d = fillArcPath(pct);
-  if (arc.getAttribute('d') !== d) {
-    arc.setAttribute('d', d);
-    arc.setAttribute('stroke', color || gaugeColor(pct));
-  }
-  if (val.textContent !== valueText) val.textContent = valueText;
-  if (unt.textContent !== unit) unt.textContent = unit;
-}
+  const pv1 = val(r,'pv1_power') || 0;
+  const pv2 = val(r,'pv2_power') || 0;
+  const pvTotal = pv1 + pv2;
+  if (pvTotal > todayPeakPv) todayPeakPv = pvTotal;
+  // Inject computed values so detail view can read them via data-reg
+  if (!r.registers) r.registers = {};
+  r.registers.pv_total_power = { value: pvTotal, unit: 'W' };
+  setText('sa-solar-total', fmtInt(pvTotal) + ' W');
+  setText('sa-solar-peak', fmtInt(todayPeakPv) + ' W');
 
-// ── Chart helpers ──
-function makeChart(id, yMax, xType) {
-  const canvas = document.getElementById(id);
-  if (!canvas) return null;
+  const gridV = val(r,'grid_voltage_r');
+  const gridIn = val(r,'grid_import_power') || 0;
+  const gridOut = val(r,'grid_export_power') || 0;
+  setText('sa-grid-v', gridV !== undefined ? fmt(gridV) + ' V' : null);
+  setText('sa-grid-prop', gridIn > 0 ? 'Importing ' + fmtInt(gridIn) + ' W' : (gridOut > 0 ? 'Exporting ' + fmtInt(gridOut) + ' W' : 'Idle'));
 
-  const desiredX = xType || 'category';
-  // Reuse existing chart if present — don't destroy/recreate (causes canvas resize)
-  if (charts[id]) {
-    const c = charts[id];
-    if (c.options.scales.x.type !== desiredX) {
-      c.destroy();
-      delete charts[id];
-    } else {
-      if (yMax != null) {
-        c.options.scales.y.max = yMax;
-      }
-      return c;
-    }
-  }
+  const batV = val(r,'battery_voltage');
+  const soc = val(r,'soc');
+  const batP = val(r,'battery_power') || ((val(r,'discharge_power')||0) - (val(r,'charge_power')||0));
+  const loadPower = val(r,'load_power') || val(r,'total_load_power') || (pvTotal + gridIn - gridOut + ((val(r,'discharge_power')||0) - (val(r,'charge_power')||0)));
+  r.registers.load_power = { value: loadPower, unit: 'W' };
+  setText('sa-bat-v', batV !== undefined ? fmt(batV) + ' V' : null);
+  setText('sa-bat-soc', soc !== undefined ? fmtInt(soc) + ' %' : null);
+  setText('sa-bat-power', batP !== undefined ? fmtInt(batP) + ' W' : null);
 
-  const ctx = canvas.getContext('2d');
-  const yOpts = {
-    ticks: { color: '#64748b', font: {size:9} },
-    grid: { color: '#1e293b' }
-  };
-  if (yMax) yOpts.max = yMax;
-
-  const xOpts = desiredX === 'time' ? {
-    type: 'time',
-    time: { unit: 'hour', displayFormats: { hour: 'HH:mm' }, tooltipFormat: 'HH:mm' },
-    ticks: { color: '#64748b', maxTicksLimit: 8, font: {size:9} },
-    grid: { color: '#1e293b' }
-  } : {
-    ticks: { color: '#64748b', maxTicksLimit: 8, font: {size:9} },
-    grid: { color: '#1e293b' }
-  };
-
-  charts[id] = new Chart(ctx, {
-    type: 'line',
-    data: { labels: [], datasets: [] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: { duration: 300 },
-      interaction: { intersect: false, mode: 'index' },
-      plugins: {
-        legend: {
-          labels: { color: '#94a3b8', usePointStyle: true, boxWidth: 8, font: {size:10} }
+  // Battery icon based on SOC — only swap if the target actually changes
+  if (soc !== undefined) {
+    const img = document.getElementById('img-battery');
+    if (img) {
+      const level = soc < 25 ? 'battery-mid.svg' : (soc < 75 ? 'battery-mid.svg' : 'battery-full.svg');
+      const nextSrc = '/images/' + level;
+      const currentSrc = img.getAttribute('src');
+      if (currentSrc !== nextSrc) {
+        const pre = preloadImage(nextSrc);
+        if (pre.complete) {
+          img.src = nextSrc;
+        } else {
+          pre.onload = () => { img.src = nextSrc; };
         }
-      },
-      scales: {
-        x: xOpts,
-        y: yOpts
       }
     }
-  });
-  return charts[id];
-}
-
-function setChartData(id, labels, datasets, yMax, xType) {
-  const c = makeChart(id, yMax, xType);
-  if (!c) return;
-  if (labels) c.data.labels = labels;
-  c.data.datasets = datasets;
-  c.update('none');
-}
-
-async function fetchForecast() {
-  try {
-    const res = await fetch(API + '/api/forecast?hours=48');
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.data || [];
-  } catch (e) {
-    console.error('fetchForecast failed:', e);
-    return [];
   }
+
+  // Gauges
+  const load = val(r,'load_power');
+  setGauge('load', load, 10000);
+  setGauge('solar', pvTotal, 10000);
+  setGauge('grid', gridIn - gridOut, 10000);
+  setGauge('battery', batP, 10000);
 }
 
-function timeLabel(ts) {
-  const t = ts.indexOf('T');
-  return ts.substring(t+1, t+6);
+function setGauge(name, value, max) {
+  const el = document.getElementById('gauge-' + name);
+  const mask = document.getElementById('gauge-' + name + '-mask');
+  if (!el || !mask) return;
+  if (value === undefined || value === null || Number.isNaN(value)) {
+    el.textContent = '--';
+    mask.style.transform = 'rotate(0deg)';
+    return;
+  }
+  const kw = Math.abs(value) >= 1000 ? (value/1000).toFixed(2) + ' kW' : Math.round(value) + ' W';
+  el.textContent = kw;
+  let pct = Math.max(-1, Math.min(1, value / max));
+  let deg = pct * 180;
+  mask.style.transform = 'rotate(' + deg + 'deg)';
 }
 
-function extract(h, key) { return h.snapshots.map(s => s.registers[key] || 0); }
-
-// ── Overview: 4 gauge cards (Solar | Grid | Load | Battery) ──
-let overviewGaugesBuilt = false;
-function buildOverviewGauges() {
-  document.getElementById('overviewGauges').innerHTML = `
-    <div class="ov-gauge-card card">
-      <div class="gauge-icon">☀️</div>
-      <div class="gauge-title">Solar PV</div>
-      ${buildGaugeSVG('ov-solar')}
-      <div class="gauge-value" id="ov-solar-val">—</div>
-      <div class="gauge-detail" id="ov-solar-det"></div>
-    </div>
-    <div class="ov-gauge-card card">
-      <div class="gauge-icon">🏠</div>
-      <div class="gauge-title">Grid</div>
-      ${buildGaugeSVG('ov-grid')}
-      <div class="gauge-value" id="ov-grid-val">—</div>
-      <div class="gauge-detail" id="ov-grid-det"></div>
-    </div>
-    <div class="ov-gauge-card card">
-      <div class="gauge-icon">🔌</div>
-      <div class="gauge-title">Load (EPS)</div>
-      ${buildGaugeSVG('ov-load')}
-      <div class="gauge-value" id="ov-load-val">—</div>
-      <div class="gauge-detail" id="ov-load-det"></div>
-    </div>
-    <div class="ov-gauge-card card">
-      <div class="gauge-icon">🔋</div>
-      <div class="gauge-title">Battery</div>
-      ${buildGaugeSVG('ov-batt')}
-      <div class="gauge-value" id="ov-batt-val">—</div>
-      <div class="gauge-detail" id="ov-batt-det"></div>
-    </div>
-    <div class="ov-gauge-card card">
-      <div class="gauge-icon">🌡️</div>
-      <div class="gauge-title">Battery Temp</div>
-      ${buildGaugeSVG('ov-batttemp')}
-      <div class="gauge-value" id="ov-batttemp-val">—</div>
-      <div class="gauge-detail" id="ov-batttemp-det"></div>
-    </div>
-    <div class="ov-gauge-card card">
-      <div class="gauge-icon">🔥</div>
-      <div class="gauge-title">Inverter Temp</div>
-      ${buildGaugeSVG('ov-invtemp')}
-      <div class="gauge-value" id="ov-invtemp-val">—</div>
-      <div class="gauge-detail" id="ov-invtemp-det"></div>
-    </div>`;
-  overviewGaugesBuilt = true;
+function propsHtml(rows) {
+  return rows.map(([l,v]) => `<div class="prop"><div class="prop-label">${l}</div><div class="prop-value">${v}</div></div>`).join('');
+}
+function prop(label, reg, opts={}) {
+  const suffix = opts.suffix || '';
+  const intAttr = opts.int ? 'data-int="1"' : '';
+  const digitsAttr = opts.digits ? `data-digits="${opts.digits}"` : '';
+  const suffixAttr = suffix ? `data-suffix="${suffix}"` : '';
+  return `<div class="prop"><div class="prop-label">${label}</div><div class="prop-value" data-reg="${reg}" ${intAttr} ${digitsAttr} ${suffixAttr}>${suffix || '--'}</div></div>`;
+}
+function detailInverter(r) {
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Output</h3><div class="props">
+      ${prop('Voltage R','eps_voltage_r',{suffix:' V'})}
+      ${prop('Voltage S','eps_voltage_s',{suffix:' V'})}
+      ${prop('Voltage T','eps_voltage_t',{suffix:' V'})}
+      ${prop('Power L1','eps_power_l1',{suffix:' W', int:1})}
+      ${prop('Power L2','eps_power_l2',{suffix:' W', int:1})}
+      ${prop('Total Power','eps_power',{suffix:' W', int:1})}
+      ${prop('Apparent Power','eps_apparent_power',{suffix:' VA', int:1})}
+      ${prop('Frequency','eps_frequency',{suffix:' Hz', digits:2})}
+      ${prop('State','state',{int:1})}
+      ${prop('Fault Code','fault_code',{int:1})}
+      ${prop('Warning Code','warning_code',{int:1})}
+      ${prop('Runtime','runtime',{suffix:' s', int:1})}
+    </div></div></div><div class="card"><div class="card-section"><h3>Temperatures</h3><div class="props">
+      ${prop('Inverter','temp_inverter',{suffix:' °C'})}
+      ${prop('Battery','temp_battery',{suffix:' °C'})}
+      ${prop('Radiator 1','temp_radiator_1',{suffix:' °C'})}
+      ${prop('Radiator 2','temp_radiator_2',{suffix:' °C'})}
+    </div></div></div></div>`;
+}
+function detailBattery(r) {
+  let cells = '';
+  for (let i=1; i<=16; i++) cells += prop(`Cell ${i}`,`cell_${i}_voltage`,{suffix:' V', digits:3});
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Battery</h3><div class="props">
+      ${prop('SOC','soc',{suffix:' %', int:1})}
+      ${prop('SOH','soh',{suffix:' %', int:1})}
+      ${prop('Voltage','battery_voltage',{suffix:' V'})}
+      ${prop('Current','battery_current',{suffix:' A'})}
+      ${prop('Power','battery_power',{suffix:' W', int:1})}
+      ${prop('Capacity','battery_capacity',{suffix:' Ah'})}
+      ${prop('Cycles','cycle_count',{int:1})}
+      ${prop('Temp','temp_battery',{suffix:' °C'})}
+    </div></div></div><div class="card"><div class="card-section"><h3>Cells</h3><div class="props">${cells}</div></div></div></div>`;
+}
+function detailGrid(r) {
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Grid</h3><div class="props">
+      ${prop('Voltage R','grid_voltage_r',{suffix:' V'})}
+      ${prop('Voltage S','grid_voltage_s',{suffix:' V'})}
+      ${prop('Voltage T','grid_voltage_t',{suffix:' V'})}
+      ${prop('Frequency','grid_frequency',{suffix:' Hz', digits:2})}
+      ${prop('Import Power','grid_import_power',{suffix:' W', int:1})}
+      ${prop('Export Power','grid_export_power',{suffix:' W', int:1})}
+      ${prop('Import Today','grid_import_today',{suffix:' kWh', digits:2})}
+      ${prop('Export Today','grid_export_today',{suffix:' kWh', digits:2})}
+    </div></div></div></div>`;
+}
+function detailSolar(r) {
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Solar</h3><div class="props">
+      ${prop('Total PV Power','pv_total_power',{suffix:' W', int:1})}
+      ${prop('PV1 Power','pv1_power',{suffix:' W', int:1})}
+      ${prop('PV2 Power','pv2_power',{suffix:' W', int:1})}
+      ${prop('PV3 Power','pv3_power',{suffix:' W', int:1})}
+      ${prop('PV1 Voltage','pv1_voltage',{suffix:' V'})}
+      ${prop('PV2 Voltage','pv2_voltage',{suffix:' V'})}
+      ${prop('PV3 Voltage','pv3_voltage',{suffix:' V'})}
+      ${prop('PV Energy Today','pv1_energy_today',{suffix:' kWh', digits:2})}
+    </div></div></div></div>`;
+}
+function detailLoad(r) {
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Load</h3><div class="props">
+      ${prop('Total Load','load_power',{suffix:' W', int:1})}
+      ${prop('EPS Power','eps_power',{suffix:' W', int:1})}
+      ${prop('EPS Energy L1','eps_energy_l1_today',{suffix:' kWh', digits:2})}
+      ${prop('EPS Energy L2','eps_energy_l2_today',{suffix:' kWh', digits:2})}
+      ${prop('EPS Energy Today','eps_energy_today',{suffix:' kWh', digits:2})}
+    </div></div></div></div>`;
+}
+function detailEnvironment(r) {
+  return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Environment</h3><div class="props">
+      ${prop('Inverter Temp','temp_inverter',{suffix:' °C'})}
+      ${prop('Battery Temp','temp_battery',{suffix:' °C'})}
+      ${prop('Radiator 1','temp_radiator_1',{suffix:' °C'})}
+      ${prop('Radiator 2','temp_radiator_2',{suffix:' °C'})}
+      ${prop('Outside Temp','temp_outside',{suffix:' °C'})}
+    </div></div></div></div>`;
 }
 
-function updateOverviewGauges(r) {
-  if (!overviewGaugesBuilt) buildOverviewGauges();
-
-  const pv = (r.pv1_power?.value || 0) + (r.pv2_power?.value || 0);
-  const gridIn = r.grid_import_power?.value || 0;
-  const gridOut = r.grid_export_power?.value || 0;
-  const load = r.eps_power?.value || 0;
-  const soc = r.soc?.value || 0;
-  const chg = r.charge_power?.value || 0;
-  const dis = r.discharge_power?.value || 0;
-  const battV = r.battery_voltage?.value || 0;
-  const battA = r.battery_current?.value || 0;
-
-  const pvMax = Number(window._settings?.pv_max_power) || 8000;
-  const gridMax = Number(window._settings?.grid_max_power) || 6000;
-  const loadMax = Number(window._settings?.eps_max_power) || 6000;
-
-  // Solar gauge
-  updateGauge('ov-solar', Math.min((pv/pvMax)*100, 100), 'var(--yellow)',
-    fmtW(pv), '');
-  document.getElementById('ov-solar-val').textContent = fmtW(pv);
-  document.getElementById('ov-solar-det').textContent =
-    `PV1: ${fmtW(r.pv1_power?.value||0)} · PV2: ${fmtW(r.pv2_power?.value||0)}`;
-
-  // Grid gauge
-  const gridPower = gridIn > 0 ? gridIn : (gridOut > 0 ? -gridOut : 0);
-  const gridPct = Math.min((Math.abs(gridPower)/gridMax)*100, 100);
-  const gridColor = gridIn > 0 ? 'var(--accent)' : (gridOut > 0 ? 'var(--green)' : 'var(--muted)');
-  updateGauge('ov-grid', gridPct, gridColor,
-    gridIn > 0 ? fmtW(gridIn) : (gridOut > 0 ? fmtW(gridOut) : '0 W'), '');
-  document.getElementById('ov-grid-val').textContent =
-    gridIn > 0 ? `📥 ${fmtW(gridIn)}` : (gridOut > 0 ? `📤 ${fmtW(gridOut)}` : '0 W');
-  document.getElementById('ov-grid-det').textContent =
-    `${fmtV(r.grid_voltage_r?.value||0)} · ${fmtHz(r.grid_frequency?.value)}`;
-  const gridStatusHtml = [
-    `V: ${fmtV(r.grid_voltage_r?.value||0)}`,
-    `f: ${fmtHz(r.grid_frequency?.value)}`,
-    `In today: ${fmtkWh(r.grid_import_today?.value)}`,
-    `Out today: ${fmtkWh(r.grid_export_today?.value)}`,
-  ].join(' · ');
-  document.getElementById('gridStatus').textContent = gridStatusHtml;
-
-  // Load gauge
-  updateGauge('ov-load', Math.min((load/loadMax)*100, 100), 'var(--purple)',
-    fmtW(load), '');
-  document.getElementById('ov-load-val').textContent = fmtW(load);
-  document.getElementById('ov-load-det').textContent =
-    `Today: ${fmtkWh(r.eps_energy_today?.value||0)}`;
-
-  // Battery gauge (SOC-based)
-  updateGauge('ov-batt', soc, gaugeColor(soc), fmtPct(soc), '');
-  document.getElementById('ov-batt-val').textContent = fmtPct(soc);
-  const battStatus = chg > 0 ? `⚡ Charging ${fmtW(chg)}` :
-    (dis > 0 ? `🔽 Discharging ${fmtW(dis)}` : 'Idle');
-  document.getElementById('ov-batt-det').textContent =
-    `${battStatus} · ${fmtV(battV)} · ${fmtA(battA)}`;
-  // Battery Temp gauge (0–60°C)
-  const battTemp = r.temp_battery?.value || 0;
-  const invTemp = r.temp_inverter?.value || 0;
-  updateGauge('ov-batttemp', Math.min((battTemp/60)*100, 100),
-    battTemp>50?'var(--red)':(battTemp>40?'var(--yellow)':'var(--green)'),
-    fmtTemp(battTemp), '');
-  document.getElementById('ov-batttemp-val').textContent = fmtTemp(battTemp);
-  document.getElementById('ov-batttemp-det').textContent = 'Max 60°C';
-
-  // Inverter Temp gauge (0–80°C)
-  updateGauge('ov-invtemp', Math.min((invTemp/80)*100, 100),
-    invTemp>70?'var(--red)':(invTemp>55?'var(--yellow)':'var(--green)'),
-    fmtTemp(invTemp), '');
-  document.getElementById('ov-invtemp-val').textContent = fmtTemp(invTemp);
-  document.getElementById('ov-invtemp-det').textContent = 'Max 80°C';
+function showDetail(name) {
+  const titles = {inverter:'Inverter', battery:'Battery', grid:'Grid', solar:'Solar', load:'Load', environment:'Environment'};
+  document.getElementById('detail-title').textContent = titles[name] || name;
+  currentDetail = name;
+  detailRendered = false;
+  renderDetailHTML();
+  showPage('detail');
 }
-
-// ── Overview: full-width combined 24h chart ──
-function renderOverviewChart(h) {
-  const labels = h.snapshots.map(s => timeLabel(s.timestamp));
-  const c = makeChart('chart-overview-combined');
-  if (!c) return;
-  c.data.labels = labels;
-  c.data.datasets = [
-    {
-      label: 'Solar PV (W)',
-      data: h.snapshots.map(s => (s.registers.pv1_power||0) + (s.registers.pv2_power||0)),
-      borderColor: '#facc15',
-      backgroundColor: 'rgba(250,204,21,0.1)',
-      tension: 0.3, pointRadius: 0, borderWidth: 1.5, fill: true
-    },
-    {
-      label: 'Grid Import (W)',
-      data: extract(h, 'grid_import_power'),
-      borderColor: '#38bdf8',
-      tension: 0.3, pointRadius: 0, borderWidth: 1.5
-    },
-    {
-      label: 'Battery Charge (W)',
-      data: extract(h, 'charge_power'),
-      borderColor: '#4ade80',
-      tension: 0.3, pointRadius: 0, borderWidth: 1.5
-    },
-    {
-      label: 'Battery Discharge (W)',
-      data: extract(h, 'discharge_power'),
-      borderColor: '#f87171',
-      tension: 0.3, pointRadius: 0, borderWidth: 1.5
-    },
-    {
-      label: 'EPS Load (W)',
-      data: extract(h, 'eps_power'),
-      borderColor: '#c084fc',
-      tension: 0.3, pointRadius: 0, borderWidth: 1.5
-    },
-  ];
-  c.update('none');
-}
-
-// ── Status bar ──
-let statusBuilt = false;
-function buildStatus() {
-  document.getElementById('statusBar').innerHTML = `
-    <span><span class="dot green" id="s-dot"></span> <span id="s-health">OK</span></span>
-    <span>SOH: <span id="s-soh">—</span></span>
-    <span>Cycles: <span id="s-cycles">—</span></span>
-    <span>Runtime: <span id="s-runtime">—</span></span>
-    <span>State: <span id="s-state">—</span></span>
-    <span>Inv Temp: <span id="s-invtemp">—</span></span>
-    <span>AC Out: <span id="s-acvolt">—</span></span>`;
-  statusBuilt = true;
-}
-
-function updateStatus(r) {
-  if (!statusBuilt) buildStatus();
-  const fault = r.fault_code?.value||0;
-  const warn = r.warning_code?.value||0;
-  const dot = document.getElementById('s-dot');
-  const health = document.getElementById('s-health');
-  if (fault) { dot.className = 'dot red'; health.textContent = 'FAULT'; }
-  else if (warn) { dot.className = 'dot yellow'; health.textContent = 'Warning'; }
-  else { dot.className = 'dot green'; health.textContent = 'OK'; }
-  document.getElementById('s-soh').textContent = fmtPct(r.soh?.value||0);
-  document.getElementById('s-cycles').textContent = r.cycle_count?.value||0;
-  document.getElementById('s-runtime').textContent = fmtDays(r.runtime?.value||0);
-  document.getElementById('s-state').textContent = r.state?.value||0;
-  document.getElementById('s-invtemp').textContent = fmtTemp(r.temp_inverter?.value);
-  document.getElementById('s-acvolt').textContent = fmtV(r.ac_output_voltage?.value||0);
-}
-
-// ── Charts Tab ──
-async function renderCharts(h) {
-  const forecast = await fetchForecast();
-
-  const pvDatasets = [
-    { label:'PV1 (W)', data:h.snapshots.map(s => ({x:s.timestamp, y:s.registers.pv1_power||0})), borderColor:'#facc15', tension:0.3, pointRadius:0, borderWidth:1.5 },
-    { label:'PV2 (W)', data:h.snapshots.map(s => ({x:s.timestamp, y:s.registers.pv2_power||0})), borderColor:'#fb923c', tension:0.3, pointRadius:0, borderWidth:1.5 },
-  ];
-  if (forecast.length) {
-    pvDatasets.push({
-      label:'Forecast (W)',
-      data:forecast.map(r => ({x:r.ts, y:r.predicted_watts})),
-      borderColor:'#22c55e', borderDash:[6,4], tension:0.3, pointRadius:0, borderWidth:1.5
+function renderDetailHTML() {
+  if (!currentDetail) return;
+  const fn = {inverter:detailInverter, battery:detailBattery, grid:detailGrid, solar:detailSolar, load:detailLoad, environment:detailEnvironment}[currentDetail];
+  const content = document.getElementById('detail-content');
+  if (!detailRendered) {
+    content.innerHTML = fn ? fn(liveData) : '<p>No detail available.</p>';
+    detailRendered = true;
+  } else {
+    // Only update text values to avoid image/text flicker; keep structure
+    content.querySelectorAll('[data-reg]').forEach(el => {
+      const v = val(liveData, el.dataset.reg, null);
+      if (v !== null && v !== undefined) {
+        const fmtFn = el.dataset.int ? fmtInt : (el.dataset.digits ? (n=>fmt(n, Number(el.dataset.digits))) : fmt);
+        let text = fmtFn(v);
+        if (text === null || text === undefined) text = '--';
+        if (el.dataset.suffix) text += el.dataset.suffix;
+        el.textContent = text;
+      }
     });
   }
-  setChartData('chart-pv', null, pvDatasets, 8000, 'time');
-
-  const labels = h.snapshots.map(s => timeLabel(s.timestamp));
-  setChartData('chart-grid', labels, [
-    { label:'Import (W)', data:extract(h,'grid_import_power'), borderColor:'#38bdf8', tension:0.3, pointRadius:0, borderWidth:1.5 },
-    { label:'Export (W)', data:extract(h,'grid_export_power'), borderColor:'#4ade80', tension:0.3, pointRadius:0, borderWidth:1.5 },
-  ], 6000);
-
-  setChartData('chart-battpower', labels, [
-    { label:'Charge (W)', data:extract(h,'charge_power'), borderColor:'#4ade80', tension:0.3, pointRadius:0, borderWidth:1.5 },
-    { label:'Discharge (W)', data:extract(h,'discharge_power'), borderColor:'#f87171', tension:0.3, pointRadius:0, borderWidth:1.5 },
-  ], 5000);
-
-  const c4 = makeChart('chart-battvsoc');
-  if (c4) {
-    c4.data.labels = labels;
-    c4.data.datasets = [
-      { label:'Voltage (V)', data:extract(h,'battery_voltage'), borderColor:'#38bdf8', tension:0.3, pointRadius:0, borderWidth:1.5, yAxisID:'y' },
-      { label:'SOC (%)', data:extract(h,'soc'), borderColor:'#c084fc', tension:0.3, pointRadius:0, borderWidth:1.5, yAxisID:'y1' },
-    ];
-    c4.options.scales.y = { ticks:{color:'#64748b',font:{size:9}}, grid:{color:'#1e293b'}, title:{display:true,text:'Volts',color:'#64748b'} };
-    c4.options.scales.y1 = { position:'right', min:0, max:100, ticks:{color:'#64748b',callback:v=>v+'%',font:{size:9}}, grid:{display:false}, title:{display:true,text:'SOC %',color:'#64748b'} };
-    c4.update('none');
-  }
-
-  setChartData('chart-load', labels, [
-    { label:'EPS Load (W)', data:extract(h,'eps_power'), borderColor:'#facc15', tension:0.3, pointRadius:0, borderWidth:1.5 },
-  ], 6000);
-
-  setChartData('chart-temps', labels, [
-    { label:`Inverter (${tempUnitLabel()})`, data:extract(h,'temp_inverter'), borderColor:'#f87171', tension:0.3, pointRadius:0, borderWidth:1.5 },
-    { label:`Battery (${tempUnitLabel()})`, data:extract(h,'temp_battery'), borderColor:'#38bdf8', tension:0.3, pointRadius:0, borderWidth:1.5 },
-    { label:`Radiator 1 (${tempUnitLabel()})`, data:extract(h,'temp_radiator_1'), borderColor:'#fb923c', tension:0.3, pointRadius:0, borderWidth:1.5 },
-  ], 100);
+}
+function updateDetail(r) {
+  liveData = r;
+  renderDetailHTML();
 }
 
-// ── Battery Tab ──
-function buildBattGauges() {
-  const ids = ['bg-soc','bg-soh','bg-volt','bg-curr','bg-chg','bg-cap','bg-cyc','bg-temp'];
-  const labels = ['SOC','SOH','Voltage','Current','Charge/Discharge','Capacity','Cycles','Batt Temp'];
-  document.getElementById('battGauges').innerHTML = ids.map((id,i) =>
-    `<div class="gauge-card card">${buildGaugeSVG(id)}<div class="gauge-label">${labels[i]}</div></div>`
-  ).join('');
-  battGaugesBuilt = true;
+function createLineChart(id, labels, datasets, opts={}) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type:'line',
+    data:{labels, datasets},
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{legend:{labels:{color:'#f1f5f9'}}, title:{display:false}},
+      scales:{
+        x:{type:'time', time:{tooltipFormat:'MMM d HH:mm'}, ticks:{color:'#94a3b8'}, grid:{color:'rgba(255,255,255,0.07)'}},
+        y:{ticks:{color:'#94a3b8'}, grid:{color:'rgba(255,255,255,0.07)'}, beginAtZero:true}
+      }
+    }
+  });
+}
+function createBarChart(id, labels, datasets, opts={}) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type:'bar',
+    data:{labels, datasets},
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#f1f5f9'}}, title:{display:false}},
+      scales:{
+        x:{ticks:{color:'#94a3b8'}, grid:{color:'rgba(255,255,255,0.07)'}},
+        y:{ticks:{color:'#94a3b8'}, grid:{color:'rgba(255,255,255,0.07)'}, beginAtZero:true}
+      }
+    }
+  });
 }
 
-function updateBattGauges(r) {
-  if (!battGaugesBuilt) buildBattGauges();
-  const soc = r.soc?.value || 0;
-  const soh = r.soh?.value || 0;
-  const battV = r.battery_voltage?.value || 0;
-  const battA = r.battery_current?.value || 0;
-  const chg = r.charge_power?.value || 0;
-  const dis = r.discharge_power?.value || 0;
-  const cap = r.battery_capacity?.value || 200;
-  const cycles = r.cycle_count?.value || 0;
-  const battT = r.temp_battery?.value || 0;
-  const chgMax = Number(window._settings?.charge_max_power) || 5000;
-  const disMax = Number(window._settings?.discharge_max_power) || 5000;
-
-  updateGauge('bg-soc', soc, gaugeColor(soc), fmtPct(soc), '');
-  updateGauge('bg-soh', soh, soh>=90?'var(--green)':(soh>=70?'var(--yellow)':'var(--red)'), fmtPct(soh), '');
-  updateGauge('bg-volt', Math.min((battV-42)/(58-42)*100,100), 'var(--green)', fmtV(battV), '42–58V');
-  updateGauge('bg-curr', Math.min((Math.abs(battA)/100)*100,100), battA>0?'var(--green)':'var(--orange)', fmtA(battA), '±100A');
-  if (chg > 0) {
-    updateGauge('bg-chg', Math.min((chg/chgMax)*100,100), 'var(--green)', fmtW(chg), '');
-    document.querySelector('#battGauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Charging';
-  } else if (dis > 0) {
-    updateGauge('bg-chg', Math.min((dis/disMax)*100,100), 'var(--orange)', fmtW(dis), '');
-    document.querySelector('#battGauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Discharging';
-  } else {
-    updateGauge('bg-chg', 0, 'var(--muted)', '0 W', '');
-    document.querySelector('#battGauges .gauge-card:nth-child(5) .gauge-label').textContent = 'Idle';
-  }
-  updateGauge('bg-cap', Math.min((cap/300)*100,100), 'var(--accent)', fmt(cap,0)+' Ah', '300Ah max');
-  updateGauge('bg-cyc', Math.min((cycles/6000)*100,100), 'var(--purple)', fmt(cycles,0), '6000 rated');
-  updateGauge('bg-temp', Math.min((battT/60)*100,100), battT>50?'var(--red)':(battT>40?'var(--yellow)':'var(--green)'), fmtTemp(battT), `60${tempUnitLabel()} max`);
-}
-
-function renderBattery(r) {
-  updateBattGauges(r);
-
-  const cellLabels = [];
-  const cellVolts = [];
-  for (let i = 1; i <= 16; i++) {
-    const key = `cell_voltage_${String(i).padStart(2,'0')}`;
-    if (r[key]) { cellLabels.push(`C${i}`); cellVolts.push(r[key].value); }
-  }
-  if (cellLabels.length) {
-    setChartData('chart-cells', cellLabels, [
-      { label:'Voltage (V)', data:cellVolts, borderColor:'#4ade80', backgroundColor:'rgba(74,222,128,0.3)', tension:0.2, pointRadius:3, borderWidth:1.5, fill:true },
-    ]);
-  }
-
-  const ctLabels = [];
-  const ctData = [];
-  for (let i = 1; i <= 16; i++) {
-    const key = `cell_temp_${String(i).padStart(2,'0')}`;
-    if (r[key]) { ctLabels.push(`C${i}`); ctData.push(r[key].value); }
-  }
-  if (ctLabels.length) {
-    setChartData('chart-celltemps', ctLabels, [
-      { label:`Temp (${tempUnitLabel()})`, data:ctData, borderColor:'#fb923c', backgroundColor:'rgba(251,146,60,0.3)', tension:0.2, pointRadius:3, borderWidth:1.5, fill:true },
-    ]);
-  }
-
-  const bmsKeys = ['bms_status_0','bms_status_1','bms_status_2','bms_status_3','bms_status_4','bms_status_5','bms_status_6','bms_status_7','bms_status_8','bms_status_9'];
-  const bmsHtml = bmsKeys.map(k => {
-    const v = r[k]; return v ? `<span style="margin-right:1rem">${k.replace('bms_','')}: <strong>${v.value}</strong></span>` : '';
-  }).join('');
-  document.getElementById('bmsStatus').innerHTML = bmsHtml || 'No BMS data available';
-
-  const extra = ['bms_charge_voltage_ref','bms_discharge_cut_voltage','bms_max_charge_current','bms_max_discharge_current','bms_fault_code','bms_warning_code'];
-  const extraHtml = extra.map(k => {
-    const v = r[k]; return v ? `<span style="margin-right:1rem">${k.replace('bms_','')}: <strong>${v.value} ${v.unit}</strong></span>` : '';
-  }).join('');
-  if (extraHtml) document.getElementById('bmsStatus').innerHTML += `<br><br>${extraHtml}`;
-
-  const vmin = r.cell_voltage_min?.value, vmax = r.cell_voltage_max?.value;
-  const tmin = r.cell_temp_min?.value, tmax = r.cell_temp_max?.value;
-  if (vmin != null || vmax != null || tmin != null || tmax != null) {
-    const spreadHtml = [
-      vmin != null && vmax != null ? `Cell V spread: <strong>${fmt(vmax-vmin,3)} V</strong> (${fmt(vmin,3)}–${fmt(vmax,3)} V)` : '',
-      tmin != null && tmax != null ? `Cell temp spread: <strong>${fmt(tmax-tmin,1)} °C</strong> (${fmt(tmin,1)}–${fmt(tmax,1)} °C)` : ''
-    ].filter(Boolean).join(' <span style="margin:0 0.5rem">|</span> ');
-    if (spreadHtml) document.getElementById('bmsStatus').innerHTML += `<br><br>${spreadHtml}`;
-  }
-}
-
-// ── Totals Tab ──
-function renderTotals(r) {
-  const today = [
-    { label:'PV Energy', key:'pv1_energy_today', unit:'kWh' },
-    { label:'PV2 Energy', key:'pv2_energy_today', unit:'kWh' },
-    { label:'Charge Energy', key:'charge_energy_today', unit:'kWh' },
-    { label:'Discharge Energy', key:'discharge_energy_today', unit:'kWh' },
-    { label:'Grid Import', key:'grid_import_today', unit:'kWh' },
-    { label:'Grid Export', key:'grid_export_today', unit:'kWh' },
-    { label:'EPS Load', key:'eps_energy_today', unit:'kWh' },
-  ];
-  document.getElementById('todayTotals').innerHTML = `
-    <table class="totals-table">
-      <tr><th>Metric</th><th>Today</th></tr>
-      ${today.map(t => {
-        const v = r[t.key]; return `<tr><td>${t.label}</td><td>${v ? fmt(v.value,1)+' '+t.unit : '—'}</td></tr>`;
-      }).join('')}
-    </table>`;
-
-  const allTime = [
-    { label:'PV Energy', key:'pv1_energy_total', unit:'kWh' },
-    { label:'PV2 Energy', key:'pv2_energy_total', unit:'kWh' },
-    { label:'Charge Energy', key:'charge_energy_total', unit:'kWh' },
-    { label:'Discharge Energy', key:'discharge_energy_total', unit:'kWh' },
-    { label:'Grid Import', key:'grid_import_total', unit:'kWh' },
-    { label:'Grid Export', key:'grid_export_total', unit:'kWh' },
-    { label:'EPS Load', key:'eps_energy_total', unit:'kWh' },
-    { label:'Runtime', key:'runtime', fmt:fmtDays },
-    { label:'Cycles', key:'cycle_count', fmt:(v)=>fmt(v,0) },
-  ];
-  document.getElementById('allTimeTotals').innerHTML = `
-    <table class="totals-table">
-      <tr><th>Metric</th><th>All-Time</th></tr>
-      ${allTime.map(t => {
-        const v = r[t.key];
-        const val = t.fmt ? t.fmt(v?.value) : (v ? fmt(v.value,1)+' '+t.unit : '—');
-        return `<tr><td>${t.label}</td><td>${val}</td></tr>`;
-      }).join('')}
-    </table>`;
-}
-
-// ── Energy History ──
-async function loadEnergyHistory(range, periods) {
+async function loadMainCharts() {
   try {
-    document.querySelectorAll('#tab-totals .range-btn').forEach(b => b.classList.remove('active'));
-    const active = document.querySelector(`#tab-totals .range-btn[data-range="${range}"]`);
-    if (active) active.classList.add('active');
+    const res = await fetchJson(API + '/api/history?minutes=1440&max_points=300&fields=pv1_power,pv2_power,charge_power,discharge_power,grid_import_power,grid_export_power,load_power,battery_voltage,soc');
+    const rows = res.snapshots || [];
+    const labels = rows.map(r => r.timestamp);
+    const mk = (label, field, color, fill=true) => ({
+      label,
+      data: rows.map(r => r.registers[field] != null ? r.registers[field] : null),
+      spanGaps: false,
+      borderColor: color, backgroundColor: color + (fill?'33':''), fill, tension:0.2, pointRadius:0
+    });
 
-    const res = await fetch(API + `/api/energy?range=${range}&periods=${periods}`);
-    const json = await res.json();
-    const data = json.data || {};
-    const periods_list = Object.keys(data).sort();
+    // Fetch forecast and add as a third line on the PV Today chart.
+    let forecastDataset = null;
+    try {
+      const fcRes = await fetchJson(API + '/api/forecast?hours=48');
+      const fcRows = fcRes.data || [];
+      if (fcRows.length) {
+        forecastDataset = {
+          label: 'Forecast',
+          data: fcRows.map(r => ({ x: r.ts, y: r.predicted_watts })),
+          spanGaps: false,
+          borderColor: '#22c55e',
+          backgroundColor: 'transparent',
+          borderDash: [6, 4],
+          fill: false,
+          tension: 0.2,
+          pointRadius: 0
+        };
+      }
+    } catch (e) { console.error('Forecast chart load failed:', e); }
 
-    const names = {
-      'PV power': 'PV Generation',
-      'Load power': 'Load Consumption',
-      'Grid power': 'Grid (in/export)',
-      'Battery power': 'Battery (charge/discharge)',
+    const pvDatasets = [mk('PV1','pv1_power','#eab308'), mk('PV2','pv2_power','#facc15')];
+    if (forecastDataset) pvDatasets.push(forecastDataset);
+    createLineChart('chart-pv-today', labels, pvDatasets);
+    createLineChart('chart-overview-24h', labels, [
+      mk('Solar','pv1_power','#eab308'),
+      mk('Battery charge','charge_power','#a855f7'),
+      mk('Battery discharge','discharge_power','#22c55e'),
+      mk('Grid import','grid_import_power','#3b82f6'),
+      mk('Grid export','grid_export_power','#ef4444'),
+      mk('Load','load_power','#f97316')
+    ]);
+    // Battery power = discharge - charge (net). There is no single 'battery_power'
+    // register in history, so compute it from the two that do exist.
+    const batPower = {
+      label: 'Battery power',
+      data: rows.map(r => {
+        const d = r.registers['discharge_power'];
+        const c = r.registers['charge_power'];
+        if (d == null && c == null) return null;
+        return (d || 0) - (c || 0);
+      }),
+      spanGaps: false,
+      borderColor: '#22c55e', backgroundColor: '#22c55e', fill: false, tension: 0.2, pointRadius: 0
     };
+    createLineChart('chart-battery-power', labels, [batPower]);
+    createLineChart('chart-battery-soc', labels, [mk('SOC','soc','#a855f7', false)]);
+  } catch (e) { console.error('loadMainCharts error', e); }
+}
 
-    const rows = periods_list.map(period => {
-      const p = data[period] || {};
-      const pv = p['PV power'] || { in_kwh: 0, out_kwh: 0 };
-      const load = p['Load power'] || { in_kwh: 0, out_kwh: 0 };
-      const grid = p['Grid power'] || { in_kwh: 0, out_kwh: 0 };
-      const batt = p['Battery power'] || { in_kwh: 0, out_kwh: 0 };
-      return `<tr>
-        <td>${period}</td>
-        <td>${fmt(pv.in_kwh, 2)}</td>
-        <td>${fmt(load.out_kwh, 2)}</td>
-        <td>${fmt(grid.in_kwh, 2)} ↓<br>${fmt(grid.out_kwh, 2)} ↑</td>
-        <td>${fmt(batt.in_kwh, 2)} ↓<br>${fmt(batt.out_kwh, 2)} ↑</td>
-      </tr>`;
-    }).join('');
+function processEnergy(res) {
+  const data = res.data || {};
+  const periods = Object.keys(data).sort();
+  return periods.map(p => {
+    const d = data[p];
+    const get = (cat, dir) => (d[cat] ? (d[cat][dir + '_kwh'] || 0) : 0);
+    return { period: p, pv: get('PV power','in'), battery_in: get('Battery power','in'), battery_out: get('Battery power','out'), grid_in: get('Grid power','in'), grid_out: get('Grid power','out'), load: get('Load power','in') };
+  });
+}
+async function loadCharts30d() {
+  try {
+    const res = await fetchJson(API + '/api/energy?range=daily&periods=30');
+    const rows = processEnergy(res);
+    const labels = rows.map(r => r.period);
+    createBarChart('chart-battery-30d', labels, [
+      {label:'Charge', data: rows.map(r=>r.battery_in), backgroundColor:'#a855f7'},
+      {label:'Discharge', data: rows.map(r=>r.battery_out), backgroundColor:'#22c55e'}
+    ]);
+    createBarChart('chart-grid-30d', labels, [
+      {label:'Import', data: rows.map(r=>r.grid_in), backgroundColor:'#3b82f6'},
+      {label:'Export', data: rows.map(r=>r.grid_out), backgroundColor:'#ef4444'}
+    ]);
+    createBarChart('chart-inverter-30d', labels, [
+      {label:'Load', data: rows.map(r=>r.load), backgroundColor:'#f97316'}
+    ]);
+    createBarChart('chart-solar-30d', labels, [
+      {label:'PV', data: rows.map(r=>r.pv), backgroundColor:'#eab308'}
+    ]);
+  } catch (e) { console.error(e); }
+}
+async function loadHistorical() {
+  try {
+    const res365 = await fetchJson(API + '/api/energy?range=daily&periods=365');
+    const rows365 = processEnergy(res365);
+    const labels = rows365.map(r => r.period);
+    createBarChart('hist-battery', labels, [
+      {label:'Charge', data: rows365.map(r=>r.battery_in), backgroundColor:'#a855f7'},
+      {label:'Discharge', data: rows365.map(r=>r.battery_out), backgroundColor:'#22c55e'}
+    ]);
+    createBarChart('hist-grid', labels, [
+      {label:'Import', data: rows365.map(r=>r.grid_in), backgroundColor:'#3b82f6'},
+      {label:'Export', data: rows365.map(r=>r.grid_out), backgroundColor:'#ef4444'}
+    ]);
+    createBarChart('hist-inverter', labels, [
+      {label:'Load', data: rows365.map(r=>r.load), backgroundColor:'#f97316'}
+    ]);
+    createBarChart('hist-solar', labels, [
+      {label:'PV', data: rows365.map(r=>r.pv), backgroundColor:'#eab308'}
+    ]);
+    createBarChart('hist-totals', labels, [
+      {label:'PV', data: rows365.map(r=>r.pv), backgroundColor:'#eab308'},
+      {label:'Battery in', data: rows365.map(r=>r.battery_in), backgroundColor:'#a855f7'},
+      {label:'Battery out', data: rows365.map(r=>r.battery_out), backgroundColor:'#22c55e'},
+      {label:'Grid import', data: rows365.map(r=>r.grid_in), backgroundColor:'#3b82f6'},
+      {label:'Grid export', data: rows365.map(r=>r.grid_out), backgroundColor:'#ef4444'},
+      {label:'Load', data: rows365.map(r=>r.load), backgroundColor:'#f97316'}
+    ]);
+  } catch (e) { console.error(e); }
+}
 
-    document.getElementById('energyHistory').innerHTML = `
-      <table class="totals-table">
-        <tr>
-          <th>Period</th>
-          <th>PV (kWh)</th>
-          <th>Load (kWh)</th>
-          <th>Grid in/out</th>
-          <th>Battery chg/disch</th>
-        </tr>
-        ${rows || '<tr><td colspan="5">No data yet</td></tr>'}
-      </table>`;
-  } catch(e) {
-    console.error('Energy history failed:', e);
-    document.getElementById('energyHistory').innerHTML = '<p style="color:var(--red)">Failed to load energy history</p>';
+let autoRegisters = [];
+let autoRules = [];
+let autoSettings = {};
+let editingRuleIdx = -1;
+
+const AUTO_SENSORS = [
+  {name:'battery_voltage', label:'Battery voltage', unit:'V'},
+  {name:'soc', label:'Battery SOC', unit:'%'},
+  {name:'soh', label:'Battery SOH', unit:'%'},
+  {name:'battery_current', label:'Battery current', unit:'A'},
+  {name:'pv1_power', label:'PV1 power', unit:'W'},
+  {name:'pv2_power', label:'PV2 power', unit:'W'},
+  {name:'grid_import_power', label:'Grid import', unit:'W'},
+  {name:'grid_export_power', label:'Grid export', unit:'W'},
+  {name:'charge_power', label:'Charge power', unit:'W'},
+  {name:'discharge_power', label:'Discharge power', unit:'W'},
+  {name:'temp_inverter', label:'Inverter temp', unit:'°C'},
+  {name:'temp_battery', label:'Battery temp', unit:'°C'}
+];
+
+function regByName(name) { return autoRegisters.find(r => r.name === name); }
+function sensorLabel(name) { const s = AUTO_SENSORS.find(x => x.name === name); return s ? s.label : name; }
+
+async function loadAutomationRegisters() {
+  try { autoRegisters = (await fetchJson(API + '/api/automation/registers')).registers; } catch (e) { console.error(e); }
+}
+async function loadAutomationSettings() {
+  try {
+    const res = await fetchJson(API + '/api/settings');
+    const settings = res.settings || {};
+    autoSettings = Object.fromEntries(
+      Object.entries(settings).map(([k, v]) => [k, typeof v === 'object' && v !== null ? v.value : v])
+    );
+  } catch (e) { console.error(e); }
+}
+async function loadAutomation() {
+  await Promise.all([loadAutomationRegisters(), loadAutomationSettings()]);
+  const res = await fetchJson(API + '/api/automation/rules');
+  autoRules = res.rules || [];
+  document.getElementById('auto-enabled').checked = res.enabled;
+  renderRules();
+  renderSchedule();
+  renderAutomationLog();
+}
+
+function decodeTime(num) {
+  if (num === null || num === undefined || num === '') return '';
+  const n = Number(num);
+  if (Number.isNaN(n)) return '';
+  const hh = Math.floor(n / 256);
+  const mm = n % 256;
+  return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+}
+function encodeTime(hhmm) {
+  if (!hhmm || !hhmm.includes(':')) return '';
+  const [hh, mm] = hhmm.split(':');
+  const h = Number(hh), m = Number(mm);
+  if (Number.isNaN(h) || Number.isNaN(m)) return '';
+  return String(h * 256 + m);
+}
+
+function renderSchedule() {
+  const el = document.getElementById('schedule-editor');
+  if (!el) return;
+  const groups = [
+    {title:'Grid charge', prefix:'ac_charge_period', power:'ac_charge_power', soc:'ac_charge_soc_limit'},
+    {title:'Charge priority', prefix:'charge_priority_period', power:'charge_priority_power', soc:'charge_priority_soc_limit'},
+    {title:'Forced discharge', prefix:'forced_discharge_period', power:'forced_discharge_power', soc:'forced_discharge_soc_limit'}
+  ];
+  el.innerHTML = groups.map(g => {
+    const slots = [1,2,3].map(n => ({n, start:regByName(`${g.prefix}_${n}_start`), end:regByName(`${g.prefix}_${n}_end`)}));
+    const power = regByName(g.power);
+    const soc = regByName(g.soc);
+    return `<div style="margin-bottom:1.25rem;">
+      <h4 style="margin-bottom:0.5rem;">${g.title}</h4>
+      ${power ? `<div class="form-grid" style="margin-bottom:0.5rem;">
+        <div class="field"><label>${power.desc || g.power} (${power.unit})</label><input type="number" data-sched="${g.power}" min="${power.min}" max="${power.max}" step="1"></div>
+        ${soc ? `<div class="field"><label>${soc.desc || g.soc} (${soc.unit})</label><input type="number" data-sched="${g.soc}" min="${soc.min}" max="${soc.max}" step="1"></div>` : ''}
+      </div>` : ''}
+      <table class="striped border padded text-align-center" style="width:100%;">
+        <thead><tr class="font-bold"><td style="width:25%">Slot</td><td style="width:37.5%">From</td><td style="width:37.5%">To</td></tr></thead>
+        <tbody>${slots.map(s => `<tr>
+          <td>Slot ${s.n}</td>
+          <td><input type="time" data-sched="${g.prefix}_${s.n}_start" style="width:100%;"></td>
+          <td><input type="time" data-sched="${g.prefix}_${s.n}_end" style="width:100%;"></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('[data-sched]').forEach(inp => {
+    const key = inp.dataset.sched;
+    const reg = regByName(key);
+    if (!reg) return;
+    const raw = autoSettings[key];
+    if (raw === undefined || raw === null || raw === '') return;
+    if (reg.unit === 'time') {
+      inp.value = decodeTime(raw);
+    } else {
+      inp.value = raw;
+    }
+  });
+}
+async function saveSchedule() {
+  const msg = document.getElementById('auto-msg');
+  const el = document.getElementById('schedule-editor');
+  if (!el) return;
+  const values = {};
+  el.querySelectorAll('[data-sched]').forEach(inp => {
+    const key = inp.dataset.sched;
+    const reg = regByName(key);
+    if (!reg) return;
+    if (inp.value === '') return;
+    if (reg.unit === 'time') {
+      const enc = encodeTime(inp.value);
+      if (enc !== '') values[key] = enc;
+    } else {
+      values[key] = inp.value;
+    }
+  });
+  if (!Object.keys(values).length) { msg.textContent = 'Nothing to save.'; return; }
+  msg.textContent = 'Saving schedule...'; msg.style.color = 'var(--light-text-color)';
+  try {
+    await Promise.all(Object.entries(values).map(([name, value]) =>
+      fetch(API + '/api/settings/' + encodeURIComponent(name), {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})
+      }).then(r => { if (!r.ok) throw new Error(name + ': ' + r.statusText); })
+    ));
+    msg.textContent = 'Schedule saved.'; msg.style.color = 'var(--green-color)';
+  } catch (e) {
+    msg.textContent = 'Error saving schedule: ' + e.message; msg.style.color = 'var(--red-color)';
   }
 }
 
-// ── Data fetching ──
+function renderRules() {
+  const container = document.getElementById('rules-list');
+  if (!autoRules.length) { container.innerHTML = '<p class="text-light">No rules yet. Click “Add Rule” to create one.</p>'; return; }
+  container.innerHTML = autoRules.map((rule, idx) => {
+    const tw = rule.time_window || {};
+    const conds = (rule.conditions || []).map(c => `${sensorLabel(c.sensor)} ${c.min ?? ''}–${c.max ?? ''}`).join(', ') || 'always';
+    const action = rule.action || {};
+    const reg = regByName(action.register);
+    let actionText;
+    if (action.ranges && action.ranges.length) {
+      actionText = `${action.ranges.length} range${action.ranges.length>1?'s':''} (${sensorLabel(action.range_sensor)})`;
+    } else {
+      actionText = `${action.value ?? '?'} ${reg ? reg.unit : ''}`;
+    }
+    return `<div class="card rule-card"><div class="card-section">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+        <h3>${rule.name || 'Unnamed'}${rule.dry_run ? ' <span style="color:var(--yellow-color); font-size:0.8rem;">[DRY RUN]</span>' : ''}</h3>
+        <div class="actions" style="margin:0;">
+          <button class="btn" onclick="openRuleEditor(${idx})">Edit</button>
+          <button class="btn negative" onclick="deleteRule('${rule.id}')">Delete</button>
+        </div>
+      </div>
+      <div class="rule-meta">Time: ${tw.start || '00:00'} – ${tw.end || '23:59'} · When: ${conds} · Set ${action.register || '?'} = ${actionText}</div>
+    </div></div>`;
+  }).join('');
+}
+
+function openRuleEditor(idx) {
+  editingRuleIdx = idx;
+  const rule = autoRules[idx];
+  document.getElementById('rule-editor-title').textContent = rule.name || 'Edit Rule';
+  document.getElementById('rule-editor').style.display = 'block';
+  renderRuleEditorBody(rule);
+  document.getElementById('rule-editor').scrollIntoView({behavior:'smooth'});
+}
+function closeRuleEditor() {
+  document.getElementById('rule-editor').style.display = 'none';
+  editingRuleIdx = -1;
+}
+function renderRuleEditorBody(rule) {
+  const body = document.getElementById('rule-editor-body');
+  const tw = rule.time_window || {};
+  const conds = rule.conditions || [];
+  const action = rule.action || {};
+  const regOptions = autoRegisters.map(r => `<option value="${r.name}" ${r.name===action.register?'selected':''}>${r.name} (${r.unit}) — ${r.desc||''}</option>`).join('');
+  const sensorOptions = AUTO_SENSORS.map(s => `<option value="${s.name}">${s.label} (${s.unit})</option>`).join('');
+
+  body.innerHTML = `
+    <div class="form-grid">
+      <div class="field"><label>Rule name</label><input type="text" id="re-name" value="${rule.name || ''}"></div>
+      <div class="field"><label>Dry run (test only, no writes)</label><label style="flex-direction:row; align-items:center; gap:0.5rem;"><input type="checkbox" id="re-dryrun" ${rule.dry_run?'checked':''}> <span>Enabled</span></label></div>
+    </div>
+    <h4 style="margin:1rem 0 0.5rem;">When — time of day</h4>
+    <div class="form-grid">
+      <div class="field"><label>From</label><input type="time" id="re-tw-start" value="${tw.start || '00:00'}"></div>
+      <div class="field"><label>To</label><input type="time" id="re-tw-end" value="${tw.end || '23:59'}"></div>
+    </div>
+    <h4 style="margin:1rem 0 0.5rem;">And when — conditions</h4>
+    <div id="re-conditions"></div>
+    <button class="btn" id="re-add-cond" style="margin-top:0.5rem;">+ Add condition</button>
+    <h4 style="margin:1rem 0 0.5rem;">Set — action</h4>
+    <div class="form-grid">
+      <div class="field"><label>Register</label><select id="re-action-reg">${regOptions}</select></div>
+      <div class="field"><label>Mode</label><select id="re-action-mode">
+        <option value="value" ${action.value!==undefined?'selected':''}>Fixed value</option>
+        <option value="ranges" ${action.ranges&&action.ranges.length?'selected':''}>Range table</option>
+      </select></div>
+    </div>
+    <div id="re-action-value-wrap" style="margin-top:0.5rem;"></div>
+    <div id="re-action-ranges-wrap" style="margin-top:0.5rem;"></div>
+    <div class="actions">
+      <button class="btn" id="re-save">Save Rule</button>
+      <button class="btn" id="re-cancel">Cancel</button>
+    </div>
+  `;
+
+  const condWrap = document.getElementById('re-conditions');
+  function renderConds() {
+    condWrap.innerHTML = conds.map((c, i) => `
+      <div class="form-grid" style="margin-bottom:0.5rem; align-items:end;">
+        <div class="field"><label>Sensor</label><select data-cond="${i}" data-cond-field="sensor">${sensorOptions.replace(`value="${c.sensor}"`, `value="${c.sensor}" selected`)}</select></div>
+        <div class="field"><label>Min</label><input type="number" data-cond="${i}" data-cond-field="min" value="${c.min ?? ''}" placeholder="—"></div>
+        <div class="field"><label>Max</label><input type="number" data-cond="${i}" data-cond-field="max" value="${c.max ?? ''}" placeholder="—"></div>
+        <button class="btn negative" data-cond-del="${i}">✕</button>
+      </div>`).join('') || '<p class="text-light">No conditions — rule always applies during the time window.</p>';
+  }
+  renderConds();
+
+  function renderAction() {
+    const mode = document.getElementById('re-action-mode').value;
+    const reg = regByName(document.getElementById('re-action-reg').value);
+    const unit = reg ? reg.unit : '';
+    const min = reg ? reg.min : '';
+    const max = reg ? reg.max : '';
+    document.getElementById('re-action-value-wrap').style.display = mode === 'value' ? 'block' : 'none';
+    document.getElementById('re-action-ranges-wrap').style.display = mode === 'ranges' ? 'block' : 'none';
+    if (mode === 'value') {
+      document.getElementById('re-action-value-wrap').innerHTML = `<div class="field"><label>Value (${unit})</label><input type="number" id="re-action-value" value="${action.value ?? ''}" min="${min}" max="${max}" step="1"></div>`;
+    } else {
+      const ranges = action.ranges || [];
+      document.getElementById('re-action-ranges-wrap').innerHTML = `
+        <div class="field" style="margin-bottom:0.5rem;"><label>Range sensor</label><select id="re-range-sensor">${sensorOptions.replace(`value="${action.range_sensor||''}"`, `value="${action.range_sensor||''}" selected`)}</select></div>
+        <div id="re-ranges"></div>
+        <button class="btn" id="re-add-range" style="margin-top:0.5rem;">+ Add range</button>
+      `;
+      const rw = document.getElementById('re-ranges');
+      function renderRanges() {
+        rw.innerHTML = ranges.map((r, i) => `
+          <div class="form-grid" style="margin-bottom:0.5rem; align-items:end;">
+            <div class="field"><label>Min</label><input type="number" data-range="${i}" data-range-field="min" value="${r.min ?? ''}" placeholder="—"></div>
+            <div class="field"><label>Max</label><input type="number" data-range="${i}" data-range-field="max" value="${r.max ?? ''}" placeholder="—"></div>
+            <div class="field"><label>Value (${unit})</label><input type="number" data-range="${i}" data-range-field="value" value="${r.value ?? ''}"></div>
+            <button class="btn negative" data-range-del="${i}">✕</button>
+          </div>`).join('') || '<p class="text-light">No ranges yet.</p>';
+      }
+      renderRanges();
+      document.getElementById('re-add-range').onclick = () => { ranges.push({min:null,max:null,value:0}); renderRanges(); };
+      rw.addEventListener('click', e => {
+        const del = e.target.closest('[data-range-del]');
+        if (del) { ranges.splice(Number(del.dataset.rangeDel), 1); renderRanges(); }
+      });
+      rw.addEventListener('input', e => {
+        const t = e.target.closest('[data-range]');
+        if (!t) return;
+        const i = Number(t.dataset.range);
+        const f = t.dataset.rangeField;
+        ranges[i][f] = t.value === '' ? null : Number(t.value);
+      });
+    }
+  }
+  renderAction();
+
+  document.getElementById('re-add-cond').onclick = () => { conds.push({sensor:'battery_voltage', min:null, max:null}); renderConds(); };
+  condWrap.addEventListener('click', e => {
+    const del = e.target.closest('[data-cond-del]');
+    if (del) { conds.splice(Number(del.dataset.condDel), 1); renderConds(); }
+  });
+  condWrap.addEventListener('input', e => {
+    const t = e.target.closest('[data-cond]');
+    if (!t) return;
+    const i = Number(t.dataset.cond);
+    const f = t.dataset.condField;
+    conds[i][f] = t.value === '' ? null : (f === 'sensor' ? t.value : Number(t.value));
+  });
+  condWrap.addEventListener('change', e => {
+    const t = e.target.closest('[data-cond]');
+    if (!t) return;
+    const i = Number(t.dataset.cond);
+    const f = t.dataset.condField;
+    conds[i][f] = t.value === '' ? null : (f === 'sensor' ? t.value : Number(t.value));
+  });
+  document.getElementById('re-action-mode').onchange = renderAction;
+  document.getElementById('re-action-reg').onchange = renderAction;
+
+  document.getElementById('re-save').onclick = () => {
+    rule.name = document.getElementById('re-name').value || 'Unnamed';
+    rule.dry_run = document.getElementById('re-dryrun').checked;
+    rule.time_window = { start: document.getElementById('re-tw-start').value || '00:00', end: document.getElementById('re-tw-end').value || '23:59' };
+    rule.conditions = conds.filter(c => c.sensor);
+    const mode = document.getElementById('re-action-mode').value;
+    const regName = document.getElementById('re-action-reg').value;
+    if (mode === 'value') {
+      const v = document.getElementById('re-action-value').value;
+      rule.action = { register: regName, value: v === '' ? null : Number(v) };
+    } else {
+      const rs = document.getElementById('re-range-sensor').value;
+      rule.action = { register: regName, range_sensor: rs, ranges: (action.ranges || []).filter(r => r.value !== null && r.value !== undefined) };
+    }
+    closeRuleEditor();
+    renderRules();
+    saveRules();
+  };
+  document.getElementById('re-cancel').onclick = closeRuleEditor;
+}
+
+function addRuleTemplate() {
+  const rule = {id:'rule_'+Date.now(), name:'New rule', enabled:true, dry_run:true, time_window:{start:'21:00', end:'06:00'}, conditions:[{sensor:'battery_voltage', min:0, max:54}], action:{register:'ac_charge_power', value:85}};
+  autoRules.push(rule);
+  renderRules();
+  openRuleEditor(autoRules.length - 1);
+}
+async function deleteRule(id) {
+  if (!confirm('Delete this rule?')) return;
+  await fetch(API + '/api/automation/rules/' + id, {method:'DELETE'});
+  loadAutomation();
+}
+async function saveRules() {
+  const msg = document.getElementById('auto-msg');
+  try {
+    const res = await fetch(API + '/api/automation/rules', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(autoRules)});
+    if (!res.ok) throw new Error(res.statusText);
+    msg.textContent = 'Rules saved.'; msg.style.color = 'var(--green-color)';
+  } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
+}
+async function testRules() {
+  const msg = document.getElementById('auto-msg');
+  msg.textContent = 'Running dry-run...'; msg.style.color = 'var(--light-text-color)';
+  try {
+    const res = await fetch(API + '/api/automation/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})});
+    const data = await res.json();
+    const matched = data.results.filter(r => r.matched);
+    msg.innerHTML = `Dry-run complete. ${matched.length}/${data.results.length} rules matched.`;
+    msg.style.color = matched.length ? 'var(--yellow-color)' : 'var(--light-text-color)';
+    renderAutomationLog();
+  } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
+}
+async function renderAutomationLog() {
+  try {
+    const res = await fetchJson(API + '/api/automation/log?limit=20');
+    const log = res.log || [];
+    document.getElementById('auto-log').innerHTML = log.map(row => {
+      const ts = new Date(row.timestamp).toLocaleTimeString();
+      const status = row.dry_run ? 'DRY-RUN' : (row.success ? 'OK' : 'FAIL');
+      return `<div style="margin-bottom:0.25rem;"><span class="text-light">${ts}</span> <strong>${row.rule_name}</strong> ${row.register_name}=${row.scaled_value} [${status}] ${row.message || ''}</div>`;
+    }).join('') || '<p class="text-light">No automation actions yet.</p>';
+  } catch (e) { console.error(e); }
+}
+async function toggleAutomationEnabled() {
+  const enabled = document.getElementById('auto-enabled').checked;
+  const res = await fetch(API + '/api/automation/enable?enabled=' + enabled, {method:'POST'});
+  document.getElementById('auto-msg').textContent = res.ok ? (enabled ? 'Automation enabled.' : 'Automation disabled.') : 'Failed to save.';
+}
+
+async function loadConfiguration() {
+  const s = await fetchJson(API + '/api/settings');
+  settings = s.settings || {};
+  document.querySelectorAll('#page-configuration [data-key]').forEach(el => {
+    const key = el.dataset.key;
+    if (settings[key] !== undefined) {
+      // Each setting is an object {value, db_value, source, ...}; extract .value.
+      const raw = settings[key];
+      const val = (raw !== null && typeof raw === 'object') ? raw.value : raw;
+      if (el.type === 'checkbox') el.checked = !!val;
+      else el.value = val;
+    }
+  });
+}
+async function saveConfiguration() {
+  const msg = document.getElementById('config-msg');
+  msg.textContent = 'Saving...'; msg.style.color = 'var(--light-text-color)';
+  const inputs = document.querySelectorAll('#page-configuration [data-key]');
+  try {
+    for (const input of inputs) {
+      const key = input.dataset.key;
+      let value = input.type === 'number' ? Number(input.value) : input.value;
+      if (input.type === 'checkbox') value = input.checked;
+      const res = await fetch(API + '/api/settings/' + key, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})});
+      if (!res.ok) throw new Error(key + ': ' + res.statusText);
+    }
+    msg.textContent = 'Configuration saved.'; msg.style.color = 'var(--green-color)';
+  } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
+}
+
 async function refresh() {
   try {
-    // Use WebSocket summary if connected, otherwise fall back to HTTP
-    if (!window._wsConnected) {
-      const statusRes = await fetch(API + '/api/summary');
-      applySummary(await statusRes.json());
+    const r = await fetchJson(API + '/api/summary');
+    renderMain(r);
+    if (currentDetail) {
+      updateDetail(r);
     }
-
-    // Fetch history in parallel (slower) for charts
-    const fetches = [
-      fetch(API + `/api/history?minutes=${overviewChartRange}&fields=pv1_power,pv2_power,charge_power,discharge_power,grid_import_power,grid_export_power,soc,battery_voltage,battery_current,eps_power,temp_inverter,temp_battery,temp_radiator_1`)
-    ];
-    if (currentTab === 'charts') {
-      fetches.push(fetch(API + `/api/history?minutes=${chartRange}&fields=pv1_power,pv2_power,charge_power,discharge_power,grid_import_power,grid_export_power,soc,battery_voltage,battery_current,eps_power,temp_inverter,temp_battery,temp_radiator_1`));
-    }
-
-    const results = await Promise.all(fetches);
-    const overviewHistory = await results[0].json();
-    renderOverviewChart(overviewHistory);
-
-    if (currentTab === 'charts' && results[1]) {
-      const chartsHistory = await results[1].json();
-      await renderCharts(chartsHistory);
-    }
-  } catch(e) { console.error('Refresh failed:', e); }
+  } catch (e) { console.error(e); }
 }
-
-// ── Settings fetch (for gauge max values) ──
-async function loadSettingsForGauges() {
-  try {
-    const res = await fetch(API + '/api/settings');
-    const data = await res.json();
-    const flat = {};
-    for (const [k, v] of Object.entries(data.settings)) {
-      flat[k] = v.value;
-    }
-    window._settings = flat;
-  } catch(e) { /* use defaults */ }
-}
-
-// ── Tab switching ──
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    tab.classList.add('active');
-    currentTab = tab.dataset.tab;
-    document.getElementById('tab-' + currentTab).classList.add('active');
-    if (currentTab === 'totals') loadEnergyHistory('daily', 14);
-    refresh();
-  });
-});
-
-// ── Time range buttons (Charts tab) ──
-document.querySelectorAll('#chartTimeRange .time-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#chartTimeRange .time-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    chartRange = parseInt(btn.dataset.min);
-    refresh();
-  });
-});
-
-// ── Time range buttons (Overview chart) ──
-document.querySelectorAll('#overviewTimeRange .time-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#overviewTimeRange .time-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    overviewChartRange = parseInt(btn.dataset.min);
-    refresh();
-  });
-});
-
-function applySummary(status) {
-  const r = status.registers;
-  updateOverviewGauges(r);
-  updateStatus(r);
-  renderBattery(r);
-  renderTotals(r);
-  const ts = status.timestamp;
-  document.getElementById('updated').textContent = 'Updated: ' + ts.substring(ts.indexOf('T')+1, ts.indexOf('T')+9);
-}
-
-// ── WebSocket live feed ──
-function connectWebSocket() {
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${proto}//${window.location.host}/ws`;
-  const ws = new WebSocket(wsUrl);
-
-  ws.onopen = () => {
-    window._wsConnected = true;
-    console.log('WebSocket connected');
-  };
-
-  ws.onmessage = (event) => {
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host + '/ws');
+  ws.onmessage = ev => {
     try {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'snapshot') {
-        applySummary(msg.data);
+      const msg = JSON.parse(ev.data);
+      const payload = msg.type === 'snapshot' ? msg.data : msg;
+      if (payload && payload.registers) {
+        renderMain(payload);
+        if (currentDetail) updateDetail(payload);
       }
-    } catch(e) {
-      console.error('WebSocket message parse failed:', e);
-    }
+    } catch(e){}
   };
-
-  ws.onerror = (e) => {
-    console.error('WebSocket error:', e);
-    window._wsConnected = false;
-  };
-
-  ws.onclose = () => {
-    window._wsConnected = false;
-    // Retry after a short delay
-    setTimeout(connectWebSocket, 3000);
-  };
+  ws.onclose = () => setTimeout(connectWS, 3000);
 }
 
-loadSettingsForGauges().then(() => {
+function showPage(page) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelectorAll('#top-menu .menu-item').forEach(n => n.classList.remove('active'));
+  const nav = document.querySelector(`#top-menu .menu-item[data-page="${page}"]`);
+  if (nav) nav.classList.add('active');
+
+  if (page === 'main') loadMainCharts();
+  if (page === 'charts') loadCharts30d();
+  if (page === 'historical') loadHistorical();
+  if (page === 'automations') loadAutomation();
+  if (page === 'configuration') loadConfiguration();
+}
+function showConfigPanel(name) {
+  document.querySelectorAll('.config-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('config-' + name).classList.add('active');
+  document.querySelectorAll('.config-tab').forEach(b => b.classList.toggle('active', b.dataset.config === name));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#top-menu .menu-item').forEach(n => {
+    n.addEventListener('click', e => { e.preventDefault(); showPage(n.dataset.page); });
+  });
+  document.querySelectorAll('.status[data-detail], .gauge[data-detail]').forEach(c => {
+    c.addEventListener('click', e => { e.preventDefault(); showDetail(c.dataset.detail); });
+  });
+
+  document.getElementById('btn-add-rule').addEventListener('click', addRuleTemplate);
+  document.getElementById('btn-load-rules').addEventListener('click', loadAutomation);
+  document.getElementById('btn-test-rules').addEventListener('click', testRules);
+  document.getElementById('btn-save-schedule').addEventListener('click', saveSchedule);
+  document.getElementById('auto-enabled').addEventListener('change', toggleAutomationEnabled);
+  document.getElementById('btn-rule-editor-close').addEventListener('click', closeRuleEditor);
+
+  document.querySelectorAll('.config-tab').forEach(b => b.addEventListener('click', () => showConfigPanel(b.dataset.config)));
+  document.getElementById('btn-save-config').addEventListener('click', saveConfiguration);
+  document.getElementById('btn-sync-time').addEventListener('click', () => {
+    const now = new Date();
+    document.querySelector('[data-key="system_date"]').value = now.toISOString().slice(0,10);
+    document.querySelector('[data-key="system_time"]').value = now.toTimeString().slice(0,5);
+  });
+  document.getElementById('btn-ntp-sync').addEventListener('click', () => {
+    document.getElementById('config-msg').textContent = 'NTP sync requested (host-side service must apply).';
+  });
+  document.getElementById('btn-backup-now').addEventListener('click', async () => {
+    const r = await fetch(API + '/api/backup', {method:'POST'});
+    document.getElementById('config-msg').textContent = r.ok ? 'Backup started.' : 'Backup failed.';
+  });
+  document.getElementById('btn-prune-old').addEventListener('click', async () => {
+    const r = await fetch(API + '/api/prune', {method:'POST'});
+    document.getElementById('config-msg').textContent = r.ok ? 'Prune started.' : 'Prune failed.';
+  });
+  document.getElementById('btn-download-backup').addEventListener('click', () => {
+    window.open(API + '/api/backup/latest', '_blank');
+  });
+
   refresh();
-  loadEnergyHistory('daily', 14);
-  connectWebSocket();
-});
-setInterval(refresh, 5000);
-
-// ── Settings Page ──
-const SETTINGS_SECTIONS = ['inverter', 'battery', 'grid', 'dashboard', 'system', 'collector', 'influxdb', 'mqtt', 'alerts'];
-const SECTION_IDS = {
-  inverter: 'settingsInverter',
-  battery: 'settingsBattery',
-  grid: 'settingsGrid',
-  dashboard: 'settingsDashboard',
-  system: 'settingsSystem',
-  collector: 'settingsCollector',
-  influxdb: 'settingsInfluxdb',
-  mqtt: 'settingsMqtt',
-};
-
-async function loadSettings() {
-  try {
-    const res = await fetch(API + '/api/settings');
-    const data = await res.json();
-    const all = data.settings;
-
-    const flat = {};
-    for (const [k, v] of Object.entries(all)) {
-      flat[k] = v.value;
-    }
-    window._settings = flat;
-
-    const bySection = {};
-    for (const sec of SETTINGS_SECTIONS) bySection[sec] = [];
-    for (const [key, meta] of Object.entries(all)) {
-      const sec = meta.section || 'general';
-      if (!bySection[sec]) bySection[sec] = [];
-      bySection[sec].push({ key, ...meta });
-    }
-
-    for (const sec of SETTINGS_SECTIONS) {
-      const el = document.getElementById(SECTION_IDS[sec]);
-      if (!el) continue;
-      const fields = bySection[sec] || [];
-      if (fields.length === 0) {
-        const sectionCard = document.getElementById('settingsSection' + sec.charAt(0).toUpperCase() + sec.slice(1));
-        if (sectionCard) sectionCard.style.display = 'none';
-        continue;
-      }
-      el.innerHTML = fields.map(f => settingField(f)).join('');
-    }
-  } catch(e) { console.error('Settings load failed:', e); }
-}
-
-function settingField(def) {
-  const id = 'set-' + def.key;
-  let inputHtml = '';
-
-  if (def.type === 'select' && def.options) {
-    inputHtml = `<select id="${id}" data-key="${def.key}">${def.options.map(o => {
-      const selected = String(o[0]) === String(def.value) ? ' selected' : '';
-      return `<option value="${o[0]}"${selected}>${o[1]}</option>`;
-    }).join('')}</select>`;
-  } else if (def.type === 'number') {
-    const min = def.min != null ? ` min="${def.min}"` : '';
-    const max = def.max != null ? ` max="${def.max}"` : '';
-    const step = def.step != null ? ` step="${def.step}"` : '';
-    inputHtml = `<input type="number" id="${id}" value="${def.value}" data-key="${def.key}"${min}${max}${step}>`;
-  } else if (def.type === 'checkbox') {
-    const checked = String(def.value).toLowerCase() === 'true' ? ' checked' : '';
-    inputHtml = `<label class="switch"><input type="checkbox" id="${id}" data-key="${def.key}"${checked}><span class="slider"></span></label>`;
-  } else if (def.type === 'password') {
-    inputHtml = `<input type="password" id="${id}" value="${def.value}" data-key="${def.key}">`;
-  } else {
-    inputHtml = `<input type="text" id="${id}" value="${def.value}" data-key="${def.key}">`;
-  }
-
-  return `<div class="setting-field">
-    <label for="${id}">${def.label}</label>
-    ${inputHtml}
-    ${def.hint ? `<div class="hint">${def.hint}</div>` : ''}
-  </div>`;
-}
-
-async function saveSettings() {
-  const btn = document.getElementById('saveSettings');
-  const status = document.getElementById('saveStatus');
-  btn.disabled = true;
-  status.textContent = 'Saving…';
-  status.style.color = 'var(--muted)';
-
-  const inputs = document.querySelectorAll('#tab-settings [data-key]');
-  let ok = 0, fail = 0;
-
-  for (const input of inputs) {
-    try {
-      const value = input.type === 'checkbox' ? String(input.checked) : input.value;
-      const res = await fetch(API + '/api/settings/' + input.dataset.key, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: value }),
-      });
-      if (res.ok) ok++; else fail++;
-    } catch(e) { fail++; }
-  }
-
-  btn.disabled = false;
-  if (fail === 0) {
-    status.textContent = `✅ Saved ${ok} setting${ok!==1?'s':''}`;
-    status.style.color = 'var(--green)';
-    loadSettingsForGauges();
-  } else {
-    status.textContent = `⚠️ ${ok} saved, ${fail} failed`;
-    status.style.color = 'var(--yellow)';
-  }
-  setTimeout(() => { status.textContent = ''; status.style.color = 'var(--muted)'; }, 3000);
-}
-
-document.getElementById('saveSettings').addEventListener('click', saveSettings);
-
-const settingsTab = document.querySelector('.tab[data-tab="settings"]');
-if (settingsTab) {
-  settingsTab.addEventListener('click', loadSettings, { once: false });
-}
-
-// ── Maintenance buttons ──
-document.getElementById('btnBackup')?.addEventListener('click', async () => {
-  const status = document.getElementById('maintenanceStatus');
-  status.textContent = 'Backing up…';
-  try {
-    const r = await fetch(`${API}/api/backup`, {method: 'POST'});
-    const j = await r.json();
-    status.textContent = 'Backup created: ' + j.backup_path;
-    loadBackups();
-  } catch (e) {
-    status.textContent = 'Backup failed: ' + e.message;
-  }
-});
-
-document.getElementById('btnPrune')?.addEventListener('click', async () => {
-  const status = document.getElementById('maintenanceStatus');
-  if (!confirm('Prune old detail data? Hourly rollups are kept. This cannot be undone.')) return;
-  status.textContent = 'Pruning…';
-  try {
-    const r = await fetch(`${API}/api/prune`, {method: 'POST'});
-    const j = await r.json();
-    status.textContent = j.output || 'Prune complete';
-  } catch (e) {
-    status.textContent = 'Prune failed: ' + e.message;
-  }
-});
-
-document.getElementById('btnRefreshStorage')?.addEventListener('click', loadStorage);
-
-async function loadStorage() {
-  const el = document.getElementById('storageInfo');
-  try {
-    const r = await fetch(`${API}/api/storage`);
-    const s = await r.json();
-    const db = Object.entries(s.database_bytes).map(([t,b]) => `${t}: ${(b/1024/1024).toFixed(1)} MB`).join('\n');
-    el.textContent = `Database tables:\n${db}\nTotal DB: ${(s.database_total_bytes/1024/1024).toFixed(1)} MB\nBackups: ${(s.backup_total_bytes/1024/1024).toFixed(1)} MB\nDisk free: ${(s.disk_free_bytes/1024/1024/1024).toFixed(1)} GB / ${(s.disk_total_bytes/1024/1024/1024).toFixed(1)} GB`;
-  } catch (e) {
-    el.textContent = 'Failed to load storage: ' + e.message;
-  }
-}
-
-async function loadBackups() {
-  const el = document.getElementById('backupsList');
-  try {
-    const r = await fetch(`${API}/api/backups`);
-    const b = await r.json();
-    if (!b.backups.length) { el.innerHTML = '<p>No backups yet.</p>'; return; }
-    el.innerHTML = '<h4>Backups</h4><ul style="font-size:0.8rem;">' +
-      b.backups.map(x => `<li>${x.name} — ${(x.size_bytes/1024/1024).toFixed(1)} MB — ${new Date(x.mtime*1000).toLocaleString()}</li>`).join('') +
-      '</ul>';
-  } catch (e) {
-    el.innerHTML = 'Failed to load backups: ' + e.message;
-  }
-}
-
-settingsTab?.addEventListener('click', () => {
-  loadStorage();
-  loadBackups();
+  loadMainCharts();
+  connectWS();
+  setInterval(refresh, 15000);
 });
 </script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </body>
 </html>
