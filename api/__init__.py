@@ -76,6 +76,38 @@ def _row_to_dict(row: tuple, columns: list[str]) -> dict[str, Any]:
     return dict(zip(columns, row))
 
 
+# Working-mode status codes (Register 0) → human-readable label.
+# Source: EG4-18KPV-12LV Modbus protocol, Table 9 "Working modes definition".
+_STATE_LABELS = {
+    0x00: "Standby",
+    0x01: "Fault",
+    0x02: "Programming",
+    0x04: "PV on-grid",
+    0x08: "PV charging battery",
+    0x0C: "PV charging battery + on-grid",
+    0x10: "Battery on-grid",
+    0x14: "PV + battery on-grid",
+    0x20: "AC charge (grid → battery)",
+    0x28: "PV + AC charge",
+    0x40: "Battery off-grid",
+    0x80: "PV off-grid",
+    0x88: "PV charge + off-grid",
+    0xC0: "PV + battery off-grid",
+}
+
+
+def _state_label(value) -> str:
+    """Return a human-readable label for a raw working-mode state value."""
+    try:
+        code = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+    label = _STATE_LABELS.get(code)
+    if label is None:
+        return f"Unknown ({code})"
+    return f"{label} ({code})"
+
+
 # ── endpoints ────────────────────────────────────────────────────────────────
 
 @app.get("/api/status")
@@ -103,6 +135,13 @@ def api_status():
             registers = {
                 row[0]: {"value": float(row[1]), "unit": row[2]}
                 for row in cur.fetchall()
+            }
+
+        # Human-readable working-mode label alongside the raw state code.
+        if "state" in registers:
+            registers["state_label"] = {
+                "value": _state_label(registers["state"]["value"]),
+                "unit": "",
             }
 
         return {
@@ -284,6 +323,13 @@ def api_summary():
                             "value": round(c * 9.0 / 5.0 + 32.0, 1),
                             "unit": "°F",
                         }
+
+        # Human-readable working-mode label alongside the raw state code.
+        if "state" in registers:
+            registers["state_label"] = {
+                "value": _state_label(registers["state"]["value"]),
+                "unit": "",
+            }
 
         return {
             "snapshot_id": snap_id,
