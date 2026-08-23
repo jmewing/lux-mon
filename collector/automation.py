@@ -570,11 +570,19 @@ class AutomationEngine:
         action = auto.evaluate(snapshot, now)
         if action is None:
             return []
-        # Map grid/battery to output source priority register.
-        # "grid" -> output source priority = grid; "battery" -> battery.
-        # We use the "ac_first" / output source concept via a holding register.
-        # For now, log the intended action; the actual register mapping is
-        # handled by the target register list.
+
+        # NOTE: In the reference portal, "Battery state of charge" control is
+        # an *internal* feature that requires a direct battery data source
+        # (BMS or emulated BMS).  It does NOT write a Luxpower holding
+        # register; it switches the portal's own "output source priority"
+        # between grid and battery based on the SOC boundary line.
+        #
+        # lux-mon mirrors this: the automation evaluates the SOC boundary and
+        # reports the intended source (grid/battery), but the actual
+        # grid/battery switching is performed by the inverter's own AC-first
+        # schedule / charge-priority settings, not by a single writable
+        # register.  We therefore log the intended action rather than fabricate
+        # a register write that the hardware does not support.
         results: List[Dict[str, Any]] = []
         results.append({
             "rule_id": auto.id,
