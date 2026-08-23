@@ -47,12 +47,12 @@ HOLDING_REGISTERS: Dict[int, dict] = {
 
     # ── AC charge time-of-day slots 68-73 (MM*256+HH: hour in LOW byte, minute in HIGH byte) ──
     # NOTE: encoding is hour in LSB, minute in MSB. 22:00 = 22 (0x0016), NOT 5632.
-    68: {"name": "ac_charge_period_1_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 1 start (MM*256+HH)", "min": 0, "max": 2359},
-    69: {"name": "ac_charge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 1 end (MM*256+HH)", "min": 0, "max": 2359},
-    70: {"name": "ac_charge_period_2_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 2 start (MM*256+HH)", "min": 0, "max": 2359},
-    71: {"name": "ac_charge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 2 end (MM*256+HH)", "min": 0, "max": 2359},
-    72: {"name": "ac_charge_period_3_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 3 start (MM*256+HH)", "min": 0, "max": 2359},
-    73: {"name": "ac_charge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 3 end (MM*256+HH)", "min": 0, "max": 2359},
+    68: {"name": "ac_charge_period_1_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 1 start (min<<8)|hour", "min": 0, "max": 2359},
+    69: {"name": "ac_charge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 1 end (min<<8)|hour", "min": 0, "max": 2359},
+    70: {"name": "ac_charge_period_2_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 2 start (min<<8)|hour", "min": 0, "max": 2359},
+    71: {"name": "ac_charge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 2 end (min<<8)|hour", "min": 0, "max": 2359},
+    72: {"name": "ac_charge_period_3_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 3 start (min<<8)|hour", "min": 0, "max": 2359},
+    73: {"name": "ac_charge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 3 end (min<<8)|hour", "min": 0, "max": 2359},
 
     # ── Forced charge (charge priority) 74-81 ──
     74: {"name": "forced_charge_power",        "unit": "A",   "scale": 1.0, "desc": "Forced charge current", "min": 0, "max": 140},
@@ -99,12 +99,12 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     151: {"name": "equalization_time",       "unit": "h",   "scale": 1.0,  "desc": "Equalization time", "min": 0, "max": 24},
 
     # ── AC First mode time slots 152-157 ──
-    152: {"name": "ac_first_period_1_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 1 start (MM*256+HH)", "min": 0, "max": 2359},
-    153: {"name": "ac_first_period_1_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 1 end (MM*256+HH)", "min": 0, "max": 2359},
-    154: {"name": "ac_first_period_2_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 2 start (MM*256+HH)", "min": 0, "max": 2359},
-    155: {"name": "ac_first_period_2_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 2 end (MM*256+HH)", "min": 0, "max": 2359},
-    156: {"name": "ac_first_period_3_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 3 start (MM*256+HH)", "min": 0, "max": 2359},
-    157: {"name": "ac_first_period_3_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 3 end (MM*256+HH)", "min": 0, "max": 2359},
+    152: {"name": "ac_first_period_1_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 1 start (min<<8)|hour", "min": 0, "max": 2359},
+    153: {"name": "ac_first_period_1_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 1 end (min<<8)|hour", "min": 0, "max": 2359},
+    154: {"name": "ac_first_period_2_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 2 start (min<<8)|hour", "min": 0, "max": 2359},
+    155: {"name": "ac_first_period_2_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 2 end (min<<8)|hour", "min": 0, "max": 2359},
+    156: {"name": "ac_first_period_3_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 3 start (min<<8)|hour", "min": 0, "max": 2359},
+    157: {"name": "ac_first_period_3_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 3 end (min<<8)|hour", "min": 0, "max": 2359},
 
     # ── AC charge battery voltage/SOC thresholds 158-161 ──
     158: {"name": "ac_charge_start_battery_voltage", "unit": "V", "scale": 0.1, "desc": "AC charge start battery voltage", "min": 0, "max": 600},

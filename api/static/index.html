@@ -882,8 +882,10 @@ function decodeTime(num) {
   if (num === null || num === undefined || num === '') return '';
   const n = Number(num);
   if (Number.isNaN(n)) return '';
-  const hh = Math.floor(n / 256);
-  const mm = n % 256;
+  // Time registers encode hour in the LOW byte, minute in the HIGH byte:
+  // raw = (minute << 8) | hour.  e.g. 22:30 -> (30<<8)|22 = 7702.
+  const hh = n & 0xFF;
+  const mm = (n >> 8) & 0xFF;
   return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
 }
 function encodeTime(hhmm) {
@@ -891,7 +893,7 @@ function encodeTime(hhmm) {
   const [hh, mm] = hhmm.split(':');
   const h = Number(hh), m = Number(mm);
   if (Number.isNaN(h) || Number.isNaN(m)) return '';
-  return String(h * 256 + m);
+  return String((m << 8) | h);
 }
 
 function renderSchedule() {
