@@ -801,18 +801,23 @@ def _load_db_setting(name: str) -> Optional[str]:
 
 # ── automation / rules engine ───────────────────────────────────────────────
 
-from collector.protocol import HOLDING_REGISTERS, HOLDING_BY_NAME
-from collector.automation import AutomationEngine, SETTING_KEY as AUTOMATION_SETTING, ENABLED_KEY as AUTOMATION_ENABLED
-
-
-class AutomationRuleBody(BaseModel):
-    id: Optional[str] = None
-    name: str
-    enabled: bool = True
-    dry_run: bool = False
-    time_window: Optional[dict] = None
-    conditions: List[dict] = []
-    action: dict
+from collector.protocol import HOLDING_REGISTERS, HOLDING_BY_NAME, holding_label
+from collector.automation import (
+    AutomationEngine,
+    SETTING_KEY as AUTOMATION_SETTING,
+    ENABLED_KEY as AUTOMATION_ENABLED,
+    AUTOMATION_TYPES,
+    SUBSET_KINDS,
+    SUBSET_SENSOR,
+    TYPE_RULE_TABLE,
+    TYPE_BATTERY_SOC,
+    TYPE_BATTERY_PROTECTION,
+    TYPE_NOTIFY,
+    RuleTable,
+    BatterySocAutomation,
+    BatteryProtectionAutomation,
+    NotifyAutomation,
+)
 
 
 class AutomationTestBody(BaseModel):
@@ -832,11 +837,12 @@ def _load_automation_engine() -> AutomationEngine:
 
 @app.get("/api/automation/registers")
 def api_automation_registers():
-    """Return the list of writable holding registers for automation actions."""
+    """Return the list of writable holding registers for automation targets."""
     return {
         "registers": [
             {
                 "name": info["name"],
+                "label": holding_label(info["name"]),
                 "address": reg,
                 "unit": info["unit"],
                 "scale": info["scale"],
@@ -849,10 +855,50 @@ def api_automation_registers():
     }
 
 
+@app.get("/api/automation/types")
+def api_automation_types():
+    """Return the automation types, subset kinds, and target registers.
+
+    This is the metadata the wizard UI needs to build a rule table:
+      * the four automation types
+      * the subset (condition) dimensions available as columns
+      * the writable target registers
+    """
+    return {
+        "types": [
+            {"id": TYPE_RULE_TABLE, "label": "Rule table"},
+            {"id": TYPE_BATTERY_SOC, "label": "Battery state of charge"},
+            {"id": TYPE_BATTERY_PROTECTION, "label": "Battery protection"},
+            {"id": TYPE_NOTIFY, "label": "Send notification"},
+        ],
+        "subsets": [
+            {
+                "kind": kind,
+                "label": meta["label"],
+                "unit": meta["unit"],
+                "value_type": meta["value_type"],
+            }
+            for kind, meta in SUBSET_KINDS.items()
+        ],
+        "registers": [
+            {
+                "name": info["name"],
+                "label": holding_label(info["name"]),
+                "address": reg,
+                "unit": info["unit"],
+                "scale": info["scale"],
+                "min": info.get("min"),
+                "max": info.get("max"),
+                "desc": info["desc"],
+            }
+            for reg, info in sorted(HOLDING_REGISTERS.items())
+        ],
+    }
+
+
 @app.get("/api/automation/rules")
 def api_automation_rules():
-    """Return the current automation rules and global enable flag."""
-    engine = _load_automation_engine()
+    """Return the current automations and global enable flag."""
     from collector.settings import get
 
     conn = _get_conn()
@@ -868,10 +914,41 @@ def api_automation_rules():
     }
 
 
+def _target_key(automation: dict) -> Optional[str]:
+    """Return the 'target type' key used to enforce one-per-target-type.
+
+    For rule tables, the target is the register name.  For battery protection,
+    it's the shutdown register.  Battery SOC and notify are singletons by type.
+    """
+    atype = automation.get("type", TYPE_RULE_TABLE)
+    if atype == TYPE_RULE_TABLE:
+        return f"rule_table:{automation.get('target', '')}"
+    if atype == TYPE_BATTERY_PROTECTION:
+        return f"battery_protection:{automation.get('shutdown_register', '')}"
+    if atype == TYPE_BATTERY_SOC:
+        return "battery_soc"
+    if atype == TYPE_NOTIFY:
+        return "notify"
+    return None
+
+
 @app.post("/api/automation/rules")
 def api_automation_rules_save(body: List[dict]):
-    """Replace the entire automation rule set."""
+    """Replace the entire automation set, enforcing one-per-target-type."""
     from collector.settings import set_
+
+    # Enforce one automation per target type.
+    seen: dict = {}
+    for item in body:
+        key = _target_key(item)
+        if key is None:
+            continue
+        if key in seen:
+            raise HTTPException(
+                400,
+                f"Only one automation per target type is allowed (duplicate: {key})",
+            )
+        seen[key] = True
 
     conn = _get_conn()
     try:
@@ -883,7 +960,7 @@ def api_automation_rules_save(body: List[dict]):
 
 @app.delete("/api/automation/rules/{rule_id}")
 def api_automation_rule_delete(rule_id: str):
-    """Delete a single automation rule by id."""
+    """Delete a single automation by id."""
     from collector.settings import get, set_
 
     conn = _get_conn()
@@ -912,7 +989,7 @@ def api_automation_enable(enabled: bool = True):
 
 @app.post("/api/automation/test")
 def api_automation_test(body: AutomationTestBody):
-    """Dry-run evaluate rules against a snapshot (or the latest DB snapshot)."""
+    """Dry-run evaluate automations against a snapshot (or the latest DB snapshot)."""
     engine = _load_automation_engine()
 
     snapshot = body.snapshot
@@ -924,29 +1001,56 @@ def api_automation_test(body: AutomationTestBody):
 
     tz = body.timezone or _load_db_setting("timezone") or "America/Chicago"
 
-    # Force every rule into dry_run mode for this test.
-    rules = engine.load_rules()
-    results = []
     from zoneinfo import ZoneInfo
     from datetime import datetime
 
     now = datetime.now(ZoneInfo(tz))
-    for rule in rules:
-        rule.dry_run = True
-        target = rule.evaluate(snapshot, now)
-        if target is None:
-            results.append({"rule_id": rule.id, "name": rule.name, "matched": False})
-            continue
-        meta = HOLDING_REGISTERS[HOLDING_BY_NAME[rule.action.register_name]]
-        raw = int(round(target / meta["scale"]))
-        results.append({
-            "rule_id": rule.id,
-            "name": rule.name,
-            "matched": True,
-            "register": meta["name"],
-            "value": target,
-            "raw": raw,
-        })
+    automations = engine.load_automations()
+    results = []
+    for auto in automations:
+        auto.dry_run = True
+        if isinstance(auto, RuleTable):
+            target = auto.evaluate(snapshot, now)
+            if target is None:
+                results.append({"rule_id": auto.id, "name": auto.name, "type": TYPE_RULE_TABLE, "matched": False})
+                continue
+            meta = HOLDING_REGISTERS[HOLDING_BY_NAME[auto.target]]
+            raw = int(round(target / meta["scale"]))
+            results.append({
+                "rule_id": auto.id,
+                "name": auto.name,
+                "type": TYPE_RULE_TABLE,
+                "matched": True,
+                "register": meta["name"],
+                "value": target,
+                "raw": raw,
+            })
+        elif isinstance(auto, BatterySocAutomation):
+            action = auto.evaluate(snapshot, now)
+            results.append({
+                "rule_id": auto.id,
+                "name": auto.name,
+                "type": TYPE_BATTERY_SOC,
+                "matched": action is not None,
+                "action": action,
+            })
+        elif isinstance(auto, BatteryProtectionAutomation):
+            target = auto.evaluate(snapshot, now)
+            results.append({
+                "rule_id": auto.id,
+                "name": auto.name,
+                "type": TYPE_BATTERY_PROTECTION,
+                "matched": target is not None,
+                "value": target,
+            })
+        elif isinstance(auto, NotifyAutomation):
+            fired = auto.evaluate(snapshot, now)
+            results.append({
+                "rule_id": auto.id,
+                "name": auto.name,
+                "type": TYPE_NOTIFY,
+                "matched": fired,
+            })
     return {"enabled": engine.is_enabled(), "timezone": tz, "results": results}
 
 

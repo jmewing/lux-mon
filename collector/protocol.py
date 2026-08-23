@@ -131,6 +131,65 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     177: {"name": "max_generator_input_power", "unit": "W",   "scale": 1.0,  "desc": "Max generator input power", "min": 0, "max": 65534},
 }
 
+# Friendly display labels matching the reference portal's terminology.
+# These are surfaced in the automation UI so users see "Absorption charge
+# voltage" rather than the internal register name "lead_acid_charge_voltage".
+HOLDING_LABELS: Dict[str, str] = {
+    "lead_acid_charge_voltage": "Absorption charge voltage",
+    "floating_voltage": "Float charge voltage",
+    "lead_acid_charge_rate": "Max charge current",
+    "ac_charge_battery_current": "Grid charge current",
+    "lead_acid_discharge_rate": "Max discharge current",
+    "lead_acid_discharge_cut_voltage": "Stop discharge voltage",
+    "battery_warning_voltage": "Warning start voltage",
+    "battery_warning_recovery_voltage": "Warning recovery voltage",
+    "battery_low_to_utility_voltage": "Shutdown battery voltage",
+    "on_grid_eod_voltage": "On-grid end-of-discharge voltage",
+    "ac_charge_start_battery_voltage": "Grid charge start voltage",
+    "ac_charge_end_battery_voltage": "Grid charge stop voltage",
+    "ac_charge_start_battery_soc": "Grid charge start capacity",
+    "ac_charge_end_battery_soc": "Grid charge stop capacity",
+    "battery_warning_soc": "Warning start capacity",
+    "battery_warning_recovery_soc": "Warning recovery capacity",
+    "battery_low_to_utility_soc": "Shutdown battery capacity",
+    "discharge_cutoff_soc_eod": "Stop discharge capacity",
+    "soc_low_limit_eps_discharge": "SOC low limit (EPS discharge)",
+    "equalization_voltage": "Equalization voltage",
+    "equalization_period": "Equalization period",
+    "equalization_time": "Equalization time",
+    "ac_input_range": "AC input range",
+    "battery_capacity": "Battery capacity",
+    "nominal_battery_voltage": "Nominal battery voltage",
+    "max_generator_input_power": "Generator power",
+    "forced_charge_power": "Forced charge current",
+    "forced_discharge_power": "Forced discharge current",
+    "feed_in_grid_power_percent": "Export power rate",
+    "active_power_percent": "Active power command",
+    "reactive_power_percent": "Reactive power command",
+    "power_factor_command": "Power factor command",
+    "charge_power_percent": "Charge power command",
+    "discharge_power_percent": "Discharge power command",
+    "ac_charge_power_percent": "AC charge power command",
+    "ac_charge_soc_limit": "AC charge SOC limit",
+    "forced_charge_soc_limit": "Forced charge SOC limit",
+    "forced_discharge_soc_limit": "Forced discharge SOC limit",
+    "soft_start_slope": "Soft start slope",
+    "eps_voltage_set": "EPS output voltage",
+    "eps_frequency_set": "EPS output frequency",
+}
+
+
+def holding_label(name: str) -> str:
+    """Return the friendly display label for a holding register, falling back
+    to the register's own description (or name) when no label is defined."""
+    if name in HOLDING_LABELS:
+        return HOLDING_LABELS[name]
+    reg = HOLDING_BY_NAME.get(name)
+    if reg is not None:
+        return HOLDING_REGISTERS[reg].get("desc", name)
+    return name
+
+
 # Build reverse lookups by name
 HOLDING_BY_NAME: Dict[str, int] = {info["name"]: reg for reg, info in HOLDING_REGISTERS.items()}
 

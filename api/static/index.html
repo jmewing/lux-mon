@@ -282,7 +282,7 @@ a.status:hover > div .label { color: var(--link-color); }
           <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
             <h3>Automation Rules</h3>
             <div class="actions" style="margin:0;">
-              <button class="btn" id="btn-add-rule">Add Rule</button>
+              <button class="btn" id="btn-add-rule">+ Add automation</button>
               <button class="btn" id="btn-test-rules">Dry-Run Test</button>
               <button class="btn" id="btn-load-rules">Reload</button>
             </div>
@@ -291,12 +291,25 @@ a.status:hover > div .label { color: var(--link-color); }
         </div>
       </div>
 
+      <!-- Add-automation type picker modal -->
+      <div id="type-picker" style="display:none;">
+        <div class="card" style="margin-bottom:1em;">
+          <div class="card-section">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+              <h3>Select automation</h3>
+              <button class="btn" id="btn-type-picker-close">Cancel</button>
+            </div>
+            <div id="type-picker-body" style="margin-top:0.75rem; display:flex; flex-wrap:wrap; gap:0.5rem;"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Rule editor modal -->
       <div id="rule-editor" style="display:none;">
         <div class="card" style="margin-bottom:1em;">
           <div class="card-section">
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
-              <h3 id="rule-editor-title">Edit Rule</h3>
+              <h3 id="rule-editor-title">Edit Automation</h3>
               <button class="btn" id="btn-rule-editor-close">Close</button>
             </div>
             <div id="rule-editor-body" style="margin-top:0.75rem;"></div>
@@ -828,28 +841,23 @@ async function loadHistorical() {
 let autoRegisters = [];
 let autoRules = [];
 let autoSettings = {};
+let autoTypes = [];
+let autoSubsets = [];
 let editingRuleIdx = -1;
 
-const AUTO_SENSORS = [
-  {name:'battery_voltage', label:'Battery voltage', unit:'V'},
-  {name:'soc', label:'Battery SOC', unit:'%'},
-  {name:'soh', label:'Battery SOH', unit:'%'},
-  {name:'battery_current', label:'Battery current', unit:'A'},
-  {name:'pv1_power', label:'PV1 power', unit:'W'},
-  {name:'pv2_power', label:'PV2 power', unit:'W'},
-  {name:'grid_import_power', label:'Grid import', unit:'W'},
-  {name:'grid_export_power', label:'Grid export', unit:'W'},
-  {name:'charge_power', label:'Charge power', unit:'W'},
-  {name:'discharge_power', label:'Discharge power', unit:'W'},
-  {name:'temp_inverter', label:'Inverter temp', unit:'°C'},
-  {name:'temp_battery', label:'Battery temp', unit:'°C'}
-];
-
 function regByName(name) { return autoRegisters.find(r => r.name === name); }
-function sensorLabel(name) { const s = AUTO_SENSORS.find(x => x.name === name); return s ? s.label : name; }
+function subsetByKind(kind) { return autoSubsets.find(s => s.kind === kind); }
+function typeById(id) { return autoTypes.find(t => t.id === id); }
 
 async function loadAutomationRegisters() {
   try { autoRegisters = (await fetchJson(API + '/api/automation/registers')).registers; } catch (e) { console.error(e); }
+}
+async function loadAutomationTypes() {
+  try {
+    const res = await fetchJson(API + '/api/automation/types');
+    autoTypes = res.types || [];
+    autoSubsets = res.subsets || [];
+  } catch (e) { console.error(e); }
 }
 async function loadAutomationSettings() {
   try {
@@ -861,7 +869,7 @@ async function loadAutomationSettings() {
   } catch (e) { console.error(e); }
 }
 async function loadAutomation() {
-  await Promise.all([loadAutomationRegisters(), loadAutomationSettings()]);
+  await Promise.all([loadAutomationRegisters(), loadAutomationTypes(), loadAutomationSettings()]);
   const res = await fetchJson(API + '/api/automation/rules');
   autoRules = res.rules || [];
   document.getElementById('auto-enabled').checked = res.enabled;
@@ -958,20 +966,53 @@ async function saveSchedule() {
   }
 }
 
+// ── Rule rendering ─────────────────────────────────────────────────────────
+
+function automationTypeLabel(rule) {
+  const t = typeById(rule.type || 'rule_table');
+  return t ? t.label : (rule.type || 'rule_table');
+}
+
+function ruleTableSummary(rule) {
+  const reg = regByName(rule.target);
+  const unit = reg ? reg.unit : '';
+  const cols = (rule.columns || []).map(c => {
+    const s = subsetByKind(c.kind);
+    return s ? s.label : c.kind;
+  }).join(' → ');
+  const leafCount = (rule.columns && rule.columns.length)
+    ? rule.columns[rule.columns.length - 1].ranges.length : 0;
+  return `${cols} → Set ${rule.target} (${leafCount} value${leafCount !== 1 ? 's' : ''})`;
+}
+
+function batterySocSummary(rule) {
+  const pts = (rule.points || []).map(p => `${p.time} @ ${p.soc}%`).join(', ');
+  return `Points: ${pts || 'none'}`;
+}
+
+function batteryProtectionSummary(rule) {
+  return `If SOC ≤ ${rule.threshold_soc}% → shutdown; restore ${rule.restore_value}V`;
+}
+
+function notifySummary(rule) {
+  const s = subsetByKind(rule.condition_kind);
+  const label = s ? s.label : rule.condition_kind;
+  return `${label} ${rule.operator} ${rule.threshold}`;
+}
+
+function ruleSummary(rule) {
+  const t = rule.type || 'rule_table';
+  if (t === 'battery_soc') return batterySocSummary(rule);
+  if (t === 'battery_protection') return batteryProtectionSummary(rule);
+  if (t === 'notify') return notifySummary(rule);
+  return ruleTableSummary(rule);
+}
+
 function renderRules() {
   const container = document.getElementById('rules-list');
-  if (!autoRules.length) { container.innerHTML = '<p class="text-light">No rules yet. Click “Add Rule” to create one.</p>'; return; }
+  if (!autoRules.length) { container.innerHTML = '<p class="text-light">No automations yet. Click “+ Add automation” to create one.</p>'; return; }
   container.innerHTML = autoRules.map((rule, idx) => {
-    const tw = rule.time_window || {};
-    const conds = (rule.conditions || []).map(c => `${sensorLabel(c.sensor)} ${c.min ?? ''}–${c.max ?? ''}`).join(', ') || 'always';
-    const action = rule.action || {};
-    const reg = regByName(action.register);
-    let actionText;
-    if (action.ranges && action.ranges.length) {
-      actionText = `${action.ranges.length} range${action.ranges.length>1?'s':''} (${sensorLabel(action.range_sensor)})`;
-    } else {
-      actionText = `${action.value ?? '?'} ${reg ? reg.unit : ''}`;
-    }
+    const typeLabel = automationTypeLabel(rule);
     return `<div class="card rule-card"><div class="card-section">
       <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
         <h3>${rule.name || 'Unnamed'}${rule.dry_run ? ' <span style="color:var(--yellow-color); font-size:0.8rem;">[DRY RUN]</span>' : ''}</h3>
@@ -980,15 +1021,49 @@ function renderRules() {
           <button class="btn negative" onclick="deleteRule('${rule.id}')">Delete</button>
         </div>
       </div>
-      <div class="rule-meta">Time: ${tw.start || '00:00'} – ${tw.end || '23:59'} · When: ${conds} · Set ${action.register || '?'} = ${actionText}</div>
+      <div class="rule-meta"><strong>${typeLabel}</strong> · ${ruleSummary(rule)}</div>
     </div></div>`;
   }).join('');
 }
 
+// ── Type picker (Add automation wizard, step 1) ────────────────────────────
+
+function openTypePicker() {
+  const body = document.getElementById('type-picker-body');
+  body.innerHTML = autoTypes.map(t => `
+    <button class="btn" style="flex:1 1 200px; text-align:left;" onclick="createAutomation('${t.id}')">
+      <strong>${t.label}</strong>
+    </button>`).join('');
+  document.getElementById('type-picker').style.display = 'block';
+  document.getElementById('type-picker').scrollIntoView({behavior:'smooth'});
+}
+function closeTypePicker() {
+  document.getElementById('type-picker').style.display = 'none';
+}
+
+function createAutomation(typeId) {
+  closeTypePicker();
+  let rule;
+  if (typeId === 'battery_soc') {
+    rule = {id:'auto_'+Date.now(), name:'Battery state of charge', type:'battery_soc', enabled:true, dry_run:true, points:[{time:'08:00', soc:30},{time:'15:00', soc:70}]};
+  } else if (typeId === 'battery_protection') {
+    rule = {id:'auto_'+Date.now(), name:'Battery protection', type:'battery_protection', enabled:true, dry_run:true, threshold_soc:25, shutdown_register:'shutdown_battery_voltage', restore_value:40.0};
+  } else if (typeId === 'notify') {
+    rule = {id:'auto_'+Date.now(), name:'Notification', type:'notify', enabled:true, dry_run:true, condition_kind:'battery_soc', operator:'<=', threshold:20};
+  } else {
+    rule = {id:'auto_'+Date.now(), name:'New rule table', type:'rule_table', enabled:true, dry_run:true, target:'ac_charge_battery_current', columns:[{kind:'time_of_day', ranges:[{from:'21:00', to:'23:59'}]}], restore:null};
+  }
+  autoRules.push(rule);
+  renderRules();
+  openRuleEditor(autoRules.length - 1);
+}
+
+// ── Rule editor ────────────────────────────────────────────────────────────
+
 function openRuleEditor(idx) {
   editingRuleIdx = idx;
   const rule = autoRules[idx];
-  document.getElementById('rule-editor-title').textContent = rule.name || 'Edit Rule';
+  document.getElementById('rule-editor-title').textContent = rule.name || 'Edit Automation';
   document.getElementById('rule-editor').style.display = 'block';
   renderRuleEditorBody(rule);
   document.getElementById('rule-editor').scrollIntoView({behavior:'smooth'});
@@ -997,135 +1072,145 @@ function closeRuleEditor() {
   document.getElementById('rule-editor').style.display = 'none';
   editingRuleIdx = -1;
 }
+
 function renderRuleEditorBody(rule) {
   const body = document.getElementById('rule-editor-body');
-  const tw = rule.time_window || {};
-  const conds = rule.conditions || [];
-  const action = rule.action || {};
-  const regOptions = autoRegisters.map(r => `<option value="${r.name}" ${r.name===action.register?'selected':''}>${r.name} (${r.unit}) — ${r.desc||''}</option>`).join('');
-  const sensorOptions = AUTO_SENSORS.map(s => `<option value="${s.name}">${s.label} (${s.unit})</option>`).join('');
+  const t = rule.type || 'rule_table';
+
+  if (t === 'battery_soc') { renderBatterySocEditor(body, rule); return; }
+  if (t === 'battery_protection') { renderBatteryProtectionEditor(body, rule); return; }
+  if (t === 'notify') { renderNotifyEditor(body, rule); return; }
+  renderRuleTableEditor(body, rule);
+}
+
+// ── Rule table editor (target-first, nested subset columns) ───────────────
+
+function renderRuleTableEditor(body, rule) {
+  const regOptions = autoRegisters.map(r => `<option value="${r.name}" ${r.name===rule.target?'selected':''}>${r.label || r.name} (${r.unit})</option>`).join('');
+  const subsetOptions = autoSubsets.map(s => `<option value="${s.kind}">${s.label}${s.unit ? ' ('+s.unit+')' : ''}</option>`).join('');
 
   body.innerHTML = `
     <div class="form-grid">
-      <div class="field"><label>Rule name</label><input type="text" id="re-name" value="${rule.name || ''}"></div>
+      <div class="field"><label>Name</label><input type="text" id="re-name" value="${rule.name || ''}"></div>
       <div class="field"><label>Dry run (test only, no writes)</label><label style="flex-direction:row; align-items:center; gap:0.5rem;"><input type="checkbox" id="re-dryrun" ${rule.dry_run?'checked':''}> <span>Enabled</span></label></div>
     </div>
-    <h4 style="margin:1rem 0 0.5rem;">When — time of day</h4>
+    <h4 style="margin:1rem 0 0.5rem;">Set — target</h4>
     <div class="form-grid">
-      <div class="field"><label>From</label><input type="time" id="re-tw-start" value="${tw.start || '00:00'}"></div>
-      <div class="field"><label>To</label><input type="time" id="re-tw-end" value="${tw.end || '23:59'}"></div>
+      <div class="field"><label>Target setting</label><select id="re-target">${regOptions}</select></div>
+      <div class="field"><label>Restore value (optional)</label><input type="number" id="re-restore" value="${rule.restore ?? ''}" placeholder="—" step="any"></div>
     </div>
-    <h4 style="margin:1rem 0 0.5rem;">And when — conditions</h4>
-    <div id="re-conditions"></div>
-    <button class="btn" id="re-add-cond" style="margin-top:0.5rem;">+ Add condition</button>
-    <h4 style="margin:1rem 0 0.5rem;">Set — action</h4>
-    <div class="form-grid">
-      <div class="field"><label>Register</label><select id="re-action-reg">${regOptions}</select></div>
-      <div class="field"><label>Mode</label><select id="re-action-mode">
-        <option value="value" ${action.value!==undefined?'selected':''}>Fixed value</option>
-        <option value="ranges" ${action.ranges&&action.ranges.length?'selected':''}>Range table</option>
-      </select></div>
-    </div>
-    <div id="re-action-value-wrap" style="margin-top:0.5rem;"></div>
-    <div id="re-action-ranges-wrap" style="margin-top:0.5rem;"></div>
-    <div class="actions">
-      <button class="btn" id="re-save">Save Rule</button>
+    <h4 style="margin:1rem 0 0.5rem;">When — conditions (nested columns)</h4>
+    <div id="re-columns"></div>
+    <button class="btn" id="re-add-column" style="margin-top:0.5rem;">+ Add condition column</button>
+    <div class="actions" style="margin-top:1rem;">
+      <button class="btn" id="re-save">Save</button>
       <button class="btn" id="re-cancel">Cancel</button>
     </div>
   `;
 
-  const condWrap = document.getElementById('re-conditions');
-  function renderConds() {
-    condWrap.innerHTML = conds.map((c, i) => `
-      <div class="form-grid" style="margin-bottom:0.5rem; align-items:end;">
-        <div class="field"><label>Sensor</label><select data-cond="${i}" data-cond-field="sensor">${sensorOptions.replace(`value="${c.sensor}"`, `value="${c.sensor}" selected`)}</select></div>
-        <div class="field"><label>Min</label><input type="number" data-cond="${i}" data-cond-field="min" value="${c.min ?? ''}" placeholder="—"></div>
-        <div class="field"><label>Max</label><input type="number" data-cond="${i}" data-cond-field="max" value="${c.max ?? ''}" placeholder="—"></div>
-        <button class="btn negative" data-cond-del="${i}">✕</button>
-      </div>`).join('') || '<p class="text-light">No conditions — rule always applies during the time window.</p>';
-  }
-  renderConds();
+  const columns = rule.columns || [];
+  const colWrap = document.getElementById('re-columns');
 
-  function renderAction() {
-    const mode = document.getElementById('re-action-mode').value;
-    const reg = regByName(document.getElementById('re-action-reg').value);
-    const unit = reg ? reg.unit : '';
-    const min = reg ? reg.min : '';
-    const max = reg ? reg.max : '';
-    document.getElementById('re-action-value-wrap').style.display = mode === 'value' ? 'block' : 'none';
-    document.getElementById('re-action-ranges-wrap').style.display = mode === 'ranges' ? 'block' : 'none';
-    if (mode === 'value') {
-      document.getElementById('re-action-value-wrap').innerHTML = `<div class="field"><label>Value (${unit})</label><input type="number" id="re-action-value" value="${action.value ?? ''}" min="${min}" max="${max}" step="1"></div>`;
-    } else {
-      const ranges = action.ranges || [];
-      document.getElementById('re-action-ranges-wrap').innerHTML = `
-        <div class="field" style="margin-bottom:0.5rem;"><label>Range sensor</label><select id="re-range-sensor">${sensorOptions.replace(`value="${action.range_sensor||''}"`, `value="${action.range_sensor||''}" selected`)}</select></div>
-        <div id="re-ranges"></div>
-        <button class="btn" id="re-add-range" style="margin-top:0.5rem;">+ Add range</button>
-      `;
-      const rw = document.getElementById('re-ranges');
-      function renderRanges() {
-        rw.innerHTML = ranges.map((r, i) => `
-          <div class="form-grid" style="margin-bottom:0.5rem; align-items:end;">
-            <div class="field"><label>Min</label><input type="number" data-range="${i}" data-range-field="min" value="${r.min ?? ''}" placeholder="—"></div>
-            <div class="field"><label>Max</label><input type="number" data-range="${i}" data-range-field="max" value="${r.max ?? ''}" placeholder="—"></div>
-            <div class="field"><label>Value (${unit})</label><input type="number" data-range="${i}" data-range-field="value" value="${r.value ?? ''}"></div>
-            <button class="btn negative" data-range-del="${i}">✕</button>
-          </div>`).join('') || '<p class="text-light">No ranges yet.</p>';
-      }
-      renderRanges();
-      document.getElementById('re-add-range').onclick = () => { ranges.push({min:null,max:null,value:0}); renderRanges(); };
-      rw.addEventListener('click', e => {
-        const del = e.target.closest('[data-range-del]');
-        if (del) { ranges.splice(Number(del.dataset.rangeDel), 1); renderRanges(); }
-      });
-      rw.addEventListener('input', e => {
-        const t = e.target.closest('[data-range]');
-        if (!t) return;
-        const i = Number(t.dataset.range);
-        const f = t.dataset.rangeField;
-        ranges[i][f] = t.value === '' ? null : Number(t.value);
-      });
+  function renderColumns() {
+    if (!columns.length) {
+      colWrap.innerHTML = '<p class="text-light">No condition columns. Add one to define when this target applies.</p>';
+      return;
     }
+    colWrap.innerHTML = columns.map((col, ci) => {
+      const s = subsetByKind(col.kind);
+      const isLeaf = (ci === columns.length - 1);
+      const unit = s ? s.unit : '';
+      const valueType = s ? s.value_type : 'number';
+      const ranges = col.ranges || [];
+      return `<div class="card" style="margin-bottom:0.75rem; padding:0.75rem;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin-bottom:0.5rem;">
+          <strong>${ci === 0 ? 'When' : 'And when'}: ${s ? s.label : col.kind}</strong>
+          <div class="actions" style="margin:0;">
+            <button class="btn" data-col-add-range="${ci}">+ range</button>
+            <button class="btn negative" data-col-del="${ci}">✕</button>
+          </div>
+        </div>
+        <div data-col-ranges="${ci}">
+          ${ranges.map((r, ri) => renderRangeRow(ci, ri, r, valueType, unit, isLeaf)).join('')}
+        </div>
+      </div>`;
+    }).join('');
   }
-  renderAction();
 
-  document.getElementById('re-add-cond').onclick = () => { conds.push({sensor:'battery_voltage', min:null, max:null}); renderConds(); };
-  condWrap.addEventListener('click', e => {
-    const del = e.target.closest('[data-cond-del]');
-    if (del) { conds.splice(Number(del.dataset.condDel), 1); renderConds(); }
+  function renderRangeRow(ci, ri, r, valueType, unit, isLeaf) {
+    const fromVal = r.from ?? '';
+    const toVal = r.to ?? '';
+    const val = r.value ?? '';
+    const fromInput = valueType === 'time'
+      ? `<input type="time" data-range="${ci}" data-range-idx="${ri}" data-range-field="from" value="${fromVal}">`
+      : `<input type="number" data-range="${ci}" data-range-idx="${ri}" data-range-field="from" value="${fromVal}" placeholder="—" step="any">`;
+    const toInput = valueType === 'time'
+      ? `<input type="time" data-range="${ci}" data-range-idx="${ri}" data-range-field="to" value="${toVal}">`
+      : `<input type="number" data-range="${ci}" data-range-idx="${ri}" data-range-field="to" value="${toVal}" placeholder="—" step="any">`;
+    const valueInput = isLeaf
+      ? `<input type="number" data-range="${ci}" data-range-idx="${ri}" data-range-field="value" value="${val}" placeholder="value" step="any">`
+      : '';
+    return `<div class="form-grid" style="margin-bottom:0.4rem; align-items:end;">
+      <div class="field"><label>From</label>${fromInput}</div>
+      <div class="field"><label>To</label>${toInput}</div>
+      ${isLeaf ? `<div class="field"><label>Set (${unit})</label>${valueInput}</div>` : ''}
+      <button class="btn negative" data-range-del="${ci}" data-range-del-idx="${ri}">✕</button>
+    </div>`;
+  }
+
+  renderColumns();
+
+  // Add a column
+  document.getElementById('re-add-column').onclick = () => {
+    const kind = autoSubsets.length ? autoSubsets[0].kind : 'time_of_day';
+    columns.push({kind, ranges:[{from:null, to:null, value:null}]});
+    renderColumns();
+  };
+
+  // Event delegation for column/range add/delete/input
+  colWrap.addEventListener('click', e => {
+    const addRange = e.target.closest('[data-col-add-range]');
+    if (addRange) {
+      const ci = Number(addRange.dataset.colAddRange);
+      columns[ci].ranges.push({from:null, to:null, value:null});
+      renderColumns();
+      return;
+    }
+    const delCol = e.target.closest('[data-col-del]');
+    if (delCol) {
+      const ci = Number(delCol.dataset.colDel);
+      columns.splice(ci, 1);
+      renderColumns();
+      return;
+    }
+    const delRange = e.target.closest('[data-range-del]');
+    if (delRange) {
+      const ci = Number(delRange.dataset.rangeDel);
+      const ri = Number(delRange.dataset.rangeDelIdx);
+      columns[ci].ranges.splice(ri, 1);
+      renderColumns();
+      return;
+    }
   });
-  condWrap.addEventListener('input', e => {
-    const t = e.target.closest('[data-cond]');
+
+  colWrap.addEventListener('input', e => {
+    const t = e.target.closest('[data-range]');
     if (!t) return;
-    const i = Number(t.dataset.cond);
-    const f = t.dataset.condField;
-    conds[i][f] = t.value === '' ? null : (f === 'sensor' ? t.value : Number(t.value));
+    const ci = Number(t.dataset.range);
+    const ri = Number(t.dataset.rangeIdx);
+    const f = t.dataset.rangeField;
+    const raw = t.value;
+    let val = raw === '' ? null : (f === 'from' || f === 'to' ? raw : Number(raw));
+    columns[ci].ranges[ri][f] = val;
   });
-  condWrap.addEventListener('change', e => {
-    const t = e.target.closest('[data-cond]');
-    if (!t) return;
-    const i = Number(t.dataset.cond);
-    const f = t.dataset.condField;
-    conds[i][f] = t.value === '' ? null : (f === 'sensor' ? t.value : Number(t.value));
-  });
-  document.getElementById('re-action-mode').onchange = renderAction;
-  document.getElementById('re-action-reg').onchange = renderAction;
 
   document.getElementById('re-save').onclick = () => {
     rule.name = document.getElementById('re-name').value || 'Unnamed';
     rule.dry_run = document.getElementById('re-dryrun').checked;
-    rule.time_window = { start: document.getElementById('re-tw-start').value || '00:00', end: document.getElementById('re-tw-end').value || '23:59' };
-    rule.conditions = conds.filter(c => c.sensor);
-    const mode = document.getElementById('re-action-mode').value;
-    const regName = document.getElementById('re-action-reg').value;
-    if (mode === 'value') {
-      const v = document.getElementById('re-action-value').value;
-      rule.action = { register: regName, value: v === '' ? null : Number(v) };
-    } else {
-      const rs = document.getElementById('re-range-sensor').value;
-      rule.action = { register: regName, range_sensor: rs, ranges: (action.ranges || []).filter(r => r.value !== null && r.value !== undefined) };
-    }
+    rule.target = document.getElementById('re-target').value;
+    const restoreRaw = document.getElementById('re-restore').value;
+    rule.restore = restoreRaw === '' ? null : Number(restoreRaw);
+    rule.columns = columns.filter(c => c.ranges && c.ranges.length);
     closeRuleEditor();
     renderRules();
     saveRules();
@@ -1133,14 +1218,144 @@ function renderRuleEditorBody(rule) {
   document.getElementById('re-cancel').onclick = closeRuleEditor;
 }
 
-function addRuleTemplate() {
-  const rule = {id:'rule_'+Date.now(), name:'New rule', enabled:true, dry_run:true, time_window:{start:'21:00', end:'06:00'}, conditions:[{sensor:'battery_voltage', min:0, max:54}], action:{register:'ac_charge_power', value:85}};
-  autoRules.push(rule);
-  renderRules();
-  openRuleEditor(autoRules.length - 1);
+// ── Battery SOC editor ─────────────────────────────────────────────────────
+
+function renderBatterySocEditor(body, rule) {
+  const points = rule.points || [];
+  body.innerHTML = `
+    <div class="form-grid">
+      <div class="field"><label>Name</label><input type="text" id="re-name" value="${rule.name || ''}"></div>
+      <div class="field"><label>Dry run</label><label style="flex-direction:row; align-items:center; gap:0.5rem;"><input type="checkbox" id="re-dryrun" ${rule.dry_run?'checked':''}> <span>Enabled</span></label></div>
+    </div>
+    <h4 style="margin:1rem 0 0.5rem;">Points (SOC vs time boundary line)</h4>
+    <div id="re-points"></div>
+    <button class="btn" id="re-add-point" style="margin-top:0.5rem;">+ Add point</button>
+    <div class="actions" style="margin-top:1rem;">
+      <button class="btn" id="re-save">Save</button>
+      <button class="btn" id="re-cancel">Cancel</button>
+    </div>
+  `;
+
+  const wrap = document.getElementById('re-points');
+  function renderPoints() {
+    wrap.innerHTML = points.map((p, i) => `
+      <div class="form-grid" style="margin-bottom:0.5rem; align-items:end;">
+        <div class="field"><label>Time</label><input type="time" data-point="${i}" data-point-field="time" value="${p.time || '00:00'}"></div>
+        <div class="field"><label>SOC threshold (%)</label><input type="number" data-point="${i}" data-point-field="soc" value="${p.soc ?? 50}" min="0" max="100" step="1"></div>
+        <button class="btn negative" data-point-del="${i}">✕</button>
+      </div>`).join('') || '<p class="text-light">No points yet.</p>';
+  }
+  renderPoints();
+
+  document.getElementById('re-add-point').onclick = () => { points.push({time:'00:00', soc:50}); renderPoints(); };
+  wrap.addEventListener('click', e => {
+    const del = e.target.closest('[data-point-del]');
+    if (del) { points.splice(Number(del.dataset.pointDel), 1); renderPoints(); }
+  });
+  wrap.addEventListener('input', e => {
+    const t = e.target.closest('[data-point]');
+    if (!t) return;
+    const i = Number(t.dataset.point);
+    const f = t.dataset.pointField;
+    points[i][f] = f === 'soc' ? Number(t.value) : t.value;
+  });
+
+  document.getElementById('re-save').onclick = () => {
+    rule.name = document.getElementById('re-name').value || 'Battery state of charge';
+    rule.dry_run = document.getElementById('re-dryrun').checked;
+    rule.points = points;
+    closeRuleEditor();
+    renderRules();
+    saveRules();
+  };
+  document.getElementById('re-cancel').onclick = closeRuleEditor;
 }
+
+// ── Battery protection editor ─────────────────────────────────────────────
+
+function renderBatteryProtectionEditor(body, rule) {
+  const regOptions = autoRegisters.map(r => `<option value="${r.name}" ${r.name===rule.shutdown_register?'selected':''}>${r.label || r.name} (${r.unit})</option>`).join('');
+  body.innerHTML = `
+    <div class="form-grid">
+      <div class="field"><label>Name</label><input type="text" id="re-name" value="${rule.name || ''}"></div>
+      <div class="field"><label>Dry run</label><label style="flex-direction:row; align-items:center; gap:0.5rem;"><input type="checkbox" id="re-dryrun" ${rule.dry_run?'checked':''}> <span>Enabled</span></label></div>
+    </div>
+    <h4 style="margin:1rem 0 0.5rem;">If battery state of charge is</h4>
+    <div class="form-grid">
+      <div class="field"><label>Threshold (%)</label><input type="number" id="re-threshold" value="${rule.threshold_soc ?? 25}" min="0" max="100" step="1"></div>
+      <div class="field"><label>or lower</label><span class="text-light">shutdown inverter output</span></div>
+    </div>
+    <h4 style="margin:1rem 0 0.5rem;">Shutdown via</h4>
+    <div class="form-grid">
+      <div class="field"><label>Register</label><select id="re-shutdown-reg">${regOptions}</select></div>
+    </div>
+    <h4 style="margin:1rem 0 0.5rem;">When recovered, restore to</h4>
+    <div class="form-grid">
+      <div class="field"><label>Restore value</label><input type="number" id="re-restore" value="${rule.restore_value ?? 40.0}" step="any"></div>
+    </div>
+    <div class="actions" style="margin-top:1rem;">
+      <button class="btn" id="re-save">Save</button>
+      <button class="btn" id="re-cancel">Cancel</button>
+    </div>
+  `;
+
+  document.getElementById('re-save').onclick = () => {
+    rule.name = document.getElementById('re-name').value || 'Battery protection';
+    rule.dry_run = document.getElementById('re-dryrun').checked;
+    rule.threshold_soc = Number(document.getElementById('re-threshold').value);
+    rule.shutdown_register = document.getElementById('re-shutdown-reg').value;
+    rule.restore_value = Number(document.getElementById('re-restore').value);
+    closeRuleEditor();
+    renderRules();
+    saveRules();
+  };
+  document.getElementById('re-cancel').onclick = closeRuleEditor;
+}
+
+// ── Notify editor ──────────────────────────────────────────────────────────
+
+function renderNotifyEditor(body, rule) {
+  const subsetOptions = autoSubsets.map(s => `<option value="${s.kind}" ${s.kind===rule.condition_kind?'selected':''}>${s.label}</option>`).join('');
+  body.innerHTML = `
+    <div class="form-grid">
+      <div class="field"><label>Name</label><input type="text" id="re-name" value="${rule.name || ''}"></div>
+      <div class="field"><label>Dry run</label><label style="flex-direction:row; align-items:center; gap:0.5rem;"><input type="checkbox" id="re-dryrun" ${rule.dry_run?'checked':''}> <span>Enabled</span></label></div>
+    </div>
+    <h4 style="margin:1rem 0 0.5rem;">Notify when</h4>
+    <div class="form-grid">
+      <div class="field"><label>Condition</label><select id="re-cond-kind">${subsetOptions}</select></div>
+      <div class="field"><label>Operator</label><select id="re-cond-op">
+        <option value="<=" ${rule.operator==='<='?'selected':''}>≤</option>
+        <option value=">=" ${rule.operator==='>='?'selected':''}>≥</option>
+        <option value="<" ${rule.operator==='<'?'selected':''}>&lt;</option>
+        <option value=">" ${rule.operator==='>'?'selected':''}>&gt;</option>
+        <option value="==" ${rule.operator==='=='?'selected':''}>=</option>
+      </select></div>
+      <div class="field"><label>Threshold</label><input type="number" id="re-cond-threshold" value="${rule.threshold ?? ''}" step="any"></div>
+    </div>
+    <div class="actions" style="margin-top:1rem;">
+      <button class="btn" id="re-save">Save</button>
+      <button class="btn" id="re-cancel">Cancel</button>
+    </div>
+  `;
+
+  document.getElementById('re-save').onclick = () => {
+    rule.name = document.getElementById('re-name').value || 'Notification';
+    rule.dry_run = document.getElementById('re-dryrun').checked;
+    rule.condition_kind = document.getElementById('re-cond-kind').value;
+    rule.operator = document.getElementById('re-cond-op').value;
+    rule.threshold = Number(document.getElementById('re-cond-threshold').value);
+    closeRuleEditor();
+    renderRules();
+    saveRules();
+  };
+  document.getElementById('re-cancel').onclick = closeRuleEditor;
+}
+
+// ── Save / delete / test ───────────────────────────────────────────────────
+
 async function deleteRule(id) {
-  if (!confirm('Delete this rule?')) return;
+  if (!confirm('Delete this automation?')) return;
   await fetch(API + '/api/automation/rules/' + id, {method:'DELETE'});
   loadAutomation();
 }
@@ -1148,8 +1363,11 @@ async function saveRules() {
   const msg = document.getElementById('auto-msg');
   try {
     const res = await fetch(API + '/api/automation/rules', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(autoRules)});
-    if (!res.ok) throw new Error(res.statusText);
-    msg.textContent = 'Rules saved.'; msg.style.color = 'var(--green-color)';
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || res.statusText);
+    }
+    msg.textContent = 'Automations saved.'; msg.style.color = 'var(--green-color)';
   } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
 }
 async function testRules() {
@@ -1159,7 +1377,7 @@ async function testRules() {
     const res = await fetch(API + '/api/automation/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})});
     const data = await res.json();
     const matched = data.results.filter(r => r.matched);
-    msg.innerHTML = `Dry-run complete. ${matched.length}/${data.results.length} rules matched.`;
+    msg.innerHTML = `Dry-run complete. ${matched.length}/${data.results.length} automations matched.`;
     msg.style.color = matched.length ? 'var(--yellow-color)' : 'var(--light-text-color)';
     renderAutomationLog();
   } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
@@ -1180,6 +1398,7 @@ async function toggleAutomationEnabled() {
   const res = await fetch(API + '/api/automation/enable?enabled=' + enabled, {method:'POST'});
   document.getElementById('auto-msg').textContent = res.ok ? (enabled ? 'Automation enabled.' : 'Automation disabled.') : 'Failed to save.';
 }
+
 
 async function loadConfiguration() {
   const s = await fetchJson(API + '/api/settings');
@@ -1263,12 +1482,13 @@ document.addEventListener('DOMContentLoaded', () => {
     c.addEventListener('click', e => { e.preventDefault(); showDetail(c.dataset.detail); });
   });
 
-  document.getElementById('btn-add-rule').addEventListener('click', addRuleTemplate);
+  document.getElementById('btn-add-rule').addEventListener('click', openTypePicker);
   document.getElementById('btn-load-rules').addEventListener('click', loadAutomation);
   document.getElementById('btn-test-rules').addEventListener('click', testRules);
   document.getElementById('btn-save-schedule').addEventListener('click', saveSchedule);
   document.getElementById('auto-enabled').addEventListener('change', toggleAutomationEnabled);
   document.getElementById('btn-rule-editor-close').addEventListener('click', closeRuleEditor);
+  document.getElementById('btn-type-picker-close').addEventListener('click', closeTypePicker);
 
   document.querySelectorAll('.config-tab').forEach(b => b.addEventListener('click', () => showConfigPanel(b.dataset.config)));
   document.getElementById('btn-save-config').addEventListener('click', saveConfiguration);
