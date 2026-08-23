@@ -128,3 +128,56 @@ def test_notify_condition():
     })
     assert nt.evaluate({"soc": {"value": 15}}, _t(10, 0)) is True
     assert nt.evaluate({"soc": {"value": 50}}, _t(10, 0)) is False
+
+
+# ── notify dispatch ─────────────────────────────────────────────────────────
+
+class _MockNotifiers:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, alert_name, active, value, message):
+        self.sent.append((alert_name, active, value, message))
+
+
+def test_notify_dispatch():
+    from collector.automation import AutomationEngine
+
+    eng = AutomationEngine.__new__(AutomationEngine)  # bypass __init__ (no DB)
+    eng._notifiers = _MockNotifiers()
+    eng._notify_last_sent = {}
+    eng._notify_min_interval_sec = 0  # disable throttle for test
+
+    nt = _parse_automation({
+        "id": "nt", "name": "Low SOC", "type": "notify",
+        "condition_kind": "battery_soc", "operator": "<=", "threshold": 20,
+    })
+    snap = {"soc": {"value": 15}}
+    res = eng._apply_notify(nt, snap, _t(10, 0))
+
+    assert res and res[0]["notified"] is True
+    assert eng._notifiers.sent
+    assert eng._notifiers.sent[0][0] == "Low SOC"
+    assert eng._notifiers.sent[0][2] == 15.0
+
+
+def test_notify_dispatch_throttled():
+    from collector.automation import AutomationEngine
+
+    eng = AutomationEngine.__new__(AutomationEngine)
+    eng._notifiers = _MockNotifiers()
+    eng._notify_last_sent = {}
+    eng._notify_min_interval_sec = 300
+
+    nt = _parse_automation({
+        "id": "nt", "name": "Low SOC", "type": "notify",
+        "condition_kind": "battery_soc", "operator": "<=", "threshold": 20,
+    })
+    snap = {"soc": {"value": 15}}
+
+    first = eng._apply_notify(nt, snap, _t(10, 0))
+    second = eng._apply_notify(nt, snap, _t(10, 1))  # 1 min later, still throttled
+
+    assert first and first[0]["notified"] is True
+    assert second == []  # throttled
+    assert len(eng._notifiers.sent) == 1

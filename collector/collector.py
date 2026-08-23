@@ -38,6 +38,7 @@ from .drivers.registry import get_driver, DEFAULT_MODEL
 from .outputs import Outputs, OutputConfig
 from .automation import AutomationEngine
 from .quick_charge import QuickChargeManager
+from .notifiers import Notifiers
 
 
 def _env_or(key: str, default=None, cast=None):
@@ -580,6 +581,8 @@ class PassiveCollector:
         self._outputs = Outputs(self.cfg.outputs, tz_name="UTC")
 
         # Initialize automation engine using the same DB backend as outputs.
+        # Pass a Notifiers instance so the "notify" automation type can dispatch
+        # email/webhook through the same path as the alert system.
         self._automation = AutomationEngine(
             db_host=self.cfg.outputs.mariadb_host,
             db_port=self.cfg.outputs.mariadb_port,
@@ -587,6 +590,7 @@ class PassiveCollector:
             db_password=self.cfg.outputs.mariadb_password,
             db_name=self.cfg.outputs.mariadb_database,
             table_prefix=self.cfg.outputs.mariadb_table_prefix,
+            notifiers=Notifiers(self.cfg.outputs),
         )
 
         # Initialize quick-charge manager (one-shot timed grid charge).

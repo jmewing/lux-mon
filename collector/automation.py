@@ -411,6 +411,7 @@ class AutomationEngine:
         db_password: str,
         db_name: str,
         table_prefix: str = "lux_",
+        notifiers: Any = None,
     ):
         self.db_args = (db_host, db_port, db_user, db_password, db_name)
         self.table_prefix = table_prefix
@@ -418,6 +419,9 @@ class AutomationEngine:
         self.log_table = f"{table_prefix}automation_log"
         self._last_written: Dict[str, Tuple[int, str]] = {}
         self._restore_pending: Dict[str, bool] = {}
+        self._notifiers = notifiers
+        self._notify_last_sent: Dict[str, float] = {}
+        self._notify_min_interval_sec = 300  # throttle repeated notify automations
         self._ensure_tables()
 
     def _conn(self):
@@ -602,15 +606,53 @@ class AutomationEngine:
         return results
 
     def _apply_notify(self, auto: NotifyAutomation, snapshot: dict, now: datetime) -> List[Dict[str, Any]]:
-        if auto.evaluate(snapshot, now):
+        if not auto.evaluate(snapshot, now):
+            return []
+
+        # Rate-limit repeated notifications for the same automation.
+        now_ts = time.time()
+        last = self._notify_last_sent.get(auto.id, 0)
+        if now_ts - last < self._notify_min_interval_sec:
+            return []
+        self._notify_last_sent[auto.id] = now_ts
+
+        sensor = SUBSET_SENSOR.get(auto.condition_kind)
+        value = _snapshot_value(snapshot, sensor) if sensor else None
+        message = (
+            f"{auto.name}: {auto.condition_kind} {auto.operator} {auto.threshold} "
+            f"(current {value})"
+        )
+
+        if auto.dry_run:
+            logger.info("DRY-RUN notify: %s", message)
             return [{
                 "rule_id": auto.id,
                 "name": auto.name,
                 "type": TYPE_NOTIFY,
                 "notified": True,
-                "dry_run": auto.dry_run,
+                "dry_run": True,
+                "message": message,
             }]
-        return []
+
+        if self._notifiers is not None:
+            try:
+                self._notifiers.send(
+                    alert_name=auto.name,
+                    active=True,
+                    value=float(value) if value is not None else 0.0,
+                    message=message,
+                )
+            except Exception:
+                logger.exception("Notify dispatch failed for %s", auto.name)
+
+        return [{
+            "rule_id": auto.id,
+            "name": auto.name,
+            "type": TYPE_NOTIFY,
+            "notified": True,
+            "dry_run": auto.dry_run,
+            "message": message,
+        }]
 
     def _write_target(
         self,
