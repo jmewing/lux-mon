@@ -193,7 +193,7 @@ a.status:hover > div .label { color: var(--link-color); }
               <div class="value" id="gauge-grid">--</div><div class="label" id="grid-gauge">Grid</div>
             </div></div>
             <div><div class="gauge" data-detail="battery" aria-labelledby="battery-gauge">
-              <div class="mask"><div class="semi-circle red"></div><div class="semi-circle--mask" id="gauge-battery-mask" style="transform: rotate(0deg)"></div></div>
+              <div class="mask"><div class="semi-circle red" id="gauge-battery-semi"></div><div class="semi-circle--mask" id="gauge-battery-mask" style="transform: rotate(0deg)"></div></div>
               <div class="value" id="gauge-battery">--</div><div class="label" id="battery-gauge">Battery</div>
             </div></div>
           </div>
@@ -549,6 +549,24 @@ function renderMain(r) {
   setGauge('solar', pvTotal, 10000);
   setGauge('grid', gridIn - gridOut, 10000);
   setGauge('battery', batP, 10000);
+  setBatteryGaugeColor(batP);
+}
+
+function setBatteryGaugeColor(batP) {
+  const semi = document.getElementById('gauge-battery-semi');
+  if (!semi) return;
+  if (batP === undefined || batP === null || Number.isNaN(batP)) {
+    semi.classList.remove('green');
+    semi.classList.add('red');
+    return;
+  }
+  if (batP > 0) {
+    semi.classList.remove('red');
+    semi.classList.add('green');
+  } else {
+    semi.classList.remove('green');
+    semi.classList.add('red');
+  }
 }
 
 function setGauge(name, value, max) {
