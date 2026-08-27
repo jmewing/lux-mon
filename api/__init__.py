@@ -254,6 +254,62 @@ def api_alerts(limit: int = Query(50, ge=1, le=500, description="Number of recen
         conn.close()
 
 
+@app.get("/api/alerts/live")
+def api_alerts_live():
+    """Return the current live alert states evaluated from the latest snapshot."""
+    from types import SimpleNamespace
+    from collector.alerts import Alerts
+    from collector.settings import get
+
+    snap = _fetch_latest_snapshot()
+    if snap is None:
+        return {"alerts": {}, "snapshot_id": None}
+
+    registers = snap.get("registers", {})
+    decoded = {
+        name: (item.get("value") if isinstance(item, dict) else item)
+        for name, item in registers.items()
+    }
+
+    def _bool(raw: str | None) -> bool:
+        return str(raw).lower() in ("true", "1", "yes", "on") if raw else False
+
+    def _float(raw: str | None, default: float) -> float:
+        try:
+            return float(raw) if raw is not None else default
+        except (TypeError, ValueError):
+            return default
+
+    conn = _get_conn()
+    try:
+        cfg = SimpleNamespace(
+            alerts_enabled=_bool(get(conn, "alerts_enabled")),
+            alerts_soc_low=_float(get(conn, "alerts_soc_low"), 20.0),
+            alerts_soc_critical=_float(get(conn, "alerts_soc_critical"), 10.0),
+            alerts_battery_temp_high=_float(get(conn, "alerts_battery_temp_high"), 50.0),
+            alerts_inverter_temp_high=_float(get(conn, "alerts_inverter_temp_high"), 60.0),
+            alerts_grid_lost_threshold_sec=_float(get(conn, "alerts_grid_lost_threshold_sec"), 30.0),
+            mqtt_enabled=False,
+        )
+    finally:
+        conn.close()
+
+    alerts = Alerts(cfg)
+    states = alerts.evaluate(decoded)
+    return {
+        "alerts": {
+            name: {
+                "active": info["active"],
+                "value": info["value"],
+                "message": info["message"],
+            }
+            for name, info in states.items()
+        },
+        "snapshot_id": snap.get("snapshot_id"),
+        "timestamp": snap.get("timestamp"),
+    }
+
+
 @app.get("/api/summary")
 def api_summary():
     """Compact summary for dashboards — key metrics only."""
@@ -527,6 +583,45 @@ def api_settings():
                 "step": meta.get("step"),
             }
         return {"settings": enriched}
+    finally:
+        conn.close()
+
+
+@app.get("/api/settings/controllable")
+def api_settings_controllable():
+    """Return metadata for all settings that can be changed at runtime.
+
+    This endpoint is consumed by the Home Assistant integration to build
+    number/select/switch entities without hardcoding a static list.
+    """
+    from collector.mqtt_commands import CONTROLLABLE_SETTINGS
+    from collector.settings import SETTING_META, seed_defaults, get_all, effective_value, SETTING_ENV
+
+    conn = _get_conn()
+    try:
+        seed_defaults(conn)
+        settings = get_all(conn)
+        result = {}
+        for name in sorted(CONTROLLABLE_SETTINGS):
+            meta = SETTING_META.get(name, {})
+            db_value = settings.get(name)
+            effective = effective_value(name, db_value)
+            result[name] = {
+                "value": effective,
+                "type": meta.get("type", "text"),
+                "label": meta.get("label", name),
+                "section": meta.get("section", "general"),
+                "hint": meta.get("hint", ""),
+                "min": meta.get("min"),
+                "max": meta.get("max"),
+                "step": meta.get("step"),
+                "options": [
+                    {"value": opt[0], "label": opt[1]}
+                    for opt in (meta.get("options") or [])
+                ],
+                "unit": meta.get("unit", ""),
+            }
+        return {"settings": result}
     finally:
         conn.close()
 
