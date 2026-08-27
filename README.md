@@ -208,7 +208,7 @@ The API server runs on port 80 and provides:
 | `POST /api/automation/test` | Dry-run evaluate rules against the latest snapshot |
 | `GET /api/automation/log` | Recent automation actions / dry-runs |
 | `GET /api/quick-charge/status` | Current quick-charge state and defaults |
-| `POST /api/quick-charge/start` | Start a timed quick charge (JSON: `{"amps": 85, "minutes": 30}`) |
+| `POST /api/quick-charge/start` | Start a timed quick charge (JSON: `{"minutes": 60}`) |
 | `POST /api/quick-charge/stop` | Stop an active quick charge, restoring the prior value |
 | `POST /api/backup` | Create a backup archive |
 | `GET /api/backups` | List backup archives |
@@ -261,14 +261,33 @@ Enable the engine globally with the `automation_enabled` setting (or the dashboa
 
 **Design note:** Readable values (SOC, voltage, current, power) are telemetry and are included automatically. Set values (charge current, SOC limits, time slots, modes) are only written when explicitly changed via the website or when an automation rule says "this is what we want it to be." lux-mon never writes a setting just because it happens to be readable.
 
-### Quick Charge / Generator Charge
+### Quick Charge
 
-lux-mon implements the two one-shot inverter actions the EG4 Monitor portal exposes:
+lux-mon implements the inverter's native quick-charge action using the correct
+registers reverse-engineered from SolarAssistant's traffic:
 
-- **Quick Charge** — write `ac_charge_battery_current` (register 168) to a target current for a fixed number of minutes, then restore the prior value.
-- **Generator Charge** — write the generator charge current / enable path (register path stubbed, see roadmap).
+- **`quick_charge_duration`** (register 234 / `0x00EA`) — the actual charge
+  controller. Setting it to N minutes starts charging for N minutes; `0` stops.
+- **`quick_charge_enable`** (register 233 / `0x00E9`) — the on/off switch.
 
-State is persisted in the `lux_settings` table so it survives collector restarts. Writes reuse the automation engine's safe write helpers (fresh socket, echo verification, clamping). Defaults are configurable via the `quick_charge_amps` and `quick_charge_minutes` settings.
+Correct semantics (confirmed via tcpdump of SolarAssistant):
+
+- The **duration** register is the charge controller — `0` means "charge 0
+  minutes" = no charge / stop.
+- The **switch** register only toggles the mode; it does NOT start charging on
+  its own. Enabling the switch with duration `0` does nothing.
+- **Start:** write duration first, then enable the switch.
+- **Stop:** disable the switch AND clear the duration (no zero-duration hack).
+
+This differs from the earlier implementation, which drove
+`ac_charge_battery_current` (register 168) — that is the *grid charge current*,
+not the quick-charge toggle.
+
+The quick-charge control lives on the **main dashboard** (a button with a
+▼-toggle for a custom duration, 1–240 minutes, default 60). State is persisted
+in the `lux_settings` table so it survives collector restarts, and all actions
+are logged to the automation log. Writes reuse the automation engine's safe
+write helpers (fresh socket, echo verification, clamping).
 
 ### Solar PV forecast
 
@@ -450,8 +469,7 @@ Settings are stored in the `lux_settings` MariaDB table (auto-created) and read 
 | `write_interval_sec` | `5` | Seconds between MariaDB writes |
 | `timezone` | `America/Chicago` | Local timezone for scheduling |
 | `temperature_unit` | `celsius` | Temperature unit |
-| `quick_charge_amps` | — | Default quick-charge target current (A) |
-| `quick_charge_minutes` | — | Default quick-charge duration (min) |
+| `quick_charge_minutes` | `60` | Default quick-charge duration (min, 1–240) |
 | `forecast_enabled` | `false` | Enable solar forecast |
 | `forecast_latitude` / `forecast_longitude` | site | Forecast location |
 | `array_kwp` / `array_azimuth` / `array_tilt` | — | Array geometry for forecast |

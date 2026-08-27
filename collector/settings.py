@@ -197,7 +197,6 @@ DEFAULTS = {
     "automation_rules": "[]",               # JSON list of automation rules
 
     # ── Quick Charge ──
-    "quick_charge_amps": "85",              # Quick charge target current (A)
     "quick_charge_minutes": "60",           # Quick charge duration (min)
     "quick_charge_state": "{}",             # JSON quick-charge runtime state
 
@@ -639,19 +638,12 @@ SETTING_META = {
     },
 
     # ── Quick Charge ──
-    "quick_charge_amps": {
-        "label": "Quick Charge Current",
-        "type": "number",
-        "section": "quick_charge",
-        "min": 0, "max": 140,
-        "hint": "Amps — target AC charge current for a quick charge",
-    },
     "quick_charge_minutes": {
         "label": "Quick Charge Duration",
         "type": "number",
         "section": "quick_charge",
-        "min": 1, "max": 1440,
-        "hint": "Minutes — how long the quick charge runs before restoring",
+        "min": 1, "max": 240,
+        "hint": "Minutes — how long the quick charge runs (1–240)",
     },
 
     # ── Solar Forecast ──

@@ -65,6 +65,8 @@ a.status:hover > div .label { color: var(--link-color); }
 .chart h4 { color: var(--text-color); }
 .btn, button, .button { background: var(--btn2-background-color); border-color: var(--border-color); color: var(--text-color); }
 .btn:hover, button:hover { background: var(--btn1-background-color); border-color: var(--light-border-color); }
+.btn.danger { background: #7f1d1d; border-color: #ef4444; color: #fecaca; }
+.btn.danger:hover { background: #991b1b; border-color: #f87171; }
 .config-tab.active { background: var(--blue-color); color: #0b1120; }
 .nav-item { display: none; }
 /* tab switching via .section */
@@ -186,6 +188,21 @@ a.status:hover > div .label { color: var(--link-color); }
               <div class="mask"><div class="semi-circle red"></div><div class="semi-circle--mask" id="gauge-battery-mask" style="transform: rotate(0deg)"></div></div>
               <div class="value" id="gauge-battery">--</div><div class="label" id="battery-gauge">Battery</div>
             </div></div>
+          </div>
+        </div>
+
+        <div class="card" id="quick-charge-card">
+          <div class="card-section">
+            <h4>Quick Charge</h4>
+            <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+              <button class="btn" id="btn-quick-charge" style="min-width:180px;">Start Quick Charge</button>
+              <button class="btn" id="btn-quick-charge-duration-toggle" title="Set duration" aria-label="Set duration" style="padding:0 0.6rem;">▼</button>
+              <div id="quick-charge-duration-wrap" style="display:none; align-items:center; gap:0.5rem;">
+                <label for="quick-charge-duration" style="margin:0;">Minutes</label>
+                <input type="number" id="quick-charge-duration" min="1" max="240" value="60" style="width:80px;">
+              </div>
+              <span id="quick-charge-status" class="text-light" style="font-size:0.85rem;">--</span>
+            </div>
           </div>
         </div>
 
@@ -1432,6 +1449,65 @@ async function saveConfiguration() {
   } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
 }
 
+async function loadQuickCharge() {
+  try {
+    const qc = await fetchJson(API + '/api/quick-charge/status');
+    const btn = document.getElementById('btn-quick-charge');
+    const status = document.getElementById('quick-charge-status');
+    const durInput = document.getElementById('quick-charge-duration');
+    if (!btn || !status) return;
+
+    // Keep the duration input in sync with the default (only when not focused).
+    if (durInput && document.activeElement !== durInput && qc.default_minutes) {
+      durInput.value = qc.default_minutes;
+    }
+
+    if (qc.active) {
+      btn.textContent = 'Cancel Quick Charge';
+      btn.classList.add('danger');
+      const remain = Math.max(0, Math.round((qc.deadline_ts * 1000 - Date.now()) / 60000));
+      status.textContent = 'Charging — ' + qc.minutes + ' min' + (remain > 0 ? ' (' + remain + ' min left)' : '');
+    } else {
+      btn.textContent = 'Start Quick Charge';
+      btn.classList.remove('danger');
+      status.textContent = 'Idle';
+    }
+  } catch (e) {
+    console.error('quick charge status', e);
+  }
+}
+
+async function toggleQuickCharge() {
+  const btn = document.getElementById('btn-quick-charge');
+  const status = document.getElementById('quick-charge-status');
+  const durInput = document.getElementById('quick-charge-duration');
+  const isActive = btn.textContent === 'Cancel Quick Charge';
+
+  btn.disabled = true;
+  try {
+    if (isActive) {
+      const r = await fetch(API + '/api/quick-charge/stop', { method: 'POST' });
+      if (!r.ok) throw new Error(await r.text());
+      status.textContent = 'Stopped';
+    } else {
+      const minutes = parseInt(durInput.value, 10) || 60;
+      const r = await fetch(API + '/api/quick-charge/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minutes: minutes }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      status.textContent = 'Starting…';
+    }
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    loadQuickCharge();
+  }
+}
+
 async function refresh() {
   try {
     const r = await fetchJson(API + '/api/summary');
@@ -1492,6 +1568,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-rule-editor-close').addEventListener('click', closeRuleEditor);
   document.getElementById('btn-type-picker-close').addEventListener('click', closeTypePicker);
 
+  // Quick charge controls
+  document.getElementById('btn-quick-charge').addEventListener('click', toggleQuickCharge);
+  document.getElementById('btn-quick-charge-duration-toggle').addEventListener('click', () => {
+    const wrap = document.getElementById('quick-charge-duration-wrap');
+    wrap.style.display = wrap.style.display === 'none' ? 'flex' : 'none';
+  });
+
   document.querySelectorAll('.config-tab').forEach(b => b.addEventListener('click', () => showConfigPanel(b.dataset.config)));
   document.getElementById('btn-save-config').addEventListener('click', saveConfiguration);
   document.getElementById('btn-sync-time').addEventListener('click', () => {
@@ -1516,8 +1599,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   refresh();
   loadMainCharts();
+  loadQuickCharge();
   connectWS();
   setInterval(refresh, 15000);
+  setInterval(loadQuickCharge, 15000);
 });
 </script>
 </body>

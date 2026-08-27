@@ -129,6 +129,20 @@ HOLDING_REGISTERS: Dict[int, dict] = {
 
     # ── Generator 177 ──
     177: {"name": "max_generator_input_power", "unit": "W",   "scale": 1.0,  "desc": "Max generator input power", "min": 0, "max": 65534},
+
+    # ── Quick charge toggle 233-234 (reverse-engineered from SolarAssistant) ──
+    # 0x00E9 (233) = quick-charge on/off switch (0 = off, 1 = on)
+    # 0x00EA (234) = quick-charge duration in minutes (0 = no charge / stop)
+    #
+    # IMPORTANT semantics (confirmed via tcpdump of SolarAssistant):
+    #   * The DURATION register (234) is the actual charge controller. Setting
+    #     it to 0 means "charge for 0 minutes" = no charge / stop.
+    #   * The SWITCH register (233) only toggles the mode; it does NOT start
+    #     charging on its own. Enabling the switch with duration=0 does nothing.
+    #   * To START: write duration (234) first, then enable switch (233=1).
+    #   * To STOP:  write switch (233=0) AND clear duration (234=0).
+    233: {"name": "quick_charge_enable", "unit": "",    "scale": 1.0,  "desc": "Quick charge on/off (0=off, 1=on)", "min": 0, "max": 1},
+    234: {"name": "quick_charge_duration", "unit": "min", "scale": 1.0,  "desc": "Quick charge duration (minutes, 0=stop)", "min": 0, "max": 240},
 }
 
 # Friendly display labels matching the reference portal's terminology.
@@ -161,6 +175,8 @@ HOLDING_LABELS: Dict[str, str] = {
     "battery_capacity": "Battery capacity",
     "nominal_battery_voltage": "Nominal battery voltage",
     "max_generator_input_power": "Generator power",
+    "quick_charge_enable": "Quick charge",
+    "quick_charge_duration": "Quick charge duration",
     "forced_charge_power": "Forced charge current",
     "forced_discharge_power": "Forced discharge current",
     "feed_in_grid_power_percent": "Export power rate",

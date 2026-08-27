@@ -1205,7 +1205,6 @@ def _resolve_dongle() -> dict:
 
 
 class QuickChargeBody(BaseModel):
-    amps: Optional[int] = None
     minutes: Optional[int] = None
     dry_run: bool = False
 
@@ -1219,7 +1218,7 @@ def api_quick_charge_status():
 
 @app.post("/api/quick-charge/start")
 def api_quick_charge_start(body: QuickChargeBody):
-    """Start a quick charge (write AC charge current for N minutes)."""
+    """Start a quick charge for N minutes (default 60, range 1..240)."""
     dongle = _resolve_dongle()
     if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
         raise HTTPException(400, "datalog_serial / inverter_serial not configured")
@@ -1230,7 +1229,6 @@ def api_quick_charge_start(body: QuickChargeBody):
         dongle_port=dongle["dongle_port"],
         datalog_serial=dongle["datalog_serial"],
         inverter_serial=dongle["inverter_serial"],
-        amps=body.amps,
         minutes=body.minutes,
         dry_run=body.dry_run,
     )

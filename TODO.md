@@ -14,10 +14,11 @@
 
 ## Features mentioned in the README but not yet fully implemented
 
-### 1. Generator Charge — 🚧 (backend stubbed, not wired)
-- `collector/quick_charge.py` defines `GEN_REGISTER_NAME = "max_generator_input_power"` and a `GEN_REGISTER`, but the generator-charge path is **not** implemented end-to-end.
+### 1. Generator Charge — 🚧 (not implemented)
+- The generator-charge path (write generator charge current + enable) is **not** implemented end-to-end.
 - The README "Roadmap" lists "Generator and AC-coupled charge support" as future work.
-- **To do:** implement the generator-charge start/stop flow (write generator charge current + enable), add API endpoints (`/api/quick-charge/generator/start` etc.), and surface it in the dashboard.
+- **To do:** implement the generator-charge start/stop flow, add API endpoints (`/api/quick-charge/generator/start` etc.), and surface it in the dashboard.
+- **Note:** the old `GEN_REGISTER_NAME`/`GEN_REGISTER` stubs were removed from `collector/quick_charge.py` when the quick-charge action was rewritten to use the correct toggle registers (233/234). Generator charge needs a fresh implementation.
 
 ### 2. Forecast.Solar provider — 🚧 (listed, not wired)
 - `collector/settings.py` lists `forecast_provider` options `open-meteo` and `forecast.solar`, but `collector/forecast.py` only implements the Open-Meteo path.
@@ -89,7 +90,7 @@
 ## Recently completed (for context)
 
 - ✅ Solar PV forecast (Option A weather + Option B historical calibration) — v1.2.1
-- ✅ Quick Charge (timed grid charge with restore)
+- ✅ Quick Charge (native toggle registers 233/234, correct start/stop semantics, main-dashboard control)
 - ✅ Alerts (SOC/temp/grid-loss) with SMTP + webhook
 - ✅ RS-485 BMS daemon (EG4 A5/5A, JK BMS, Modbus RTU)
 - ✅ Native Home Assistant integration (`jmewing/ha_luxmon`) + HAOS add-on (`jmewing/ha_luxmon_addons`)
