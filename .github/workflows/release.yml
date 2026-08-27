@@ -1,0 +1,101 @@
+name: Auto Release
+
+# Automatically bump the semantic version, tag, and create a GitHub release
+# whenever commits land on main.
+#
+# Bump rules (see scripts/bump-version.sh):
+#   feat(inverter): ...  -> MAJOR  (new inverter support)
+#   feat: ...            -> MINOR  (new feature)
+#   fix:/chore:/docs:... -> PATCH  (bug fix / maintenance)
+#
+# The version is bumped in api/__init__.py, committed back to main, tagged,
+# and a GitHub release is created with an auto-generated changelog.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Skip if the push was made by this workflow itself (avoids a loop).
+    if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine next version
+        id: version
+        run: |
+          NEXT="$(bash scripts/bump-version.sh)"
+          echo "next=${NEXT}" >> "$GITHUB_OUTPUT"
+          echo "Next version: ${NEXT}"
+
+      - name: Check if tag already exists
+        id: tagcheck
+        run: |
+          if git rev-parse "v${{ steps.version.outputs.next }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag v${{ steps.version.outputs.next }} already exists; skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump version in source
+        if: steps.tagcheck.outputs.exists == 'false'
+        run: |
+          bash scripts/bump-version.sh --write
+
+      - name: Commit version bump
+        if: steps.tagcheck.outputs.exists == 'false'
+        run: |
+          git add api/__init__.py
+          git commit -m "chore: bump version to ${{ steps.version.outputs.next }} [skip release]" || echo "No changes to commit"
+
+      - name: Push version bump
+        if: steps.tagcheck.outputs.exists == 'false'
+        run: git push origin main
+
+      - name: Create tag
+        if: steps.tagcheck.outputs.exists == 'false'
+        run: |
+          git tag "v${{ steps.version.outputs.next }}"
+          git push origin "v${{ steps.version.outputs.next }}"
+
+      - name: Generate changelog
+        if: steps.tagcheck.outputs.exists == 'false'
+        id: changelog
+        run: |
+          LAST_TAG="$(git describe --tags --abbrev=0 "v${{ steps.version.outputs.next }}^" 2>/dev/null || true)"
+          if [[ -z "$LAST_TAG" ]]; then
+            RANGE="v${{ steps.version.outputs.next }}"
+          else
+            RANGE="${LAST_TAG}..v${{ steps.version.outputs.next }}"
+          fi
+          {
+            echo "## Changes"
+            echo
+            git log --format='- %s' "$RANGE" 2>/dev/null || true
+          } > /tmp/changelog.md
+          cat /tmp/changelog.md
+
+      - name: Create GitHub release
+        if: steps.tagcheck.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.version.outputs.next }}"
+          name: "v${{ steps.version.outputs.next }}"
+          body_path: /tmp/changelog.md
+          generate_release_notes: false

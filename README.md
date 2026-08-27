@@ -612,6 +612,44 @@ To update automatically every night at 3am:
 
 > **Note:** Your `.env` file is gitignored and will never be overwritten. Settings stored in the database (`lux_settings` table) are also preserved across updates.
 
+## Versioning
+
+lux-mon uses **semantic versioning** (`MAJOR.MINOR.PATCH`) with automated
+release tagging. The version lives in a single place — `api/__init__.py` — and
+is bumped automatically by a GitHub Actions workflow on every push to `main`.
+
+| Bump | When | Commit convention |
+| ---- | ---- | ----------------- |
+| **MAJOR** (`1.x.x`) | New inverter support | `feat(inverter): add support for <model>` |
+| **MINOR** (`x.1.x`) | New feature | `feat: <description>` (or `feat(scope): ...`) |
+| **PATCH** (`x.x.1`) | Bug fix / maintenance | `fix:`, `chore:`, `docs:`, `refactor:`, `perf:`, `test:`, `ci:` |
+
+A `BREAKING CHANGE` footer or a `!` after the type (e.g. `feat!: ...`) also
+forces a **MAJOR** bump.
+
+### How it works
+
+1. On push to `main`, the workflow inspects commit subjects since the last tag.
+2. It picks the highest-priority bump (major > minor > patch).
+3. It updates `api/__init__.py`, commits the bump, tags `vX.Y.Z`, and creates a
+   GitHub release with an auto-generated changelog.
+
+### Manual bump (local)
+
+```bash
+# Preview the next version (dry run)
+scripts/bump-version.sh
+
+# Force a specific bump and write it back to api/__init__.py
+scripts/bump-version.sh --bump minor --write
+scripts/bump-version.sh --bump patch --write
+scripts/bump-version.sh --bump major --write
+```
+
+> **Note:** The base version is the higher of the file version and the last
+> git tag, which reconciles the historical drift where tags were created
+> without bumping the file.
+
 ## Development Replay
 
 Test parsing/storage without a live inverter:
