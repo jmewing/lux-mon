@@ -52,3 +52,6 @@ collector/diff_sampler.py
 collector/qc_force_test.py
 collector/qc_sampler.py
 collector/qc_trigger_test.py
+
+# RS-485 BMS reference captures (large, not needed in-repo)
+captures/

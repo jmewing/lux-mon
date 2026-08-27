@@ -2,19 +2,23 @@
 
 **Local monitoring for LuxPower-based inverters — no cloud required.**
 
-Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi dongle protocol (TCP port 8000).
+Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi dongle protocol (TCP port 8000). Also supports RS-485 battery BMS monitoring (EG4 A5/5A, JK BMS, generic Modbus RTU).
 
 ## What It Does
 
 - **Passively listens** to your inverter's WiFi dongle — zero bus contention
 - **Actively polls** as a fallback for non-broadcasting dongles
-- **Stores** time-series data in **MariaDB/MySQL** (InfluxDB optional)
+- **Stores** time-series data in **MariaDB/MySQL** (InfluxDB optional, both can run together)
 - **Exposes** a **REST API** for scripting, morning briefings, Home Assistant, etc.
 - **Streams live snapshots** over a **WebSocket** (`/ws`) so the web dashboard updates instantly
 - **Writes inverter settings** via a safe automation rule engine with dry-run, clamping, and action logging
-- **Home Assistant energy dashboard** ready — publishes MQTT sensors with `state_class: total_increasing` for solar, grid, and battery flows
+- **Quick Charge / Generator Charge** — one-shot timed grid charge with automatic restore
+- **Solar PV forecast** — weather-based (Open-Meteo) with historical calibration, persisted to MariaDB
+- **Alerts** — SOC/temperature/grid-loss thresholds with SMTP + webhook notifications
+- **RS-485 BMS monitoring** — EG4 A5/5A, JK BMS, and generic Modbus RTU drivers
+- **Home Assistant** — native REST integration, MQTT auto-discovery, and energy-dashboard sensors
 - **Runs anywhere** — your Mac, a Raspberry Pi, a Docker container
-- **Dashboard-ready** — works with Grafana or any SQL-based visualization tool
+- **Dashboard-ready** — built-in web UI plus Grafana dashboards
 
 ## Status
 
@@ -31,10 +35,12 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 | Docker image | ✅ Published | Stable: `jmewing/lux-mon:v1.0.1`; Beta: `jmewing/lux-mon:v1.1.0-beta.1` (amd64 + arm64) on Docker Hub and GHCR |
 | RS-485 / BMS | ✅ Live | `lux-mon-rs485` daemon, EG4 A5/5A battery BMS driver deployed |
 | Alerts | ✅ Live | SMTP + webhook notifications, rate-limited, UI configurable |
-| Home Assistant | ✅ Integrated | MQTT auto-discovery, energy dashboard sensors |
+| Solar forecast | ✅ Live | Open-Meteo weather forecast + historical calibration (v1.2.1) |
+| Quick charge | ✅ Live | Timed grid charge with restore-on-expiry |
+| Home Assistant | ✅ Integrated | Native REST integration + MQTT auto-discovery + energy sensors |
 | Backup/restore | ✅ Built | Nightly systemd timer + one-command restore |
-| Grafana | ✅ Built | Pre-loaded `lux-mon-charts` dashboard and data source |
-| Automation rules | ✅ Built | Time + sensor conditions that write holding registers |
+| Grafana | ✅ Built | Pre-loaded dashboards and data source |
+| Automation rules | ✅ Built | Rule-table model (time + sensor conditions) that writes holding registers |
 
 ### In progress / near-term
 
@@ -44,10 +50,10 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 
 ### Roadmap
 
-- Quick Charge button (EG4 Monitor-style timed grid charge)
-- Generator and AC-coupled charge support
-- Battery protection automations (SOC threshold + restore)
+- Generator and AC-coupled charge support (generator-charge register path is stubbed)
+- Battery protection automations (SOC threshold + restore) — rule-table model supports this, needs UI
 - More inverter models via pluggable Modbus RTU drivers
+- Forecast.Solar provider (listed in settings, not yet wired)
 
 ## Architecture
 
@@ -78,6 +84,8 @@ EG4/LuxPower Inverter → WiFi Dongle (TCP :8000)
                  │  /api/status     │  port 80
                  │  /api/history    │
                  └─────────────────┘
+
+RS-485 BMS (optional) → lux-mon-rs485 daemon → same backends
 ```
 
 ## Quick Start
@@ -183,30 +191,49 @@ The API server runs on port 80 and provides:
 | `GET /api/summary` | Compact key metrics for dashboards |
 | `GET /api/history?minutes=60&fields=soc,battery_voltage` | Time-series data |
 | `GET /api/health` | Health check |
+| `GET /api/energy` | Energy totals and hourly rollups |
+| `GET /api/forecast?hours=48` | Stored solar PV forecast (predicted + corrected watts) |
+| `GET /api/alerts` | Recent alert events |
+| `GET /api/alerts/live` | Current alert states (for HA binary sensors) |
 | `GET /api/settings` | All runtime settings |
+| `GET /api/settings/controllable` | Settings exposed as HA entities |
 | `GET /api/settings/{name}` | Single setting value |
 | `PUT /api/settings/{name}` | Update a setting (JSON body: `{"value": "..."}`) |
 | `GET /api/automation/registers` | List writable holding registers for automation actions |
+| `GET /api/automation/types` | List automation types (rule_table, battery_soc, battery_protection, notify) |
 | `GET /api/automation/rules` | List automation rules and global enable flag |
 | `POST /api/automation/rules` | Replace the full rule set (JSON array) |
+| `DELETE /api/automation/rules/{rule_id}` | Delete a single rule |
 | `POST /api/automation/enable` | Globally enable/disable the automation engine |
 | `POST /api/automation/test` | Dry-run evaluate rules against the latest snapshot |
 | `GET /api/automation/log` | Recent automation actions / dry-runs |
+| `GET /api/quick-charge/status` | Current quick-charge state and defaults |
+| `POST /api/quick-charge/start` | Start a timed quick charge (JSON: `{"amps": 85, "minutes": 30}`) |
+| `POST /api/quick-charge/stop` | Stop an active quick charge, restoring the prior value |
 | `POST /api/backup` | Create a backup archive |
 | `GET /api/backups` | List backup archives |
 | `POST /api/prune` | Prune old detail data |
 | `GET /api/storage` | Show DB table sizes and disk usage |
+| `WS /ws` | Live snapshot WebSocket stream |
 
 The built-in dashboard (`/`) includes an **Automations** page where you can enable the engine, add rules with time windows and sensor conditions, and test them in dry-run mode before allowing live inverter writes.
 
 ### Automation rules
 
-Rules are stored as JSON in the `automation_rules` setting and evaluated after every snapshot. A rule can set a holding register to a static value or choose a value from a sensor-range table (e.g., different charge amps for different battery-voltage bands). Each rule supports:
+Rules are stored as JSON in the `automation_rules` setting and evaluated after every snapshot. The engine uses a **rule-table model** (target-first, nested subset columns, restore-on-exit) that mirrors the EG4/Luxpower "Power Management" portal. Four automation types are supported:
+
+- `rule_table` — a multi-dimensional rule table (e.g. grid charge current as a function of time-of-day and battery voltage)
+- `battery_soc` — battery state-of-charge control (time + SOC thresholds → grid/battery output source)
+- `battery_protection` — "if SOC ≤ X%, shutdown output; restore to Y when recovered" (restore-on-exit)
+- `notify` — send an email/webhook notification when a condition is met
+
+Only one automation may be active per target type. A rule can set a holding register to a static value or choose a value from a sensor-range table. Each rule supports:
 
 - `time_window`: `{"start": "21:00", "end": "06:00"}` (wraps past midnight)
 - `conditions`: list of `{"sensor": "battery_voltage", "min": 0, "max": 54}` checks
 - `action`: `{"register": "ac_charge_battery_current", "value": 85}` or a `ranges` table
 - `dry_run`: when `true`, the rule logs what it *would* write but never sends a Modbus command
+- `restore`: a value written back when conditions stop matching (or the automation is disabled)
 
 Only registers listed in `collector/protocol.py:HOLDING_REGISTERS` can be written, and every value is clamped to the register's documented min/max. Example rule matching SolarAssistant's night grid-charge behavior:
 
@@ -234,11 +261,37 @@ Enable the engine globally with the `automation_enabled` setting (or the dashboa
 
 **Design note:** Readable values (SOC, voltage, current, power) are telemetry and are included automatically. Set values (charge current, SOC limits, time slots, modes) are only written when explicitly changed via the website or when an automation rule says "this is what we want it to be." lux-mon never writes a setting just because it happens to be readable.
 
-The API also serves a built-in web dashboard at `/` with real-time gauges, power flow, historic charts, battery details, energy totals, and runtime settings.
+### Quick Charge / Generator Charge
 
-A pre-built Grafana dashboard is included in `grafana/dashboards/lux-mon-charts.json` and provisioned automatically by `scripts/setup-grafana-stack.sh`. It uses a SolarAssistant-compatible InfluxDB schema so existing SolarAssistant dashboards import directly.
+lux-mon implements the two one-shot inverter actions the EG4 Monitor portal exposes:
 
-For Home Assistant users, see [`docs/home-assistant-energy.md`](docs/home-assistant-energy.md).
+- **Quick Charge** — write `ac_charge_battery_current` (register 168) to a target current for a fixed number of minutes, then restore the prior value.
+- **Generator Charge** — write the generator charge current / enable path (register path stubbed, see roadmap).
+
+State is persisted in the `lux_settings` table so it survives collector restarts. Writes reuse the automation engine's safe write helpers (fresh socket, echo verification, clamping). Defaults are configurable via the `quick_charge_amps` and `quick_charge_minutes` settings.
+
+### Solar PV forecast
+
+lux-mon can forecast PV production using a weather-based model (Option A) with optional historical calibration (Option B):
+
+1. Fetch hourly weather (cloud cover + shortwave radiation) from **Open-Meteo** (free, no API key).
+2. Compute a clear-sky PV power curve using **pvlib** (sun position + clear-sky irradiance transposed onto the tilted array plane).
+3. Scale by a cloud factor, then apply bifacial back-side gain.
+4. Optionally correct today's forecast using the last N days of actual-vs-forecast error (bucketed by hour-of-day and cloud cover).
+5. Persist the predicted/corrected watts to MariaDB (`lux_solar_forecast` table).
+
+The forecast is exposed at `GET /api/forecast` and overlaid on the dashboard's PV chart (corrected forecast shown as a yellow dashed line). All forecast parameters (location, array kWp/azimuth/tilt, bifacial gain, provider, horizon, refresh interval, calibration) are runtime settings editable from the dashboard ⚙️ tab.
+
+### Alerts
+
+Alert thresholds are evaluated after every snapshot and published to MQTT (for HA binary sensors) and MariaDB (`lux_alerts` table). Supported alerts:
+
+- Battery SOC low / critical
+- Battery temperature high
+- Inverter temperature high
+- Grid lost (configurable threshold in seconds)
+
+Notifications are dispatched via authenticated SMTP relay and/or webhook, rate-limited to one per 5 minutes per alert. All thresholds and notification targets are runtime settings.
 
 ### Home Assistant integration
 
@@ -306,9 +359,25 @@ All config can be set via env vars:
 | `LUX_API_HOST` | `0.0.0.0` | API bind address |
 | `LUX_API_PORT` | `80` | API port |
 
+### RS-485 / BMS environment variables
+
+The `lux-mon-rs485` daemon (see `collector/rs485_collector.py`) polls an RS-485/serial device and writes to the same backends:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LUX_RS485_ENABLED` | `false` | Enable the RS-485 collector |
+| `LUX_RS485_PORT` | `/dev/ttyUSB0` | Serial port |
+| `LUX_RS485_BAUD` | `115200` | Baud rate |
+| `LUX_RS485_DEVICE_TYPE` | — | `jk_bms` \| `modbus_rtu` \| `raw` \| `eg4_a5_bms` \| `eg4_bms` |
+| `LUX_RS485_POLL_INTERVAL` | `2.0` | Seconds between reads |
+| `LUX_RS485_SLAVE_ID` | `1` | Modbus slave ID |
+| `LUX_RS485_MODBUS_START` | `0` | Modbus register start |
+| `LUX_RS485_MODBUS_COUNT` | `40` | Modbus register count |
+| `LUX_RS485_PREFIX` | `rs485` | Measurement/topic prefix |
+
 ## Storage Backends
 
-The collector supports two storage backends. Choose one by setting `LUX_STORAGE_TYPE`.
+The collector supports two storage backends, which can be enabled together. Choose by setting `LUX_STORAGE_TYPE` (or the individual `LUX_*_ENABLED` flags).
 
 ### MariaDB / MySQL (default)
 
@@ -329,6 +398,10 @@ LUX_MARIADB_DATABASE=luxmon
 Tables are auto-created on first run:
 - `lux_snapshots` — one row per write interval with timestamp and raw register JSON
 - `lux_registers` — one row per decoded register value, indexed by timestamp and name
+- `lux_settings` — runtime settings (key/value)
+- `lux_alerts` — alert events
+- `lux_solar_forecast` — solar PV forecast time series
+- `lux_automation_log` — automation actions / dry-runs
 
 Set `LUX_MARIADB_TABLE_PREFIX` to change the table prefix from `lux_` if needed.
 
@@ -348,6 +421,8 @@ LUX_INFLUX_ORG=your-org
 LUX_INFLUX_BUCKET=solar
 ```
 
+The InfluxDB schema is **SolarAssistant-compatible** (one measurement per metric, `inverter_0`/`combined` fields), so existing SolarAssistant Grafana dashboards import directly.
+
 ### Adding a New Backend
 
 The collector uses a pluggable writer pattern. To add support for PostgreSQL, SQLite, or another database:
@@ -360,7 +435,7 @@ See `_create_mariadb_writer()` and `_write_mariadb()` for the pattern to follow.
 
 ## Runtime Settings
 
-Settings are stored in the `lux_settings` MariaDB table (auto-created) and read live by the API and dashboard — no config files, no restarts. Change any value with a single API call and the dashboard picks it up on the next refresh.
+Settings are stored in the `lux_settings` MariaDB table (auto-created) and read live by the API and dashboard — no config files, no restarts. Change any value with a single API call and the dashboard picks it up on the next refresh. The collector detects config changes on each write cycle and re-applies live-safe settings in place (or exits for a Docker restart when a transport/model change requires it).
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -373,6 +448,20 @@ Settings are stored in the `lux_settings` MariaDB table (auto-created) and read 
 | `dashboard_refresh_sec` | `5` | Dashboard auto-refresh interval |
 | `chart_default_hours` | `6` | Default chart time range |
 | `write_interval_sec` | `5` | Seconds between MariaDB writes |
+| `timezone` | `America/Chicago` | Local timezone for scheduling |
+| `temperature_unit` | `celsius` | Temperature unit |
+| `quick_charge_amps` | — | Default quick-charge target current (A) |
+| `quick_charge_minutes` | — | Default quick-charge duration (min) |
+| `forecast_enabled` | `false` | Enable solar forecast |
+| `forecast_latitude` / `forecast_longitude` | site | Forecast location |
+| `array_kwp` / `array_azimuth` / `array_tilt` | — | Array geometry for forecast |
+| `array_bifacial_gain` | `0.10` | Bifacial back-side gain |
+| `forecast_provider` | `open-meteo` | Forecast data source |
+| `forecast_hours` | `48` | Forecast horizon |
+| `forecast_refresh_min` | `120` | Forecast refresh interval |
+| `forecast_bias_enabled` | `true` | Historical calibration |
+| `forecast_bias_lookback_days` | `7` | Calibration lookback |
+| `forecast_bias_min_samples` | `3` | Min samples per bucket |
 
 ```bash
 # Read all settings
