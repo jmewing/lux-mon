@@ -7,7 +7,7 @@ from pathlib import Path
 import uvicorn
 
 HOST = os.getenv("LUX_API_HOST", "0.0.0.0")
-PORT = int(os.getenv("LUX_API_PORT", "8080"))
+PORT = int(os.getenv("LUX_API_PORT", "80"))
 
 
 def main():

@@ -21,7 +21,7 @@ cp docker/.env.example .env
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-- Web dashboard / API: http://localhost:8080/
+- Web dashboard / API: http://localhost:80/
 - Grafana: http://localhost:3000/
 - MQTT broker: localhost:1883
 

@@ -23,7 +23,7 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 | Component | Status | Details |
 |-----------|--------|---------|
 | Collector | ✅ Live | 111 input registers decoded, writes to MariaDB + InfluxDB + MQTT |
-| REST API | ✅ Live | FastAPI on port 8080, systemd-managed |
+| REST API | ✅ Live | FastAPI on port 80, systemd-managed |
 | Storage | ✅ Live | MariaDB, InfluxDB v2, hourly energy rollups |
 | Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals, settings, automations |
 | Active polling | ✅ Built | Fallback for non-broadcasting dongles |
@@ -75,7 +75,7 @@ EG4/LuxPower Inverter → WiFi Dongle (TCP :8000)
                           ▼
                  ┌─────────────────┐
                  │   REST API       │  FastAPI
-                 │  /api/status     │  port 8080
+                 │  /api/status     │  port 80
                  │  /api/history    │
                  └─────────────────┘
 ```
@@ -100,7 +100,7 @@ bash scripts/install.sh
 ```
 
 After install:
-- API: http://YOUR-HOST:8080/api/status
+- API: http://YOUR-HOST:80/api/status
 - Grafana: http://YOUR-HOST:3000/grafana/d/lux-mon-charts/lux-mon-charts
 - Add an Apache/Nginx reverse proxy on port 80 if desired.
 
@@ -175,7 +175,7 @@ For a config-file approach you can also copy `config.example.py` to `config.py` 
 
 ## REST API
 
-The API server runs on port 8080 and provides:
+The API server runs on port 80 and provides:
 
 | Endpoint | Description |
 |----------|-------------|
@@ -251,7 +251,7 @@ sudo systemctl enable --now lux-api.service
 
 ### Apache Reverse Proxy (Optional)
 
-To serve the dashboard on port 80 instead of 8080, configure Apache as a reverse proxy:
+To serve the dashboard on port 80, configure Apache as a reverse proxy:
 
 ```bash
 # Enable proxy modules
@@ -261,8 +261,8 @@ sudo a2enmod proxy proxy_http
 #
 # <VirtualHost *:80>
 #     ProxyPreserveHost On
-#     ProxyPass / http://127.0.0.1:8080/
-#     ProxyPassReverse / http://127.0.0.1:8080/
+#     ProxyPass / http://127.0.0.1:80/
+#     ProxyPassReverse / http://127.0.0.1:80/
 # </VirtualHost>
 
 sudo systemctl reload apache2
@@ -292,7 +292,7 @@ All config can be set via env vars:
 | `LUX_REPLAY_FILE` | — | Replay a capture instead of live TCP |
 | `LUX_INVERTER_MODEL` | `eg4_6000xp` | Inverter / BMS model driver |
 | `LUX_API_HOST` | `0.0.0.0` | API bind address |
-| `LUX_API_PORT` | `8080` | API port |
+| `LUX_API_PORT` | `80` | API port |
 
 ## Storage Backends
 

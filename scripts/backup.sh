@@ -97,7 +97,7 @@ if [ -f "$SRC_DIR/.env" ]; then
 fi
 
 # 5. Runtime settings from the API
-curl -sf "${LUX_API_URL:-http://127.0.0.1:8080}/api/settings" > "$TMP/settings.json" || true
+curl -sf "${LUX_API_URL:-http://127.0.0.1:80}/api/settings" > "$TMP/settings.json" || true
 
 # 6. Metadata
 {

@@ -194,7 +194,7 @@ ExecStart=${LUX_INSTALL_DIR}/venv/bin/python3 -m api
 Restart=always
 RestartSec=5
 Environment=LUX_API_HOST=0.0.0.0
-Environment=LUX_API_PORT=8080
+Environment=LUX_API_PORT=80
 EnvironmentFile=-${LUX_INSTALL_DIR}/.env
 
 [Install]
@@ -269,8 +269,8 @@ fi
 # ── Grafana reverse proxy hint ──────────────────────────────────────────
 echo ""
 echo "==> lux-mon installed."
-echo "    Dashboard: http://<this-host>/   (via Apache/Nginx reverse proxy to port 8080)"
-echo "    API:       http://<this-host>:8080/api/status"
+echo "    Dashboard: http://<this-host>/   (via Apache/Nginx reverse proxy to port 80)"
+echo "    API:       http://<this-host>:80/api/status"
 echo "    Grafana:   http://<this-host>:3000/grafana/d/lux-mon-charts/lux-mon-charts"
 echo ""
 echo "Next steps:"

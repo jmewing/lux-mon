@@ -7,7 +7,7 @@ version: "3.8"
 # 2. From the repository root run:
 #        docker compose -f docker/docker-compose.yml up -d
 # 3. Dashboards:
-#      Web UI/API: http://<host>:8080/
+#      Web UI/API: http://<host>:80/
 #      Grafana:    http://<host>:3000/
 # -----------------------------------------------------------------------------
 
@@ -217,9 +217,9 @@ services:
     environment:
       <<: *lux-env
       LUX_API_HOST: 0.0.0.0
-      LUX_API_PORT: 8080
+      LUX_API_PORT: 80
     ports:
-      - "8080:8080"
+      - "80:80"
     networks:
       - lux-mon-net
     depends_on:
@@ -230,7 +230,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - "curl -fsS http://127.0.0.1:8080/api/health || exit 1"
+        - "curl -fsS http://127.0.0.1:80/api/health || exit 1"
       interval: 10s
       timeout: 5s
       retries: 5
