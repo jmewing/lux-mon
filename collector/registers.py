@@ -198,8 +198,8 @@ def decode_registers(reg_values: dict[int, int], register_map: dict[int, Registe
 
     # Second pass: 32-bit pairs
     for reg_num, raw_val in reg_values.items():
-        if reg_num in INPUT_REGISTERS:
-            reg_def = INPUT_REGISTERS[reg_num]
+        if reg_num in register_map:
+            reg_def = register_map[reg_num]
             if reg_def.pair_high is not None:
                 high_reg = reg_def.pair_high
                 if high_reg in reg_values:

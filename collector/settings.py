@@ -227,6 +227,7 @@ SETTING_META = {
         "section": "inverter",
         "options": [
             ("eg4_6000xp", "EG4 6000XP"),
+            ("eg4_18kpv", "EG4 18KPV"),
             ("luxpower_sna", "Luxpower SNA"),
             ("eg4_3000ehv", "EG4 3000EHV"),
             ("eg4_6500ex", "EG4 6500EX"),

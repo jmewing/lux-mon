@@ -6,6 +6,7 @@ from typing import Callable, Dict
 
 from . import ModelDriver
 from .eg4_6000xp import create_driver as _eg4_6000xp
+from .eg4_18kpv import create_driver as _eg4_18kpv
 from .luxpower_sna import create_driver as _luxpower_sna
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 DRIVERS: Dict[str, Callable[[], ModelDriver]] = {
     "eg4_6000xp": _eg4_6000xp,
     "luxpower_sna": _luxpower_sna,
+    "eg4_18kpv": _eg4_18kpv,
     # Rebadges of the Luxpower SNA that share the exact same register family.
     "eg4_3000ehv": _luxpower_sna,
     "eg4_6500ex": _luxpower_sna,
