@@ -6,26 +6,26 @@ from typing import Callable, Dict
 
 from . import ModelDriver
 from .eg4_6000xp import create_driver as _eg4_6000xp
+from .luxpower_sna import create_driver as _luxpower_sna
 
 logger = logging.getLogger(__name__)
 
 # Map of setting value -> driver factory.
-# New drivers should be imported above and added here.
+#
+# Only models with a *validated* register map are registered here. The
+# Luxpower SNA family (EG4 6000XP and rebadges) is the only family with a
+# reverse-engineered, capture-validated map today. Other brands (Growatt,
+# Solis, Sungrow, GoodWe, Huawei, SunSynk/Deye, Voltronic/Axpert) use
+# different register layouts and must NOT be aliased to the SNA map — doing
+# so would silently decode garbage. They are intentionally absent until a
+# dedicated driver with a validated map is written.
 DRIVERS: Dict[str, Callable[[], ModelDriver]] = {
     "eg4_6000xp": _eg4_6000xp,
-    # Models that share the same LuxPower/EG4 register family reuse the
-    # 6000XP driver until a dedicated driver is written.
-    "eg4_3000ehv": _eg4_6000xp,
-    "eg4_6500ex": _eg4_6000xp,
-    "luxpower_12k": _eg4_6000xp,
-    "luxpower_sna": _eg4_6000xp,
-    "voltronic_axpert": _eg4_6000xp,
-    "growatt": _eg4_6000xp,
-    "solis": _eg4_6000xp,
-    "sungrow": _eg4_6000xp,
-    "goodwe": _eg4_6000xp,
-    "huawei": _eg4_6000xp,
-    "sunsynk": _eg4_6000xp,
+    "luxpower_sna": _luxpower_sna,
+    # Rebadges of the Luxpower SNA that share the exact same register family.
+    "eg4_3000ehv": _luxpower_sna,
+    "eg4_6500ex": _luxpower_sna,
+    "luxpower_12k": _luxpower_sna,
 }
 
 DEFAULT_MODEL = "eg4_6000xp"
