@@ -240,6 +240,18 @@ A pre-built Grafana dashboard is included in `grafana/dashboards/lux-mon-charts.
 
 For Home Assistant users, see [`docs/home-assistant-energy.md`](docs/home-assistant-energy.md).
 
+### Home Assistant integration
+
+lux-mon has a native Home Assistant integration that connects to the REST API
+and exposes live sensors, energy-dashboard sensors, controllable settings
+(`number`/`select`/`switch` entities), alerts, and quick-charge buttons.
+
+- **Integration repo:** [jmewing/ha_luxmon](https://github.com/jmewing/ha_luxmon)
+- **Add-on repo (HAOS / Supervised):** [jmewing/ha_luxmon_addons](https://github.com/jmewing/ha_luxmon_addons)
+
+Install via HACS, the add-on, or manually — see the integration README for full
+instructions.
+
 ```bash
 # Start the API server
 python -m api
