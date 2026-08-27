@@ -42,6 +42,28 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 | Grafana | ✅ Built | Pre-loaded dashboards and data source |
 | Automation rules | ✅ Built | Rule-table model (time + sensor conditions) that writes holding registers |
 
+### Supported inverter models
+
+lux-mon speaks the **Luxpower SNA** and **18KPV** register families. EG4
+inverters are Luxpower rebadges, so the full EG4 lineup is supported via two
+families:
+
+| Family | Models | Register map | Status |
+|--------|--------|--------------|--------|
+| **SNA** (2-MPPT, single-phase off-grid) | EG4 6000XP, 12000XP, 6500EX-48, 3000EHV-48, Luxpower SNA | `collector/registers.py` | ✅ Capture-validated on the 6000XP |
+| **18KPV** (3-MPPT, split-phase 120/240V, AFCI, generator) | EG4 18KPV, 12kPV | `collector/drivers/eg4_18kpv.py` | ⚠️ Document-derived, not yet capture-validated |
+
+- **SNA family** is the validated reference — the 6000XP map was
+  reverse-engineered from live captures. The 12000XP, 6500EX-48, and
+  3000EHV-48 (legacy, discontinued) share the exact same register layout.
+- **18KPV family** is derived from the official EG4 Modbus protocol document
+  and has **not** been validated against a live unit. The 12kPV shares the
+  18KPV map. Community feedback will identify any gaps.
+- **FlexBOSS18/21 and GridBOSS** are a *new* platform (not a Luxpower SNA
+  rebadge) with an unknown register map. They are intentionally **not**
+  aliased to either family — doing so would silently decode garbage. A
+  dedicated driver is needed once their protocol is documented.
+
 ### In progress / near-term
 
 - **Inverter Edit Mode page** — manual Read/Set for every editable EG4 6000XP holding register, mirroring the EG4 Monitor Maintenance tab.
@@ -52,7 +74,7 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 
 - Generator and AC-coupled charge support (generator-charge register path is stubbed)
 - Battery protection automations (SOC threshold + restore) — rule-table model supports this, needs UI
-- More inverter models via pluggable Modbus RTU drivers
+- More inverter models via pluggable Modbus RTU drivers (FlexBOSS/GridBOSS need a dedicated register map)
 - Forecast.Solar provider (listed in settings, not yet wired)
 
 ## Architecture

@@ -39,9 +39,11 @@
 ### 6. Holding register map corrections — ⬜ (explicitly "in progress")
 - Align `collector/protocol.py` with `LXP_REGISTERS.txt`, add missing registers, fix ranges, correct AC charge current to register 168.
 
-### 7. More inverter models — 🚧 (aliases only)
-- `collector/drivers/registry.py` maps many model names (`eg4_3000ehv`, `eg4_6500ex`, `luxpower_12k`, `growatt`, `solis`, etc.) to the `eg4_6000xp` driver as a fallback.
-- **To do:** write dedicated drivers for models that differ from the 6000XP register family.
+### 7. More inverter models — 🚧 (SNA + 18KPV families done; FlexBOSS/GridBOSS pending)
+- `collector/drivers/registry.py` now maps the full EG4 lineup across two families:
+  - **SNA family** (capture-validated): `eg4_6000xp`, `eg4_12000xp`, `eg4_6500ex`, `eg4_3000ehv`, `luxpower_sna`.
+  - **18KPV family** (document-derived, untested): `eg4_18kpv`, `eg4_12kpv`.
+- **To do:** FlexBOSS18/21 and GridBOSS are a *new* platform (not a Luxpower SNA rebadge) with an unknown register map — need a dedicated driver once their protocol is documented. Do NOT alias them to SNA/18KPV.
 
 ### 8. RS-485 transport for the main collector — 🚧 (separate daemon only)
 - The main collector's `transport` options are `tcp_passive`, `tcp_active`, `replay`. RS-485 is a **separate** daemon (`lux-mon-rs485`), not a pluggable transport of the main collector.

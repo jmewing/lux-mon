@@ -9,6 +9,27 @@ def test_registry_has_sna_family():
     assert "eg4_6000xp" in DRIVERS
     assert "luxpower_sna" in DRIVERS
     assert "eg4_18kpv" in DRIVERS
+    assert "eg4_12kpv" in DRIVERS
+    assert "eg4_12000xp" in DRIVERS
+    assert "eg4_6500ex" in DRIVERS
+    assert "eg4_3000ehv" in DRIVERS
+
+
+def test_sna_aliases_share_register_family():
+    # 12000XP / 6500EX / 3000EHV are SNA rebadges → same map as 6000XP
+    base = get_driver("eg4_6000xp")
+    for model in ("eg4_12000xp", "eg4_6500ex", "eg4_3000ehv"):
+        d = get_driver(model)
+        assert d.input_registers is base.input_registers
+        assert d.batches == base.batches
+
+
+def test_12kpv_is_18kpv_family():
+    kpv = get_driver("eg4_18kpv")
+    pv = get_driver("eg4_12kpv")
+    assert pv.input_registers is kpv.input_registers
+    assert pv.batches == kpv.batches
+    assert pv.label == "EG4 12kPV"
 
 
 def test_unsupported_model_raises():

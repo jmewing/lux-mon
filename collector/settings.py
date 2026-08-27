@@ -227,13 +227,14 @@ SETTING_META = {
         "section": "inverter",
         "options": [
             ("eg4_6000xp", "EG4 6000XP"),
+            ("eg4_12000xp", "EG4 12000XP"),
             ("eg4_18kpv", "EG4 18KPV"),
+            ("eg4_12kpv", "EG4 12kPV"),
             ("luxpower_sna", "Luxpower SNA"),
-            ("eg4_3000ehv", "EG4 3000EHV"),
-            ("eg4_6500ex", "EG4 6500EX"),
-            ("luxpower_12k", "Luxpower 12K"),
+            ("eg4_6500ex", "EG4 6500EX-48 (legacy)"),
+            ("eg4_3000ehv", "EG4 3000EHV-48 (legacy)"),
         ],
-        "hint": "Inverter model for protocol selection (Luxpower SNA family only)",
+        "hint": "Inverter model (Luxpower SNA / 18KPV families only)",
     },
     "pv_max_power": {
         "label": "Max Solar PV Power",
