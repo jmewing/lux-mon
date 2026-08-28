@@ -889,11 +889,21 @@ async function loadAutomationTypes() {
 }
 async function loadAutomationSettings() {
   try {
+    // Runtime lux_settings (kept for compatibility, but inverter holding
+    // registers are the authoritative source for schedules).
     const res = await fetchJson(API + '/api/settings');
     const settings = res.settings || {};
     autoSettings = Object.fromEntries(
       Object.entries(settings).map(([k, v]) => [k, typeof v === 'object' && v !== null ? v.value : v])
     );
+  } catch (e) { console.error(e); }
+  try {
+    // Authoritative inverter holding-register values for schedule fields.
+    const holding = await fetchJson(API + '/api/holding');
+    const regs = holding.registers || {};
+    for (const [name, meta] of Object.entries(regs)) {
+      autoSettings[name] = meta.raw;
+    }
   } catch (e) { console.error(e); }
 }
 async function loadAutomation() {
@@ -929,8 +939,9 @@ function renderSchedule() {
   if (!el) return;
   const groups = [
     {title:'Grid charge', prefix:'ac_charge_period', power:'ac_charge_power', soc:'ac_charge_soc_limit'},
-    {title:'Charge priority', prefix:'charge_priority_period', power:'charge_priority_power', soc:'charge_priority_soc_limit'},
-    {title:'Forced discharge', prefix:'forced_discharge_period', power:'forced_discharge_power', soc:'forced_discharge_soc_limit'}
+    {title:'Charge priority', prefix:'forced_charge_period', power:'forced_charge_power', soc:'forced_charge_soc_limit'},
+    {title:'Forced discharge', prefix:'forced_discharge_period', power:'forced_discharge_power', soc:'forced_discharge_soc_limit'},
+    {title:'AC first', prefix:'ac_first_period', power:null, soc:null}
   ];
   el.innerHTML = groups.map(g => {
     const slots = [1,2,3].map(n => ({n, start:regByName(`${g.prefix}_${n}_start`), end:regByName(`${g.prefix}_${n}_end`)}));
@@ -986,8 +997,8 @@ async function saveSchedule() {
   msg.textContent = 'Saving schedule...'; msg.style.color = 'var(--light-text-color)';
   try {
     await Promise.all(Object.entries(values).map(([name, value]) =>
-      fetch(API + '/api/settings/' + encodeURIComponent(name), {
-        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})
+      fetch(API + '/api/holding/' + encodeURIComponent(name), {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value: Number(value)})
       }).then(r => { if (!r.ok) throw new Error(name + ': ' + r.statusText); })
     ));
     msg.textContent = 'Schedule saved.'; msg.style.color = 'var(--green-color)';

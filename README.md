@@ -38,6 +38,7 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 | Solar forecast | ✅ Live | Open-Meteo weather forecast + historical calibration (v1.2.1) |
 | Quick charge | ✅ Live | Timed grid charge with restore-on-expiry |
 | Home Assistant | ✅ Integrated | Native REST integration + MQTT auto-discovery + energy sensors |
+| Schedule editor | ✅ Fixed | Reads/writes actual inverter holding registers (Grid charge, Charge priority, AC first, Forced discharge) |
 | Backup/restore | ✅ Built | Nightly systemd timer + one-command restore |
 | Grafana | ✅ Built | Pre-loaded dashboards and data source |
 | Automation rules | ✅ Built | Rule-table model (time + sensor conditions) that writes holding registers |
@@ -221,6 +222,9 @@ The API server runs on port 80 and provides:
 | `GET /api/settings/controllable` | Settings exposed as HA entities |
 | `GET /api/settings/{name}` | Single setting value |
 | `PUT /api/settings/{name}` | Update a setting (JSON body: `{"value": "..."}`) |
+| `GET /api/holding` | Read actual holding-register values directly from the inverter |
+| `GET /api/holding/{name}` | Read a single named holding register from the inverter |
+| `PUT /api/holding/{name}` | Write a single named holding register to the inverter |
 | `GET /api/automation/registers` | List writable holding registers for automation actions |
 | `GET /api/automation/types` | List automation types (rule_table, battery_soc, battery_protection, notify) |
 | `GET /api/automation/rules` | List automation rules and global enable flag |

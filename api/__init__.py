@@ -10,7 +10,9 @@ import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, List, Optional
+import socket
+import time
+from typing import Any, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import asyncio
@@ -19,7 +21,6 @@ import math
 import pymysql
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-from typing import Any
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.staticfiles import StaticFiles as StarletteStaticFiles
@@ -896,9 +897,19 @@ def _load_db_setting(name: str) -> Optional[str]:
 
 # ── automation / rules engine ───────────────────────────────────────────────
 
-from collector.protocol import HOLDING_REGISTERS, HOLDING_BY_NAME, holding_label
+from collector.protocol import (
+    HOLDING_REGISTERS,
+    HOLDING_BY_NAME,
+    holding_label,
+    build_read_request,
+    build_write_request,
+    find_frames,
+    MODBUS_READ_HOLD,
+)
 from collector.automation import (
     AutomationEngine,
+    _engineering_to_raw,
+    _write_holding_register,
     SETTING_KEY as AUTOMATION_SETTING,
     ENABLED_KEY as AUTOMATION_ENABLED,
     AUTOMATION_TYPES,
@@ -1207,6 +1218,228 @@ def _resolve_dongle() -> dict:
 class QuickChargeBody(BaseModel):
     minutes: Optional[int] = None
     dry_run: bool = False
+
+
+class HoldingUpdate(BaseModel):
+    value: Optional[float] = None
+    raw: Optional[int] = None
+
+
+def _read_holding_block(
+    host: str,
+    port: int,
+    datalog_serial: str,
+    inverter_serial: str,
+    start: int,
+    count: int,
+    timeout: float = 10.0,
+) -> Tuple[bool, Dict[int, int], str]:
+    """Read a contiguous block of holding registers directly from the inverter."""
+    req = build_read_request(datalog_serial, inverter_serial, MODBUS_READ_HOLD, start, count)
+    sock: Optional[socket.socket] = None
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+        sock.settimeout(timeout)
+        sock.sendall(req)
+        deadline = time.time() + timeout
+        buffer = b""
+        result: Dict[int, int] = {}
+        while time.time() < deadline:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            sock.settimeout(remaining)
+            try:
+                chunk = sock.recv(4096)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            buffer += chunk
+            for frame in find_frames(buffer):
+                if frame.is_error:
+                    return False, {}, f"Modbus error response: code {frame.error_code}"
+                if frame.is_read_hold and frame.register == start:
+                    for i, raw_val in enumerate(frame.values):
+                        result[start + i] = raw_val
+                    return True, result, "ok"
+        return False, {}, f"No valid holding-register response for {start}/{count}"
+    except Exception as exc:
+        return False, {}, f"Holding read failed: {exc}"
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+
+def _read_all_holding_registers(dongle: dict) -> Dict[int, int]:
+    """Read holding registers 0-169 from the inverter in batches."""
+    raw: Dict[int, int] = {}
+    batches = [(0, 40), (40, 40), (80, 40), (120, 40), (160, 40)]
+    for start, count in batches:
+        ok, block, msg = _read_holding_block(
+            dongle["dongle_host"],
+            dongle["dongle_port"],
+            dongle["datalog_serial"],
+            dongle["inverter_serial"],
+            start,
+            count,
+            timeout=10.0,
+        )
+        if not ok:
+            raise HTTPException(502, f"Failed to read holding registers {start}-{start + count - 1}: {msg}")
+        raw.update(block)
+    return raw
+
+
+@app.get("/api/holding")
+def api_holding_list():
+    """Read current holding register values directly from the inverter.
+
+    Returns the raw register values by name; the dashboard decodes time-of-day
+    registers using the same (minute<<8)|hour convention as the inverter.
+    """
+    dongle = _resolve_dongle()
+    if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
+        raise HTTPException(400, "datalog_serial / inverter_serial not configured")
+    raw = _read_all_holding_registers(dongle)
+    result = {}
+    for reg, info in sorted(HOLDING_REGISTERS.items()):
+        if reg in raw:
+            result[info["name"]] = {
+                "address": reg,
+                "raw": raw[reg],
+                "unit": info.get("unit", ""),
+                "scale": info.get("scale", 1.0),
+                "min": info.get("min"),
+                "max": info.get("max"),
+                "desc": info.get("desc", ""),
+            }
+    return {"registers": result}
+
+
+@app.get("/api/holding/controllable")
+def api_holding_controllable():
+    """Return metadata for all controllable holding registers.
+
+    Consumed by the Home Assistant integration to build number/select/switch
+    entities without hardcoding a static list.
+    """
+    result = {}
+    for reg, info in sorted(HOLDING_REGISTERS.items()):
+        name = info["name"]
+        unit = info.get("unit", "")
+        scale = info.get("scale", 1.0)
+        min_raw = info.get("min")
+        max_raw = info.get("max")
+
+        def to_eng(raw):
+            if raw is None:
+                return None
+            if unit == "time":
+                return raw
+            return raw * scale
+
+        result[name] = {
+            "value": None,
+            "type": "number",
+            "label": holding_label(name),
+            "section": "inverter",
+            "hint": info.get("desc", ""),
+            "min": to_eng(min_raw),
+            "max": to_eng(max_raw),
+            "step": scale if scale < 1 else 1,
+            "options": [],
+            "unit": unit,
+            "scale": scale,
+            "address": reg,
+        }
+    return {"settings": result}
+
+
+@app.get("/api/holding/{name}")
+def api_holding_get(name: str):
+    """Read a single named holding register from the inverter."""
+    if name not in HOLDING_BY_NAME:
+        raise HTTPException(404, f"Unknown holding register: {name}")
+    dongle = _resolve_dongle()
+    if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
+        raise HTTPException(400, "datalog_serial / inverter_serial not configured")
+    reg = HOLDING_BY_NAME[name]
+    info = HOLDING_REGISTERS[reg]
+    ok, raw_map, msg = _read_holding_block(
+        dongle["dongle_host"],
+        dongle["dongle_port"],
+        dongle["datalog_serial"],
+        dongle["inverter_serial"],
+        reg,
+        1,
+    )
+    if not ok or reg not in raw_map:
+        raise HTTPException(502, f"Failed to read {name}: {msg}")
+    return {
+        "name": name,
+        "address": reg,
+        "raw": raw_map[reg],
+        "unit": info.get("unit", ""),
+        "scale": info.get("scale", 1.0),
+        "min": info.get("min"),
+        "max": info.get("max"),
+        "desc": info.get("desc", ""),
+    }
+
+
+@app.put("/api/holding/{name}")
+def api_holding_put(name: str, body: HoldingUpdate):
+    """Write a single named holding register to the inverter.
+
+    Accepts either `value` (engineering/scaled value) or `raw` (register integer).
+    Time-of-day fields should be sent as `value` containing the encoded raw
+    integer; the API applies scale=1 so the value passes through unchanged.
+    """
+    if name not in HOLDING_BY_NAME:
+        raise HTTPException(404, f"Unknown holding register: {name}")
+    reg = HOLDING_BY_NAME[name]
+    info = HOLDING_REGISTERS[reg]
+    min_val = info.get("min")
+    max_val = info.get("max")
+
+    if body.raw is not None and body.value is not None:
+        raise HTTPException(400, "Specify either `value` or `raw`, not both")
+    if body.raw is None and body.value is None:
+        raise HTTPException(400, "Specify `value` or `raw`")
+
+    if body.raw is not None:
+        raw_value = int(body.raw)
+    else:
+        converted = _engineering_to_raw(body.value, info)
+        if converted is None:
+            raise HTTPException(400, f"Could not convert value {body.value!r} for {name}")
+        raw_value = converted
+
+    if min_val is not None and raw_value < min_val:
+        raise HTTPException(400, f"{name} raw {raw_value} below minimum {min_val}")
+    if max_val is not None and raw_value > max_val:
+        raise HTTPException(400, f"{name} raw {raw_value} above maximum {max_val}")
+
+    dongle = _resolve_dongle()
+    if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
+        raise HTTPException(400, "datalog_serial / inverter_serial not configured")
+
+    ok, msg = _write_holding_register(
+        dongle["dongle_host"],
+        dongle["dongle_port"],
+        dongle["datalog_serial"],
+        dongle["inverter_serial"],
+        reg,
+        raw_value,
+    )
+    if not ok:
+        raise HTTPException(502, f"Failed to write {name}: {msg}")
+    logger.info("Wrote holding register %s (address %d) = %d", name, reg, raw_value)
+    return {"name": name, "address": reg, "raw": raw_value, "written": True}
 
 
 @app.get("/api/quick-charge/status")

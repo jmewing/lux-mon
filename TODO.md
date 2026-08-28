@@ -30,22 +30,28 @@
 
 ### 4. Inverter Edit Mode page — ⬜ (explicitly "in progress")
 - Manual Read/Set for every editable EG4 6000XP holding register, mirroring the EG4 Monitor Maintenance tab.
-- **To do:** build the page; the backend already exposes `GET /api/automation/registers` and `PUT /api/settings/{name}`.
+- **To do:** build the page; the backend already exposes `GET /api/automation/registers`, `GET /api/holding`, and `PUT /api/holding/{name}`.
 
-### 5. Automation page overhaul — ⬜ (explicitly "in progress")
+### 5. Schedule editor — ✅ Fixed (reads/writes actual inverter holding registers)
+- The dashboard schedule editor previously read from and wrote to runtime `lux_settings`, so it never actually touched the inverter.
+- Fixed 2026-08-27: the editor now loads live holding-register values via `GET /api/holding` and writes them via `PUT /api/holding/{name}`, using the safe `_write_holding_register` path.
+- Also fixed: charge-priority prefix mismatch (`charge_priority_period_*` → `forced_charge_period_*`) and added the missing **AC First Mode** group.
+- Verified against the EG4 Monitor portal Maintenance tab (read + write round-trip on `ac_charge_period_1_start`).
+
+### 6. Automation page overhaul — ⬜ (explicitly "in progress")
 - Rebuild around a premade option list + wizard (like SolarAssistant's Power Management), with restore-value support and time/day conditions.
 - The rule-table engine is done; the UI is still the older flat form.
 
-### 6. Holding register map corrections — ⬜ (explicitly "in progress")
+### 7. Holding register map corrections — ⬜ (explicitly "in progress")
 - Align `collector/protocol.py` with `LXP_REGISTERS.txt`, add missing registers, fix ranges, correct AC charge current to register 168.
 
-### 7. More inverter models — 🚧 (SNA + 18KPV families done; FlexBOSS/GridBOSS pending)
+### 8. More inverter models — 🚧 (SNA + 18KPV families done; FlexBOSS/GridBOSS pending)
 - `collector/drivers/registry.py` now maps the full EG4 lineup across two families:
   - **SNA family** (capture-validated): `eg4_6000xp`, `eg4_12000xp`, `eg4_6500ex`, `eg4_3000ehv`, `luxpower_sna`.
   - **18KPV family** (document-derived, untested): `eg4_18kpv`, `eg4_12kpv`.
 - **To do:** FlexBOSS18/21 and GridBOSS are a *new* platform (not a Luxpower SNA rebadge) with an unknown register map — need a dedicated driver once their protocol is documented. Do NOT alias them to SNA/18KPV.
 
-### 8. RS-485 transport for the main collector — 🚧 (separate daemon only)
+### 9. RS-485 transport for the main collector — 🚧 (separate daemon only)
 - The main collector's `transport` options are `tcp_passive`, `tcp_active`, `replay`. RS-485 is a **separate** daemon (`lux-mon-rs485`), not a pluggable transport of the main collector.
 - The collector docstring lists `rtu_serial` and `solarman` as "future transports".
 - **To do:** decide whether to unify RS-485 as a main-collector transport or keep the separate daemon.
@@ -54,28 +60,28 @@
 
 ## Known gaps / technical debt
 
-### 9. `LUX_WRITE_INTERVAL` default mismatch
+### 10. `LUX_WRITE_INTERVAL` default mismatch
 - `collector/__main__.py` and `collector/collector.py` default `write_interval` to **30** seconds, but the README and `settings.py` document **5** seconds.
 - **To do:** reconcile the default (likely 5s) across code, docs, and `.env.example`.
 
-### 10. `LUX_STORAGE_TYPE` vs. per-backend flags
+### 11. `LUX_STORAGE_TYPE` vs. per-backend flags
 - The legacy `LUX_STORAGE_TYPE=mariadb|influxdb` maps to enabling one backend, but the newer `LUX_MARIADB_ENABLED` / `LUX_INFLUX_ENABLED` / `LUX_MQTT_ENABLED` flags allow running multiple backends together.
 - The README's "Storage Backends" section still frames it as an either/or choice.
 - **To do:** document the multi-backend model clearly and deprecate `LUX_STORAGE_TYPE` in favor of the flags.
 
-### 11. `config.example.py` vs. env-var config
+### 12. `config.example.py` vs. env-var config
 - The README mentions a `config.example.py` / `--config config.py` path, but the collector is now primarily env-var + DB-authoritative. Verify the config-file path still works end-to-end.
 
-### 12. Hourly energy rollup location
+### 13. Hourly energy rollup location
 - The README mentions "hourly energy rollups", but there is no dedicated `collector/energy.py`. Confirm where hourly rollups are computed (likely `outputs.py` or the API) and document it.
 
-### 13. `bin/lux-mon-rs485` build step
+### 14. `bin/lux-mon-rs485` build step
 - `bin/lux-mon-rs485` is a Python script (ASCII text executable), not a compiled binary. Confirm it's a thin wrapper around `collector/rs485_collector.py` and document how it's installed/run.
 
-### 14. `captures/` directory — ✅ removed from repo (2026-08-27)
+### 15. `captures/` directory — ✅ removed from repo (2026-08-27)
 - Contained ~4.6 MB of RS-485 BMS reference captures. Removed via `git rm -r --cached captures/` and added `captures/` to `.gitignore` (files stay on disk, just untracked). No code/docs referenced them.
 
-### 15. Lost `PROJECT.md` / `PLAN.md`
+### 16. Lost `PROJECT.md` / `PLAN.md`
 - `.gitignore` references `PROJECT.md` and `PLAN.md` (both gitignored, so never committed). These were the project status/direction notes lost in the crash. This `TODO.md` is their replacement — consider whether to keep them gitignored or track a status doc going forward.
 
 ---
