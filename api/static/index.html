@@ -939,8 +939,6 @@ function renderSchedule() {
   if (!el) return;
   const groups = [
     {title:'Grid charge', prefix:'ac_charge_period', power:'ac_charge_power', soc:'ac_charge_soc_limit'},
-    {title:'Charge priority', prefix:'forced_charge_period', power:'forced_charge_power', soc:'forced_charge_soc_limit'},
-    {title:'Forced discharge', prefix:'forced_discharge_period', power:'forced_discharge_power', soc:'forced_discharge_soc_limit'},
     {title:'AC first', prefix:'ac_first_period', power:null, soc:null}
   ];
   el.innerHTML = groups.map(g => {
