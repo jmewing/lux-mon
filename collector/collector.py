@@ -580,9 +580,7 @@ class PassiveCollector:
         self.cfg.outputs._write_interval = float(self.cfg.write_interval)
         self._outputs = Outputs(self.cfg.outputs, tz_name="UTC")
 
-        # Initialize automation engine using the same DB backend as outputs.
-        # Pass a Notifiers instance so the "notify" automation type can dispatch
-        # email/webhook through the same path as the alert system.
+        # Initialize automation engine (reuses Notifiers for notify automations).
         self._automation = AutomationEngine(
             db_host=self.cfg.outputs.mariadb_host,
             db_port=self.cfg.outputs.mariadb_port,
@@ -673,21 +671,6 @@ class PassiveCollector:
                     self._outputs.evaluate_alerts(self._latest_decoded)
                 self._last_write = time.time()
 
-                # Evaluate automation rules after each successful snapshot.
-                if self._automation and self.cfg.datalog_serial and self.cfg.inverter_serial:
-                    try:
-                        tz = _load_db_setting("timezone", self.cfg) or "America/Chicago"
-                        self._automation.evaluate_and_apply(
-                            snapshot=self._latest_decoded,
-                            dongle_host=self.cfg.dongle_host,
-                            dongle_port=self.cfg.dongle_port,
-                            datalog_serial=self.cfg.datalog_serial,
-                            inverter_serial=self.cfg.inverter_serial,
-                            timezone=tz,
-                        )
-                    except Exception:
-                        logger.exception("Automation evaluation failed")
-
                 # Check for an expired quick charge and restore the prior value.
                 if self._quick_charge and self.cfg.datalog_serial and self.cfg.inverter_serial:
                     try:
@@ -701,6 +684,21 @@ class PassiveCollector:
                             logger.info("Quick charge tick: %s", result)
                     except Exception:
                         logger.exception("Quick charge tick failed")
+
+                # Evaluate automations after quick charge (automations stay active).
+                if self._automation and self.cfg.datalog_serial and self.cfg.inverter_serial:
+                    try:
+                        tz = _load_db_setting("timezone", self.cfg) or "America/Chicago"
+                        self._automation.evaluate_and_apply(
+                            snapshot=self._latest_decoded,
+                            dongle_host=self.cfg.dongle_host,
+                            dongle_port=self.cfg.dongle_port,
+                            datalog_serial=self.cfg.datalog_serial,
+                            inverter_serial=self.cfg.inverter_serial,
+                            timezone=tz,
+                        )
+                    except Exception:
+                        logger.exception("Automation evaluation failed")
 
                 if self._on_snapshot:
                     try:

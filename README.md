@@ -11,7 +11,8 @@ Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi don
 - **Stores** time-series data in **MariaDB/MySQL** (InfluxDB optional, both can run together)
 - **Exposes** a **REST API** for scripting, morning briefings, Home Assistant, etc.
 - **Streams live snapshots** over a **WebSocket** (`/ws`) so the web dashboard updates instantly
-- **Writes inverter settings** via a safe automation rule engine with dry-run, clamping, and action logging
+- **Writes inverter settings** via a safe holding-register write path with clamping and verification
+- **SolarAssistant-style automations** — rule table, battery SOC control, battery protection, and notifications, with global dry-run for safety (38/57 settings mapped)
 - **Quick Charge / Generator Charge** — one-shot timed grid charge with automatic restore
 - **Solar PV forecast** — weather-based (Open-Meteo) with historical calibration, persisted to MariaDB
 - **Alerts** — SOC/temperature/grid-loss thresholds with SMTP + webhook notifications
@@ -29,7 +30,7 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 | Collector | ✅ Live | 111 input registers decoded, writes to MariaDB + InfluxDB + MQTT |
 | REST API | ✅ Live | FastAPI on port 80, systemd-managed |
 | Storage | ✅ Live | MariaDB, InfluxDB v2, hourly energy rollups |
-| Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals, settings, automations |
+| Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals, settings, automations, schedule editor |
 | Active polling | ✅ Built | Fallback for non-broadcasting dongles |
 | Runtime settings | ✅ Live | DB-backed, editable from dashboard ⚙️ tab |
 | Docker image | ✅ Published | Stable: `jmewing/lux-mon:v1.0.1`; Beta: `jmewing/lux-mon:v1.1.0-beta.1` (amd64 + arm64) on Docker Hub and GHCR |
@@ -38,10 +39,10 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 | Solar forecast | ✅ Live | Open-Meteo weather forecast + historical calibration (v1.2.1) |
 | Quick charge | ✅ Live | Timed grid charge with restore-on-expiry |
 | Home Assistant | ✅ Integrated | Native REST integration + MQTT auto-discovery + energy sensors |
-| Schedule editor | ✅ Fixed | Reads/writes actual inverter holding registers (Grid charge, Charge priority, AC first, Forced discharge) |
+| Schedule editor | ✅ Fixed | Reads/writes actual inverter holding registers (Grid charge + AC first) |
+| Automations | ✅ Live | SolarAssistant-style rule table, SOC control, battery protection, notifications (global dry-run; 38/57 settings mapped) |
 | Backup/restore | ✅ Built | Nightly systemd timer + one-command restore |
 | Grafana | ✅ Built | Pre-loaded dashboards and data source |
-| Automation rules | ✅ Built | Rule-table model (time + sensor conditions) that writes holding registers |
 
 ### Supported inverter models
 
@@ -68,13 +69,12 @@ families:
 ### In progress / near-term
 
 - **Inverter Edit Mode page** — manual Read/Set for every editable EG4 6000XP holding register, mirroring the EG4 Monitor Maintenance tab.
-- **Automation page overhaul** — rebuild around a premade option list + wizard (like SolarAssistant's Power Management), with restore-value support and time/day conditions.
 - **Holding register map corrections** — align `collector/protocol.py` with the `LXP_REGISTERS.txt` reference, add missing registers, fix ranges, and correct AC charge current to register 168.
 
 ### Roadmap
 
 - Generator and AC-coupled charge support (generator-charge register path is stubbed)
-- Battery protection automations (SOC threshold + restore) — rule-table model supports this, needs UI
+- A general automation/rule engine (condition → setting write) — see `docs/solarassistant-automation-map.md` for the SolarAssistant reference field map
 - More inverter models via pluggable Modbus RTU drivers (FlexBOSS/GridBOSS need a dedicated register map)
 - Forecast.Solar provider (listed in settings, not yet wired)
 
@@ -225,14 +225,18 @@ The API server runs on port 80 and provides:
 | `GET /api/holding` | Read actual holding-register values directly from the inverter |
 | `GET /api/holding/{name}` | Read a single named holding register from the inverter |
 | `PUT /api/holding/{name}` | Write a single named holding register to the inverter |
-| `GET /api/automation/registers` | List writable holding registers for automation actions |
 | `GET /api/automation/types` | List automation types (rule_table, battery_soc, battery_protection, notify) |
-| `GET /api/automation/rules` | List automation rules and global enable flag |
-| `POST /api/automation/rules` | Replace the full rule set (JSON array) |
-| `DELETE /api/automation/rules/{rule_id}` | Delete a single rule |
+| `GET /api/automation/conditions` | List condition dimensions for automation rules |
+| `GET /api/automation/settings` | List the 50 SolarAssistant-style writable settings with register mapping |
+| `GET /api/automation/rules` | List automations + global enable + dry-run |
+| `POST /api/automation/rules` | Replace the full automation configuration |
+| `DELETE /api/automation/rules/{id}` | Delete one automation |
 | `POST /api/automation/enable` | Globally enable/disable the automation engine |
-| `POST /api/automation/test` | Dry-run evaluate rules against the latest snapshot |
+| `POST /api/automation/dry-run` | Globally enable/disable dry-run mode |
+| `POST /api/automation/rules/{id}/disable` | Temporarily disable an automation for N minutes |
+| `POST /api/automation/test` | Dry-run evaluate automations against the latest snapshot |
 | `GET /api/automation/log` | Recent automation actions / dry-runs |
+| `GET /api/automation/registers` | List writable holding registers (used by the schedule editor) |
 | `GET /api/quick-charge/status` | Current quick-charge state and defaults |
 | `POST /api/quick-charge/start` | Start a timed quick charge (JSON: `{"minutes": 60}`) |
 | `POST /api/quick-charge/stop` | Stop an active quick charge, restoring the prior value |
@@ -242,50 +246,44 @@ The API server runs on port 80 and provides:
 | `GET /api/storage` | Show DB table sizes and disk usage |
 | `WS /ws` | Live snapshot WebSocket stream |
 
-The built-in dashboard (`/`) includes an **Automations** page where you can enable the engine, add rules with time windows and sensor conditions, and test them in dry-run mode before allowing live inverter writes.
+The built-in dashboard (`/`) includes a **Power Management** page with three tools:
 
-### Automation rules
+- **Automations** — SolarAssistant-style condition → action rules with a global dry-run toggle.
+- **Timer Schedule** — Grid charge + AC first time slots.
+- **Quick Charge** — one-shot timed grid charge.
 
-Rules are stored as JSON in the `automation_rules` setting and evaluated after every snapshot. The engine uses a **rule-table model** (target-first, nested subset columns, restore-on-exit) that mirrors the EG4/Luxpower "Power Management" portal. Four automation types are supported:
+### Automations
 
-- `rule_table` — a multi-dimensional rule table (e.g. grid charge current as a function of time-of-day and battery voltage)
-- `battery_soc` — battery state-of-charge control (time + SOC thresholds → grid/battery output source)
-- `battery_protection` — "if SOC ≤ X%, shutdown output; restore to Y when recovered" (restore-on-exit)
-- `notify` — send an email/webhook notification when a condition is met
+Click **Add Automation** to create a rule. Choose from four types:
 
-Only one automation may be active per target type. A rule can set a holding register to a static value or choose a value from a sensor-range table. Each rule supports:
+- **Rule table** — pick a setting, add up to two conditions, set the action value, and optionally a restore value.
+- **Battery state of charge control** — time-of-day + SOC thresholds to choose grid vs battery source.
+- **Battery protection** — if SOC drops below a threshold, write a shutdown voltage; restore when SOC recovers.
+- **Send notification** — when a condition is met, send an email/webhook via the existing alert notifier.
 
-- `time_window`: `{"start": "21:00", "end": "06:00"}` (wraps past midnight)
-- `conditions`: list of `{"sensor": "battery_voltage", "min": 0, "max": 54}` checks
-- `action`: `{"register": "ac_charge_battery_current", "value": 85}` or a `ranges` table
-- `dry_run`: when `true`, the rule logs what it *would* write but never sends a Modbus command
-- `restore`: a value written back when conditions stop matching (or the automation is disabled)
+Conditions include time-of-day, day-of-week, month-of-year, battery SOC/voltage/current, grid voltage/frequency, PV progress, load power, and inverter/battery temperatures.
 
-Only registers listed in `collector/protocol.py:HOLDING_REGISTERS` can be written, and every value is clamped to the register's documented min/max. Example rule matching SolarAssistant's night grid-charge behavior:
+**Safety:** the automation engine has a **global dry-run toggle** (`automation_global_dry_run`) that is ON by default. While dry-run is enabled, the engine evaluates every rule and logs what it *would* write, but it never sends a Modbus command. Turn dry-run OFF only when you are confident the rules behave as intended.
 
-```json
-{
-  "id": "night_grid_charge",
-  "name": "Grid charge current (night)",
-  "enabled": true,
-  "dry_run": true,
-  "time_window": {"start": "21:00", "end": "06:00"},
-  "conditions": [],
-  "action": {
-    "register": "ac_charge_battery_current",
-    "range_sensor": "battery_voltage",
-    "ranges": [
-      {"min": 0,   "max": 54.0, "value": 85},
-      {"min": 55.0, "max": 56.0, "value": 45},
-      {"min": 57.0, "max": 58.0, "value": 5}
-    ]
-  }
-}
-```
+Individual automations can be enabled/disabled and temporarily disabled for 30 minutes up to 24 hours from the dashboard card. Saved automations are stored as JSON in the `automations_v2` setting.
 
-Enable the engine globally with the `automation_enabled` setting (or the dashboard toggle). Set `dry_run: false` on a rule only when you are ready for live inverter writes.
+### Schedule editor
 
-**Design note:** Readable values (SOC, voltage, current, power) are telemetry and are included automatically. Set values (charge current, SOC limits, time slots, modes) are only written when explicitly changed via the website or when an automation rule says "this is what we want it to be." lux-mon never writes a setting just because it happens to be readable.
+The schedule editor writes directly to the inverter's holding registers via
+`PUT /api/holding/{name}`. It covers two groups:
+
+- **Grid charge** — `ac_charge_period_*` (3 slots) plus charge power and SOC limit
+- **AC first** — `ac_first_period_*` (3 slots)
+
+Time slots are encoded as `(minute << 8) | hour` (minute in the high byte,
+hour in the low byte), matching the LuxPower register format. Writes are sent
+sequentially (not in parallel) because the dongle rejects bursts of
+simultaneous write connections.
+
+**Design note:** Readable values (SOC, voltage, current, power) are telemetry
+and are included automatically. Set values (charge current, SOC limits, time
+slots, modes) are only written when explicitly changed via the website. lux-mon
+never writes a setting just because it happens to be readable.
 
 ### Quick Charge
 
@@ -312,8 +310,8 @@ not the quick-charge toggle.
 The quick-charge control lives on the **main dashboard** (a button with a
 ▼-toggle for a custom duration, 1–240 minutes, default 60). State is persisted
 in the `lux_settings` table so it survives collector restarts, and all actions
-are logged to the automation log. Writes reuse the automation engine's safe
-write helpers (fresh socket, echo verification, clamping).
+are logged. Writes use the shared holding-register write helpers (fresh socket,
+echo verification, clamping).
 
 ### Solar PV forecast
 
@@ -446,7 +444,7 @@ Tables are auto-created on first run:
 - `lux_settings` — runtime settings (key/value)
 - `lux_alerts` — alert events
 - `lux_solar_forecast` — solar PV forecast time series
-- `lux_automation_log` — automation actions / dry-runs
+- `lux_automation_log` — quick-charge action log
 
 Set `LUX_MARIADB_TABLE_PREFIX` to change the table prefix from `lux_` if needed.
 

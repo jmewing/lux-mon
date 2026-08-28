@@ -88,8 +88,6 @@ a.status:hover > div .label { color: var(--link-color); }
   padding: 0.55rem 0.7rem; color: var(--text-color); font-size: 0.9rem;
 }
 .actions { display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; }
-.rule-card { margin-bottom: 0.75rem; }
-.rule-meta { font-size: 0.8rem; color: var(--light-text-color); }
 .config-panel { display: none; }
 .config-panel.active { display: block; }
 .back-link { color: var(--link-color); cursor: pointer; font-size: 0.85rem; margin-bottom: 0.75rem; display: inline-flex; gap: 0.4rem; }
@@ -261,15 +259,65 @@ a.status:hover > div .label { color: var(--link-color); }
     <div id="page-automations" class="section">
       <div class="page-header"><div class="title"><h2>Power Management</h2></div></div>
 
-      <!-- Global control -->
-      <div class="card" style="margin-bottom:1em;">
+      <!-- Automations (SolarAssistant-style) -->
+      <div class="card" id="automations-card" style="margin-bottom:1em;">
         <div class="card-section">
-          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
             <div>
-              <h3>Automation Engine</h3>
-              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Rules run after every snapshot. Use <strong>dry run</strong> to test safely.</p>
+              <h3>Automations</h3>
+              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Condition-driven rules that write inverter settings. Global dry-run is ON by default.</p>
             </div>
-            <label class="field" style="flex-direction:row; align-items:center; gap:0.5rem; margin:0;"><input type="checkbox" id="auto-enabled"> <span>Enable</span></label>
+            <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+              <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.85rem;">
+                <input type="checkbox" id="auto-global-enable"> Enable
+              </label>
+              <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.85rem;">
+                <input type="checkbox" id="auto-global-dry-run" checked> Dry Run
+              </label>
+              <button class="btn" id="btn-save-auto-global">Save</button>
+              <button class="btn" id="btn-add-automation">Add Automation</button>
+            </div>
+          </div>
+          <div id="automations-list"></div>
+        </div>
+      </div>
+
+      <!-- Add automation modal -->
+      <div id="add-automation-modal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width:720px;">
+          <div class="modal-header">
+            <h3>Add Automation</h3>
+            <button class="modal-close" id="close-add-auto">×</button>
+          </div>
+          <div class="modal-body">
+            <div id="add-automation-step-1">
+              <p class="text-light" style="margin-bottom:0.75rem;">Select an automation type.</p>
+              <div id="automation-type-grid" class="form-grid"></div>
+            </div>
+            <div id="add-automation-step-2" style="display:none;">
+              <div id="automation-form"></div>
+              <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+                <button class="btn btn-secondary" id="btn-auto-back">Back</button>
+                <button class="btn" id="btn-auto-save">Save Automation</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edit automation modal -->
+      <div id="edit-automation-modal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width:720px;">
+          <div class="modal-header">
+            <h3>Edit Automation</h3>
+            <button class="modal-close" id="close-edit-auto">×</button>
+          </div>
+          <div class="modal-body">
+            <div id="edit-automation-form"></div>
+            <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+              <button class="btn btn-secondary" id="btn-edit-auto-cancel">Cancel</button>
+              <button class="btn" id="btn-edit-auto-save">Save Changes</button>
+            </div>
           </div>
         </div>
       </div>
@@ -288,51 +336,6 @@ a.status:hover > div .label { color: var(--link-color); }
         </div>
       </div>
 
-      <!-- Automation rules -->
-      <div class="card" style="margin-bottom:1em;">
-        <div class="card-section">
-          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
-            <h3>Automation Rules</h3>
-            <div class="actions" style="margin:0;">
-              <button class="btn" id="btn-add-rule">+ Add automation</button>
-              <button class="btn" id="btn-test-rules">Dry-Run Test</button>
-              <button class="btn" id="btn-load-rules">Reload</button>
-            </div>
-          </div>
-          <div id="rules-list" style="margin-top:0.75rem;"></div>
-        </div>
-      </div>
-
-      <!-- Add-automation type picker modal -->
-      <div id="type-picker" style="display:none;">
-        <div class="card" style="margin-bottom:1em;">
-          <div class="card-section">
-            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
-              <h3>Select automation</h3>
-              <button class="btn" id="btn-type-picker-close">Cancel</button>
-            </div>
-            <div id="type-picker-body" style="margin-top:0.75rem; display:flex; flex-wrap:wrap; gap:0.5rem;"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Rule editor modal -->
-      <div id="rule-editor" style="display:none;">
-        <div class="card" style="margin-bottom:1em;">
-          <div class="card-section">
-            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
-              <h3 id="rule-editor-title">Edit Automation</h3>
-              <button class="btn" id="btn-rule-editor-close">Close</button>
-            </div>
-            <div id="rule-editor-body" style="margin-top:0.75rem;"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Automation log -->
-      <div class="card" style="margin-top:1em;">
-        <div class="card-section"><h3>Automation Log</h3><div id="auto-log" style="max-height:300px; overflow:auto; font-size:0.85rem;"></div></div>
-      </div>
       <div id="auto-msg" style="margin-top:0.75rem; font-size:0.9rem;"></div>
     </div>
 
@@ -464,8 +467,8 @@ function val(r, key, fallback) {
   const k = r.registers[key];
   return k && k.value !== undefined ? k.value : fallback;
 }
-async function fetchJson(url) {
-  const res = await fetch(url);
+async function fetchJson(url, options) {
+  const res = await fetch(url, options);
   if (!res.ok) throw new Error(res.statusText);
   return res.json();
 }
@@ -854,25 +857,12 @@ async function loadHistorical() {
 }
 
 let autoRegisters = [];
-let autoRules = [];
 let autoSettings = {};
-let autoTypes = [];
-let autoSubsets = [];
-let editingRuleIdx = -1;
 
 function regByName(name) { return autoRegisters.find(r => r.name === name); }
-function subsetByKind(kind) { return autoSubsets.find(s => s.kind === kind); }
-function typeById(id) { return autoTypes.find(t => t.id === id); }
 
 async function loadAutomationRegisters() {
   try { autoRegisters = (await fetchJson(API + '/api/automation/registers')).registers; } catch (e) { console.error(e); }
-}
-async function loadAutomationTypes() {
-  try {
-    const res = await fetchJson(API + '/api/automation/types');
-    autoTypes = res.types || [];
-    autoSubsets = res.subsets || [];
-  } catch (e) { console.error(e); }
 }
 async function loadAutomationSettings() {
   try {
@@ -894,13 +884,9 @@ async function loadAutomationSettings() {
   } catch (e) { console.error(e); }
 }
 async function loadAutomation() {
-  await Promise.all([loadAutomationRegisters(), loadAutomationTypes(), loadAutomationSettings()]);
-  const res = await fetchJson(API + '/api/automation/rules');
-  autoRules = res.rules || [];
-  document.getElementById('auto-enabled').checked = res.enabled;
-  renderRules();
+  await Promise.all([loadAutomationRegisters(), loadAutomationSettings()]);
   renderSchedule();
-  renderAutomationLog();
+  await initAutomation();
 }
 
 function decodeTime(num) {
@@ -994,440 +980,6 @@ async function saveSchedule() {
     msg.textContent = 'Error saving schedule: ' + e.message; msg.style.color = 'var(--red-color)';
   }
 }
-
-// ── Rule rendering ─────────────────────────────────────────────────────────
-
-function automationTypeLabel(rule) {
-  const t = typeById(rule.type || 'rule_table');
-  return t ? t.label : (rule.type || 'rule_table');
-}
-
-function ruleTableSummary(rule) {
-  const reg = regByName(rule.target);
-  const unit = reg ? reg.unit : '';
-  const cols = (rule.columns || []).map(c => {
-    const s = subsetByKind(c.kind);
-    return s ? s.label : c.kind;
-  }).join(' → ');
-  const leafCount = (rule.columns && rule.columns.length)
-    ? rule.columns[rule.columns.length - 1].ranges.length : 0;
-  return `${cols} → Set ${rule.target} (${leafCount} value${leafCount !== 1 ? 's' : ''})`;
-}
-
-function batterySocSummary(rule) {
-  const pts = (rule.points || []).map(p => `${p.time} @ ${p.soc}%`).join(', ');
-  return `Points: ${pts || 'none'}`;
-}
-
-function batteryProtectionSummary(rule) {
-  return `If SOC ≤ ${rule.threshold_soc}% → shutdown; restore ${rule.restore_value}V`;
-}
-
-function notifySummary(rule) {
-  const s = subsetByKind(rule.condition_kind);
-  const label = s ? s.label : rule.condition_kind;
-  return `${label} ${rule.operator} ${rule.threshold}`;
-}
-
-function ruleSummary(rule) {
-  const t = rule.type || 'rule_table';
-  if (t === 'battery_soc') return batterySocSummary(rule);
-  if (t === 'battery_protection') return batteryProtectionSummary(rule);
-  if (t === 'notify') return notifySummary(rule);
-  return ruleTableSummary(rule);
-}
-
-function renderRules() {
-  const container = document.getElementById('rules-list');
-  if (!autoRules.length) { container.innerHTML = '<p class="text-light">No automations yet. Click “+ Add automation” to create one.</p>'; return; }
-  container.innerHTML = autoRules.map((rule, idx) => {
-    const typeLabel = automationTypeLabel(rule);
-    return `<div class="card rule-card"><div class="card-section">
-      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
-        <h3>${rule.name || 'Unnamed'}${rule.dry_run ? ' <span style="color:var(--yellow-color); font-size:0.8rem;">[DRY RUN]</span>' : ''}</h3>
-        <div class="actions" style="margin:0;">
-          <button class="btn" onclick="openRuleEditor(${idx})">Edit</button>
-          <button class="btn negative" onclick="deleteRule('${rule.id}')">Delete</button>
-        </div>
-      </div>
-      <div class="rule-meta"><strong>${typeLabel}</strong> · ${ruleSummary(rule)}</div>
-    </div></div>`;
-  }).join('');
-}
-
-// ── Type picker (Add automation wizard, step 1) ────────────────────────────
-
-function openTypePicker() {
-  const body = document.getElementById('type-picker-body');
-  body.innerHTML = autoTypes.map(t => `
-    <button class="btn" style="flex:1 1 200px; text-align:left;" onclick="createAutomation('${t.id}')">
-      <strong>${t.label}</strong>
-    </button>`).join('');
-  document.getElementById('type-picker').style.display = 'block';
-  document.getElementById('type-picker').scrollIntoView({behavior:'smooth'});
-}
-function closeTypePicker() {
-  document.getElementById('type-picker').style.display = 'none';
-}
-
-function createAutomation(typeId) {
-  closeTypePicker();
-  let rule;
-  if (typeId === 'battery_soc') {
-    rule = {id:'auto_'+Date.now(), name:'Battery state of charge', type:'battery_soc', enabled:true, dry_run:true, points:[{time:'08:00', soc:30},{time:'15:00', soc:70}]};
-  } else if (typeId === 'battery_protection') {
-    rule = {id:'auto_'+Date.now(), name:'Battery protection', type:'battery_protection', enabled:true, dry_run:true, threshold_soc:25, shutdown_register:'shutdown_battery_voltage', restore_value:40.0};
-  } else if (typeId === 'notify') {
-    rule = {id:'auto_'+Date.now(), name:'Notification', type:'notify', enabled:true, dry_run:true, condition_kind:'battery_soc', operator:'<=', threshold:20};
-  } else {
-    rule = {id:'auto_'+Date.now(), name:'New rule table', type:'rule_table', enabled:true, dry_run:true, target:'ac_charge_battery_current', columns:[{kind:'time_of_day', ranges:[{from:'21:00', to:'23:59'}]}], restore:null};
-  }
-  autoRules.push(rule);
-  renderRules();
-  openRuleEditor(autoRules.length - 1);
-}
-
-// ── Rule editor ────────────────────────────────────────────────────────────
-
-function openRuleEditor(idx) {
-  editingRuleIdx = idx;
-  const rule = autoRules[idx];
-  document.getElementById('rule-editor-title').textContent = rule.name || 'Edit Automation';
-  document.getElementById('rule-editor').style.display = 'block';
-  renderRuleEditorBody(rule);
-  document.getElementById('rule-editor').scrollIntoView({behavior:'smooth'});
-}
-function closeRuleEditor() {
-  document.getElementById('rule-editor').style.display = 'none';
-  editingRuleIdx = -1;
-}
-
-function renderRuleEditorBody(rule) {
-  const body = document.getElementById('rule-editor-body');
-  const t = rule.type || 'rule_table';
-
-  if (t === 'battery_soc') { renderBatterySocEditor(body, rule); return; }
-  if (t === 'battery_protection') { renderBatteryProtectionEditor(body, rule); return; }
-  if (t === 'notify') { renderNotifyEditor(body, rule); return; }
-  renderRuleTableEditor(body, rule);
-}
-
-// ── Rule table editor (target-first, nested subset columns) ───────────────
-
-function renderRuleTableEditor(body, rule) {
-  const regOptions = autoRegisters.map(r => `<option value="${r.name}" ${r.name===rule.target?'selected':''}>${r.label || r.name} (${r.unit})</option>`).join('');
-  const subsetOptions = autoSubsets.map(s => `<option value="${s.kind}">${s.label}${s.unit ? ' ('+s.unit+')' : ''}</option>`).join('');
-
-  body.innerHTML = `
-    <div class="form-grid">
-      <div class="field"><label>Name</label><input type="text" id="re-name" value="${rule.name || ''}"></div>
-      <div class="field"><label>Dry run (test only, no writes)</label><label style="flex-direction:row; align-items:center; gap:0.5rem;"><input type="checkbox" id="re-dryrun" ${rule.dry_run?'checked':''}> <span>Enabled</span></label></div>
-    </div>
-    <h4 style="margin:1rem 0 0.5rem;">Set — target</h4>
-    <div class="form-grid">
-      <div class="field"><label>Target setting</label><select id="re-target">${regOptions}</select></div>
-      <div class="field"><label>Restore value (optional)</label><input type="number" id="re-restore" value="${rule.restore ?? ''}" placeholder="—" step="any"></div>
-    </div>
-    <h4 style="margin:1rem 0 0.5rem;">When — conditions (nested columns)</h4>
-    <div id="re-columns"></div>
-    <button class="btn" id="re-add-column" style="margin-top:0.5rem;">+ Add condition column</button>
-    <div class="actions" style="margin-top:1rem;">
-      <button class="btn" id="re-save">Save</button>
-      <button class="btn" id="re-cancel">Cancel</button>
-    </div>
-  `;
-
-  const columns = rule.columns || [];
-  const colWrap = document.getElementById('re-columns');
-
-  function renderColumns() {
-    if (!columns.length) {
-      colWrap.innerHTML = '<p class="text-light">No condition columns. Add one to define when this target applies.</p>';
-      return;
-    }
-    colWrap.innerHTML = columns.map((col, ci) => {
-      const s = subsetByKind(col.kind);
-      const isLeaf = (ci === columns.length - 1);
-      const unit = s ? s.unit : '';
-      const valueType = s ? s.value_type : 'number';
-      const ranges = col.ranges || [];
-      return `<div class="card" style="margin-bottom:0.75rem; padding:0.75rem;">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin-bottom:0.5rem;">
-          <strong>${ci === 0 ? 'When' : 'And when'}: ${s ? s.label : col.kind}</strong>
-          <div class="actions" style="margin:0;">
-            <button class="btn" data-col-add-range="${ci}">+ range</button>
-            <button class="btn negative" data-col-del="${ci}">✕</button>
-          </div>
-        </div>
-        <div data-col-ranges="${ci}">
-          ${ranges.map((r, ri) => renderRangeRow(ci, ri, r, valueType, unit, isLeaf)).join('')}
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  function renderRangeRow(ci, ri, r, valueType, unit, isLeaf) {
-    const fromVal = r.from ?? '';
-    const toVal = r.to ?? '';
-    const val = r.value ?? '';
-    const fromInput = valueType === 'time'
-      ? `<input type="time" data-range="${ci}" data-range-idx="${ri}" data-range-field="from" value="${fromVal}">`
-      : `<input type="number" data-range="${ci}" data-range-idx="${ri}" data-range-field="from" value="${fromVal}" placeholder="—" step="any">`;
-    const toInput = valueType === 'time'
-      ? `<input type="time" data-range="${ci}" data-range-idx="${ri}" data-range-field="to" value="${toVal}">`
-      : `<input type="number" data-range="${ci}" data-range-idx="${ri}" data-range-field="to" value="${toVal}" placeholder="—" step="any">`;
-    const valueInput = isLeaf
-      ? `<input type="number" data-range="${ci}" data-range-idx="${ri}" data-range-field="value" value="${val}" placeholder="value" step="any">`
-      : '';
-    return `<div class="form-grid" style="margin-bottom:0.4rem; align-items:end;">
-      <div class="field"><label>From</label>${fromInput}</div>
-      <div class="field"><label>To</label>${toInput}</div>
-      ${isLeaf ? `<div class="field"><label>Set (${unit})</label>${valueInput}</div>` : ''}
-      <button class="btn negative" data-range-del="${ci}" data-range-del-idx="${ri}">✕</button>
-    </div>`;
-  }
-
-  renderColumns();
-
-  // Add a column
-  document.getElementById('re-add-column').onclick = () => {
-    const kind = autoSubsets.length ? autoSubsets[0].kind : 'time_of_day';
-    columns.push({kind, ranges:[{from:null, to:null, value:null}]});
-    renderColumns();
-  };
-
-  // Event delegation for column/range add/delete/input
-  colWrap.addEventListener('click', e => {
-    const addRange = e.target.closest('[data-col-add-range]');
-    if (addRange) {
-      const ci = Number(addRange.dataset.colAddRange);
-      columns[ci].ranges.push({from:null, to:null, value:null});
-      renderColumns();
-      return;
-    }
-    const delCol = e.target.closest('[data-col-del]');
-    if (delCol) {
-      const ci = Number(delCol.dataset.colDel);
-      columns.splice(ci, 1);
-      renderColumns();
-      return;
-    }
-    const delRange = e.target.closest('[data-range-del]');
-    if (delRange) {
-      const ci = Number(delRange.dataset.rangeDel);
-      const ri = Number(delRange.dataset.rangeDelIdx);
-      columns[ci].ranges.splice(ri, 1);
-      renderColumns();
-      return;
-    }
-  });
-
-  colWrap.addEventListener('input', e => {
-    const t = e.target.closest('[data-range]');
-    if (!t) return;
-    const ci = Number(t.dataset.range);
-    const ri = Number(t.dataset.rangeIdx);
-    const f = t.dataset.rangeField;
-    const raw = t.value;
-    let val = raw === '' ? null : (f === 'from' || f === 'to' ? raw : Number(raw));
-    columns[ci].ranges[ri][f] = val;
-  });
-
-  document.getElementById('re-save').onclick = () => {
-    rule.name = document.getElementById('re-name').value || 'Unnamed';
-    rule.dry_run = document.getElementById('re-dryrun').checked;
-    rule.target = document.getElementById('re-target').value;
-    const restoreRaw = document.getElementById('re-restore').value;
-    rule.restore = restoreRaw === '' ? null : Number(restoreRaw);
-    rule.columns = columns.filter(c => c.ranges && c.ranges.length);
-    closeRuleEditor();
-    renderRules();
-    saveRules();
-  };
-  document.getElementById('re-cancel').onclick = closeRuleEditor;
-}
-
-// ── Battery SOC editor ─────────────────────────────────────────────────────
-
-function renderBatterySocEditor(body, rule) {
-  const points = rule.points || [];
-  body.innerHTML = `
-    <div class="form-grid">
-      <div class="field"><label>Name</label><input type="text" id="re-name" value="${rule.name || ''}"></div>
-      <div class="field"><label>Dry run</label><label style="flex-direction:row; align-items:center; gap:0.5rem;"><input type="checkbox" id="re-dryrun" ${rule.dry_run?'checked':''}> <span>Enabled</span></label></div>
-    </div>
-    <h4 style="margin:1rem 0 0.5rem;">Points (SOC vs time boundary line)</h4>
-    <div id="re-points"></div>
-    <button class="btn" id="re-add-point" style="margin-top:0.5rem;">+ Add point</button>
-    <div class="actions" style="margin-top:1rem;">
-      <button class="btn" id="re-save">Save</button>
-      <button class="btn" id="re-cancel">Cancel</button>
-    </div>
-  `;
-
-  const wrap = document.getElementById('re-points');
-  function renderPoints() {
-    wrap.innerHTML = points.map((p, i) => `
-      <div class="form-grid" style="margin-bottom:0.5rem; align-items:end;">
-        <div class="field"><label>Time</label><input type="time" data-point="${i}" data-point-field="time" value="${p.time || '00:00'}"></div>
-        <div class="field"><label>SOC threshold (%)</label><input type="number" data-point="${i}" data-point-field="soc" value="${p.soc ?? 50}" min="0" max="100" step="1"></div>
-        <button class="btn negative" data-point-del="${i}">✕</button>
-      </div>`).join('') || '<p class="text-light">No points yet.</p>';
-  }
-  renderPoints();
-
-  document.getElementById('re-add-point').onclick = () => { points.push({time:'00:00', soc:50}); renderPoints(); };
-  wrap.addEventListener('click', e => {
-    const del = e.target.closest('[data-point-del]');
-    if (del) { points.splice(Number(del.dataset.pointDel), 1); renderPoints(); }
-  });
-  wrap.addEventListener('input', e => {
-    const t = e.target.closest('[data-point]');
-    if (!t) return;
-    const i = Number(t.dataset.point);
-    const f = t.dataset.pointField;
-    points[i][f] = f === 'soc' ? Number(t.value) : t.value;
-  });
-
-  document.getElementById('re-save').onclick = () => {
-    rule.name = document.getElementById('re-name').value || 'Battery state of charge';
-    rule.dry_run = document.getElementById('re-dryrun').checked;
-    rule.points = points;
-    closeRuleEditor();
-    renderRules();
-    saveRules();
-  };
-  document.getElementById('re-cancel').onclick = closeRuleEditor;
-}
-
-// ── Battery protection editor ─────────────────────────────────────────────
-
-function renderBatteryProtectionEditor(body, rule) {
-  const regOptions = autoRegisters.map(r => `<option value="${r.name}" ${r.name===rule.shutdown_register?'selected':''}>${r.label || r.name} (${r.unit})</option>`).join('');
-  body.innerHTML = `
-    <div class="form-grid">
-      <div class="field"><label>Name</label><input type="text" id="re-name" value="${rule.name || ''}"></div>
-      <div class="field"><label>Dry run</label><label style="flex-direction:row; align-items:center; gap:0.5rem;"><input type="checkbox" id="re-dryrun" ${rule.dry_run?'checked':''}> <span>Enabled</span></label></div>
-    </div>
-    <h4 style="margin:1rem 0 0.5rem;">If battery state of charge is</h4>
-    <div class="form-grid">
-      <div class="field"><label>Threshold (%)</label><input type="number" id="re-threshold" value="${rule.threshold_soc ?? 25}" min="0" max="100" step="1"></div>
-      <div class="field"><label>or lower</label><span class="text-light">shutdown inverter output</span></div>
-    </div>
-    <h4 style="margin:1rem 0 0.5rem;">Shutdown via</h4>
-    <div class="form-grid">
-      <div class="field"><label>Register</label><select id="re-shutdown-reg">${regOptions}</select></div>
-    </div>
-    <h4 style="margin:1rem 0 0.5rem;">When recovered, restore to</h4>
-    <div class="form-grid">
-      <div class="field"><label>Restore value</label><input type="number" id="re-restore" value="${rule.restore_value ?? 40.0}" step="any"></div>
-    </div>
-    <div class="actions" style="margin-top:1rem;">
-      <button class="btn" id="re-save">Save</button>
-      <button class="btn" id="re-cancel">Cancel</button>
-    </div>
-  `;
-
-  document.getElementById('re-save').onclick = () => {
-    rule.name = document.getElementById('re-name').value || 'Battery protection';
-    rule.dry_run = document.getElementById('re-dryrun').checked;
-    rule.threshold_soc = Number(document.getElementById('re-threshold').value);
-    rule.shutdown_register = document.getElementById('re-shutdown-reg').value;
-    rule.restore_value = Number(document.getElementById('re-restore').value);
-    closeRuleEditor();
-    renderRules();
-    saveRules();
-  };
-  document.getElementById('re-cancel').onclick = closeRuleEditor;
-}
-
-// ── Notify editor ──────────────────────────────────────────────────────────
-
-function renderNotifyEditor(body, rule) {
-  const subsetOptions = autoSubsets.map(s => `<option value="${s.kind}" ${s.kind===rule.condition_kind?'selected':''}>${s.label}</option>`).join('');
-  body.innerHTML = `
-    <div class="form-grid">
-      <div class="field"><label>Name</label><input type="text" id="re-name" value="${rule.name || ''}"></div>
-      <div class="field"><label>Dry run</label><label style="flex-direction:row; align-items:center; gap:0.5rem;"><input type="checkbox" id="re-dryrun" ${rule.dry_run?'checked':''}> <span>Enabled</span></label></div>
-    </div>
-    <h4 style="margin:1rem 0 0.5rem;">Notify when</h4>
-    <div class="form-grid">
-      <div class="field"><label>Condition</label><select id="re-cond-kind">${subsetOptions}</select></div>
-      <div class="field"><label>Operator</label><select id="re-cond-op">
-        <option value="<=" ${rule.operator==='<='?'selected':''}>≤</option>
-        <option value=">=" ${rule.operator==='>='?'selected':''}>≥</option>
-        <option value="<" ${rule.operator==='<'?'selected':''}>&lt;</option>
-        <option value=">" ${rule.operator==='>'?'selected':''}>&gt;</option>
-        <option value="==" ${rule.operator==='=='?'selected':''}>=</option>
-      </select></div>
-      <div class="field"><label>Threshold</label><input type="number" id="re-cond-threshold" value="${rule.threshold ?? ''}" step="any"></div>
-    </div>
-    <div class="actions" style="margin-top:1rem;">
-      <button class="btn" id="re-save">Save</button>
-      <button class="btn" id="re-cancel">Cancel</button>
-    </div>
-  `;
-
-  document.getElementById('re-save').onclick = () => {
-    rule.name = document.getElementById('re-name').value || 'Notification';
-    rule.dry_run = document.getElementById('re-dryrun').checked;
-    rule.condition_kind = document.getElementById('re-cond-kind').value;
-    rule.operator = document.getElementById('re-cond-op').value;
-    rule.threshold = Number(document.getElementById('re-cond-threshold').value);
-    closeRuleEditor();
-    renderRules();
-    saveRules();
-  };
-  document.getElementById('re-cancel').onclick = closeRuleEditor;
-}
-
-// ── Save / delete / test ───────────────────────────────────────────────────
-
-async function deleteRule(id) {
-  if (!confirm('Delete this automation?')) return;
-  await fetch(API + '/api/automation/rules/' + id, {method:'DELETE'});
-  loadAutomation();
-}
-async function saveRules() {
-  const msg = document.getElementById('auto-msg');
-  try {
-    const res = await fetch(API + '/api/automation/rules', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(autoRules)});
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || res.statusText);
-    }
-    msg.textContent = 'Automations saved.'; msg.style.color = 'var(--green-color)';
-  } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
-}
-async function testRules() {
-  const msg = document.getElementById('auto-msg');
-  msg.textContent = 'Running dry-run...'; msg.style.color = 'var(--light-text-color)';
-  try {
-    const res = await fetch(API + '/api/automation/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})});
-    const data = await res.json();
-    const matched = data.results.filter(r => r.matched);
-    msg.innerHTML = `Dry-run complete. ${matched.length}/${data.results.length} automations matched.`;
-    msg.style.color = matched.length ? 'var(--yellow-color)' : 'var(--light-text-color)';
-    renderAutomationLog();
-  } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
-}
-async function renderAutomationLog() {
-  try {
-    const res = await fetchJson(API + '/api/automation/log?limit=20');
-    const log = res.log || [];
-    document.getElementById('auto-log').innerHTML = log.map(row => {
-      const ts = new Date(row.timestamp).toLocaleTimeString();
-      const status = row.dry_run ? 'DRY-RUN' : (row.success ? 'OK' : 'FAIL');
-      return `<div style="margin-bottom:0.25rem;"><span class="text-light">${ts}</span> <strong>${row.rule_name}</strong> ${row.register_name}=${row.scaled_value} [${status}] ${row.message || ''}</div>`;
-    }).join('') || '<p class="text-light">No automation actions yet.</p>';
-  } catch (e) { console.error(e); }
-}
-async function toggleAutomationEnabled() {
-  const enabled = document.getElementById('auto-enabled').checked;
-  const res = await fetch(API + '/api/automation/enable?enabled=' + enabled, {method:'POST'});
-  document.getElementById('auto-msg').textContent = res.ok ? (enabled ? 'Automation enabled.' : 'Automation disabled.') : 'Failed to save.';
-}
-
 
 async function loadConfiguration() {
   const s = await fetchJson(API + '/api/settings');
@@ -1579,6 +1131,557 @@ function connectWS() {
   ws.onclose = () => setTimeout(connectWS, 3000);
 }
 
+
+// ── Automation v2 UI ─────────────────────────────────────────────────────────
+
+let automationTypes = [];
+let automationConditions = {};
+let automationSettings = [];
+let automationState = { enabled: false, global_dry_run: true, automations: [] };
+let newAutomationType = null;
+let editingAutomationId = null;
+
+const DISABLE_OPTIONS = [
+  { m: 30, label: "30 minutes" },
+  { m: 60, label: "1 hour" },
+  { m: 120, label: "2 hours" },
+  { m: 240, label: "4 hours" },
+  { m: 480, label: "8 hours" },
+  { m: 720, label: "12 hours" },
+  { m: 1440, label: "24 hours" },
+];
+
+async function loadAutomationTypes() {
+  try { automationTypes = (await fetchJson(API + '/api/automation/types')).types || []; } catch (e) { console.error(e); }
+}
+async function loadAutomationConditions() {
+  try { automationConditions = (await fetchJson(API + '/api/automation/conditions')).conditions || {}; } catch (e) { console.error(e); }
+}
+async function loadAutomationSettingsList() {
+  try { automationSettings = (await fetchJson(API + '/api/automation/settings')).settings || []; } catch (e) { console.error(e); }
+}
+async function loadAutomationState() {
+  try {
+    automationState = await fetchJson(API + '/api/automation/rules');
+  } catch (e) { console.error(e); }
+}
+
+async function initAutomation() {
+  await Promise.all([
+    loadAutomationTypes(),
+    loadAutomationConditions(),
+    loadAutomationSettingsList(),
+    loadAutomationState(),
+  ]);
+  renderAutomations();
+}
+
+function formatDisabledUntil(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  return d.toLocaleString();
+}
+
+function renderAutomations() {
+  document.getElementById('auto-global-enable').checked = !!automationState.enabled;
+  document.getElementById('auto-global-dry-run').checked = !!automationState.global_dry_run;
+
+  const list = document.getElementById('automations-list');
+  if (!automationState.automations || automationState.automations.length === 0) {
+    list.innerHTML = `<p class="text-light">No automations configured. Click <strong>Add Automation</strong> to create one.</p>`;
+    return;
+  }
+
+  list.innerHTML = automationState.automations.map(a => {
+    const disabled = a.disabled_until && Date.now() / 1000 < a.disabled_until;
+    const typeLabel = (automationTypes.find(t => t.id === a.type) || {}).label || a.type;
+    let details = [];
+    if (a.setting) {
+      const s = automationSettings.find(x => x.name === a.setting);
+      details.push(`<strong>${s ? s.label : a.setting}</strong>`);
+    }
+    if (a.type === 'rule_table' && a.groups && a.groups.length) {
+      const gk = (automationConditions[a.group_kind] || {}).label || a.group_kind;
+      const rk = (automationConditions[a.range_kind] || {}).label || a.range_kind;
+      const nRanges = a.groups.reduce((n, g) => n + (g.ranges ? g.ranges.length : 0), 0);
+      details.push(`when ${gk} → ${rk} (${a.groups.length} groups, ${nRanges} ranges)`);
+    } else if (a.action_value !== null && a.action_value !== undefined) {
+      const s = a.setting ? (automationSettings.find(x => x.name === a.setting) || {}) : {};
+      details.push(`→ set ${a.action_value}${s.mapped && s.mapped.unit ? ' ' + s.mapped.unit : ''}`);
+    }
+    if (a.conditions && a.conditions.length) {
+      details.push('when ' + a.conditions.map(c => describeCondition(c)).join(' AND '));
+    }
+    if (a.threshold !== null && a.threshold !== undefined) {
+      details.push(`when SOC ≤ ${a.threshold}%`);
+    }
+    if (a.restore_value !== null && a.restore_value !== undefined) {
+      details.push(`restore ${a.restore_value}`);
+    }
+
+    return `
+      <div class="automation-card" style="border:1px solid var(--border); border-radius:8px; padding:0.85rem; margin-bottom:0.75rem; ${a.enabled ? '' : 'opacity:0.7;'}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.75rem;">
+          <div>
+            <div style="font-weight:600;">${a.name || '(unnamed)'} <span class="text-light" style="font-size:0.8rem;">(${typeLabel})</span></div>
+            <div style="font-size:0.85rem; margin-top:0.3rem;">${details.join(' <span class="text-light">•</span> ') || 'No conditions or actions'}</div>
+            ${disabled ? `<div style="font-size:0.8rem; color:var(--warn); margin-top:0.35rem;">Disabled until ${formatDisabledUntil(a.disabled_until)}</div>` : ''}
+          </div>
+          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <label style="display:flex; align-items:center; gap:0.25rem; font-size:0.8rem;">
+              <input type="checkbox" class="auto-enable" data-id="${a.id}" ${a.enabled ? 'checked' : ''}> On
+            </label>
+            <button class="btn btn-small btn-edit-auto" data-id="${a.id}">Edit</button>
+            <button class="btn btn-small btn-danger" onclick="deleteAutomation('${a.id}')">Delete</button>
+          </div>
+        </div>
+        <div style="margin-top:0.75rem; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+          <span class="text-light" style="font-size:0.85rem;">Disable for:</span>
+          <select class="auto-disable-for" data-id="${a.id}">
+            <option value="">—</option>
+            ${DISABLE_OPTIONS.map(o => `<option value="${o.m}">${o.label}</option>`).join('')}
+          </select>
+          <button class="btn btn-small btn-auto-apply-disable" data-id="${a.id}">Apply</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  document.querySelectorAll('.auto-enable').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      const id = cb.dataset.id;
+      const a = automationState.automations.find(x => x.id === id);
+      if (a) { a.enabled = cb.checked; await saveAutomationState(); }
+    });
+  });
+  document.querySelectorAll('.btn-edit-auto').forEach(b => {
+    b.addEventListener('click', () => openEditAutomation(b.dataset.id));
+  });
+  document.querySelectorAll('.btn-auto-apply-disable').forEach(b => {
+    b.addEventListener('click', async () => {
+      const id = b.dataset.id;
+      const sel = document.querySelector(`.auto-disable-for[data-id="${id}"]`);
+      const minutes = parseInt(sel.value, 10);
+      if (!minutes) return;
+      await fetchJson(API + '/api/automation/rules/' + encodeURIComponent(id) + '/disable', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minutes })
+      });
+      await loadAutomationState();
+      renderAutomations();
+    });
+  });
+}
+
+function describeCondition(c) {
+  const meta = automationConditions[c.kind] || { label: c.kind, unit: '' };
+  if (c.kind === 'time_of_day') return `${meta.label} ${c.value || ''}`;
+  if (c.kind === 'day_of_week' || c.kind === 'month_of_year') return `${meta.label} = ${c.value}`;
+  let parts = [];
+  if (c.min !== null && c.min !== undefined) parts.push(`≥ ${c.min}${meta.unit || ''}`);
+  if (c.max !== null && c.max !== undefined) parts.push(`≤ ${c.max}${meta.unit || ''}`);
+  return `${meta.label} ${parts.join(' and ')}`;
+}
+
+async function saveAutomationState() {
+  const payload = {
+    enabled: document.getElementById('auto-global-enable').checked,
+    global_dry_run: document.getElementById('auto-global-dry-run').checked,
+    automations: automationState.automations,
+  };
+  try {
+    automationState = await fetchJson(API + '/api/automation/rules', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    renderAutomations();
+    showAutoMsg('Automations saved.');
+  } catch (e) {
+    console.error(e);
+    showAutoMsg('Failed to save automations: ' + e.message);
+  }
+}
+
+function showAutoMsg(msg) {
+  const el = document.getElementById('auto-msg');
+  if (el) { el.textContent = msg; el.style.color = ''; setTimeout(() => el.textContent = '', 5000); }
+}
+
+function openAddAutomation() {
+  document.getElementById('add-automation-modal').style.display = 'block';
+  document.getElementById('add-automation-step-1').style.display = 'block';
+  document.getElementById('add-automation-step-2').style.display = 'none';
+  newAutomationType = null;
+  renderAutomationTypeGrid();
+}
+
+function closeAddAutomation() {
+  document.getElementById('add-automation-modal').style.display = 'none';
+}
+
+function renderAutomationTypeGrid() {
+  const grid = document.getElementById('automation-type-grid');
+  grid.innerHTML = automationTypes.map(t => `
+    <div class="automation-type-card" data-type="${t.id}" style="border:1px solid var(--border); border-radius:8px; padding:1rem; cursor:pointer;">
+      <div style="font-weight:600;">${t.label}</div>
+    </div>
+  `).join('');
+  grid.querySelectorAll('.automation-type-card').forEach(card => {
+    card.addEventListener('click', () => selectAutomationType(card.dataset.type));
+  });
+}
+
+function selectAutomationType(type) {
+  newAutomationType = type;
+  document.getElementById('add-automation-step-1').style.display = 'none';
+  document.getElementById('add-automation-step-2').style.display = 'block';
+  document.getElementById('automation-form').innerHTML = buildAutomationForm(type);
+  attachAutomationFormListeners(type, 'automation-form');
+}
+
+function buildAutomationForm(type, values = {}) {
+  if (type === 'rule_table') return buildRuleTableForm(values);
+  let html = '';
+  html += `<div class="field"><label>Name</label><input type="text" id="auto-name" value="${values.name || ''}" placeholder="e.g. Night grid charge"></div>`;
+
+  if (type === 'battery_protection') {
+    html += `<div class="field"><label>Shutdown if SOC ≤ (%)</label><input type="number" id="auto-threshold" min="0" max="100" value="${values.threshold || 25}"></div>`;
+    html += `<div class="field"><label>Shutdown battery voltage (V)</label><input type="number" step="0.1" id="auto-action-value" value="${values.action_value !== undefined ? values.action_value : '48.0'}"></div>`;
+    html += `<div class="field"><label>Restore voltage when SOC recovers (V)</label><input type="number" step="0.1" id="auto-restore-value" value="${values.restore_value !== undefined ? values.restore_value : '50.0'}"></div>`;
+  } else if (type === 'battery_soc') {
+    html += `<p class="text-light">Battery SOC control uses time-of-day + SOC thresholds to choose grid vs battery source. Configure points below:</p>`;
+    html += `<div id="battery-soc-points">${(values.points || [{time:'08:00',soc:30,source:'grid'},{time:'15:00',soc:70,source:'battery'}]).map((pt,i) => buildBatterySocPointRow(i, pt)).join('')}</div>`;
+    html += `<button class="btn btn-small" type="button" id="btn-add-soc-point">Add Point</button>`;
+  } else if (type === 'notify') {
+    html += buildConditionFields(values.conditions || []);
+    html += `<div class="field"><label>Message</label><input type="text" id="auto-notify-message" value="${values.notify_message || ''}" placeholder="Automation condition matched"></div>`;
+  }
+
+  html += `<div class="field" style="margin-top:0.75rem;"><label style="display:flex; align-items:center; gap:0.35rem;"><input type="checkbox" id="auto-enabled" ${values.enabled !== false ? 'checked' : ''}> Enabled</label></div>`;
+  return html;
+}
+
+function buildRuleTableForm(values) {
+  const groups = values.groups || [];
+  const groupKind = values.group_kind || 'time_of_day';
+  const rangeKind = values.range_kind || 'battery_voltage';
+  let html = '';
+  html += `<div class="field"><label>Name</label><input type="text" id="auto-name" value="${values.name || ''}" placeholder="e.g. Grid charge current"></div>`;
+  html += `<div class="field"><label>Setting to control</label><select id="auto-setting"><option value="">— Select setting —</option>${automationSettings.map(s => `<option value="${s.name}" ${values.setting === s.name ? 'selected' : ''}>${s.label}</option>`).join('')}</select></div>`;
+
+  html += `<div style="margin-top:0.75rem;"><strong>When</strong></div>`;
+  html += `<div class="field"><label>Group by</label><select id="auto-group-kind">${Object.entries(automationConditions).map(([k, m]) => `<option value="${k}" ${groupKind === k ? 'selected' : ''}>${m.label}</option>`).join('')}</select></div>`;
+  html += `<div class="field"><label>And when</label><select id="auto-range-kind">${Object.entries(automationConditions).map(([k, m]) => `<option value="${k}" ${rangeKind === k ? 'selected' : ''}>${m.label}</option>`).join('')}</select></div>`;
+  html += `<div id="rule-table-groups">${groups.map((g, gi) => buildGroupRow(gi, g, groupKind, rangeKind)).join('')}</div>`;
+  html += `<button class="btn btn-small" type="button" id="btn-add-group">+ Add group</button>`;
+
+  html += `<div class="field" style="margin-top:0.75rem;"><label>Restore value (written when no group/range matches)</label><input type="number" step="any" id="auto-restore-value" value="${values.restore_value !== undefined && values.restore_value !== null ? values.restore_value : ''}" placeholder="optional"></div>`;
+
+  html += `<div class="field" style="margin-top:0.75rem;"><label style="display:flex; align-items:center; gap:0.35rem;"><input type="checkbox" id="auto-enabled" ${values.enabled !== false ? 'checked' : ''}> Enabled</label></div>`;
+  return html;
+}
+
+function buildGroupRow(gi, g, groupKind, rangeKind) {
+  g = g || { condition: {}, ranges: [] };
+  const ranges = g.ranges || [];
+  const cond = g.condition || {};
+  return `
+    <div class="rule-group" data-gi="${gi}" style="border:1px solid var(--border); border-radius:6px; padding:0.6rem; margin-top:0.5rem;">
+      <div style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
+        <div class="group-cond">${buildConditionValueInputs(cond, groupKind)}</div>
+        <button class="btn btn-small btn-remove-group" type="button">−</button>
+      </div>
+      <div class="rule-ranges" style="margin-top:0.5rem; padding-left:0.75rem; border-left:2px solid var(--border);">
+        ${ranges.map((r, ri) => buildRangeRow(gi, ri, r, rangeKind)).join('')}
+      </div>
+      <button class="btn btn-small btn-add-range" type="button" data-gi="${gi}" style="margin-top:0.4rem;">+ Add range</button>
+    </div>`;
+}
+
+function buildRangeRow(gi, ri, r, rangeKind) {
+  r = r || { condition: {}, action_value: null };
+  const cond = r.condition || {};
+  return `
+    <div class="rule-range" data-gi="${gi}" data-ri="${ri}" style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap; margin-top:0.4rem;">
+      <div class="range-cond">${buildConditionValueInputs(cond, rangeKind)}</div>
+      <div class="field"><label>Set</label><input type="number" step="any" class="range-action-value" value="${r.action_value !== undefined && r.action_value !== null ? r.action_value : ''}" placeholder="value"></div>
+      <button class="btn btn-small btn-remove-range" type="button">−</button>
+    </div>`;
+}
+
+function buildConditionFields(conditions) {
+  let html = `<div style="margin-top:0.75rem;"><strong>Conditions</strong></div>`;
+  for (let i = 0; i < 2; i++) {
+    const c = conditions[i] || {};
+    const kinds = Object.entries(automationConditions);
+    const isOptional = i === 1;
+    html += `
+      <div class="auto-condition-row" style="border:1px solid var(--border); border-radius:6px; padding:0.6rem; margin-top:0.5rem;">
+        <div style="font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;">${isOptional ? 'Condition 2 (optional)' : 'Condition 1'}</div>
+        <div class="field">
+          <label>Kind</label>
+          <select class="auto-condition-kind" data-idx="${i}">
+            ${isOptional ? `<option value="">— Optional —</option>` : ''}
+            ${kinds.map(([k, m]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${m.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="auto-condition-value" data-idx="${i}">${buildConditionValueInputs(c)}</div>
+      </div>`;
+  }
+  return html;
+}
+
+function buildConditionValueInputs(c, kind) {
+  c = c || {};
+  const k = kind || c.kind;
+  const meta = automationConditions[k] || {};
+  if (!k) return '';
+  if (k === 'time_of_day') {
+    return `
+      <div class="field"><label>Start</label><input type="time" class="cond-start" value="${c.value ? c.value.split('-')[0] : '00:00'}"></div>
+      <div class="field"><label>End</label><input type="time" class="cond-end" value="${c.value && c.value.includes('-') ? c.value.split('-')[1] : '00:00'}"></div>`;
+  }
+  if (meta.value_type === 'select') {
+    return `<div class="field"><label>Value</label><select class="cond-value">${(meta.options || []).map(o => `<option value="${o}" ${c.value === o ? 'selected' : ''}>${o}</option>`).join('')}</select></div>`;
+  }
+  return `
+    <div class="field"><label>Min</label><input type="number" step="any" class="cond-min" value="${c.min !== undefined && c.min !== null ? c.min : ''}" placeholder="${meta.unit || ''}"></div>
+    <div class="field"><label>Max</label><input type="number" step="any" class="cond-max" value="${c.max !== undefined && c.max !== null ? c.max : ''}" placeholder="${meta.unit || ''}"></div>`;
+}
+
+function buildBatterySocPointRow(i, pt) {
+  pt = pt || { time: '08:00', soc: 50, source: 'battery' };
+  return `
+    <div class="battery-soc-point" data-idx="${i}" style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:0.5rem;">
+      <div class="field"><label>Time</label><input type="time" class="pt-time" value="${pt.time || '08:00'}"></div>
+      <div class="field"><label>SOC ≤</label><input type="number" class="pt-soc" min="0" max="100" value="${pt.soc !== undefined ? pt.soc : 50}"></div>
+      <div class="field"><label>Source</label><select class="pt-source"><option value="battery" ${pt.source === 'battery' ? 'selected' : ''}>Battery</option><option value="grid" ${pt.source === 'grid' ? 'selected' : ''}>Grid</option></select></div>
+      <button class="btn btn-small btn-remove-soc-point" type="button">×</button>
+    </div>`;
+}
+
+function attachAutomationFormListeners(type, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.querySelectorAll('.auto-condition-kind').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const idx = sel.dataset.idx;
+      const meta = automationConditions[sel.value] || {};
+      const valueDiv = container.querySelector(`.auto-condition-value[data-idx="${idx}"]`);
+      if (!sel.value) { valueDiv.innerHTML = ''; return; }
+      valueDiv.innerHTML = buildConditionValueInputs({ kind: sel.value });
+    });
+  });
+  const addPointBtn = container.querySelector('#btn-add-soc-point');
+  if (addPointBtn) {
+    addPointBtn.addEventListener('click', () => {
+      const wrapper = container.querySelector('#battery-soc-points');
+      const idx = wrapper.querySelectorAll('.battery-soc-point').length;
+      wrapper.insertAdjacentHTML('beforeend', buildBatterySocPointRow(idx));
+      wrapper.querySelectorAll('.btn-remove-soc-point').forEach(b => {
+        b.addEventListener('click', () => b.closest('.battery-soc-point').remove());
+      });
+    });
+  }
+  container.querySelectorAll('.btn-remove-soc-point').forEach(b => {
+    b.addEventListener('click', () => b.closest('.battery-soc-point').remove());
+  });
+
+  // Rule table: group/range add/remove + kind change re-render
+  const addGroupBtn = container.querySelector('#btn-add-group');
+  if (addGroupBtn) {
+    addGroupBtn.addEventListener('click', () => {
+      const wrapper = container.querySelector('#rule-table-groups');
+      const gi = wrapper.querySelectorAll('.rule-group').length;
+      const groupKind = document.getElementById('auto-group-kind').value;
+      const rangeKind = document.getElementById('auto-range-kind').value;
+      wrapper.insertAdjacentHTML('beforeend', buildGroupRow(gi, { condition: {}, ranges: [{ condition: {}, action_value: null }] }, groupKind, rangeKind));
+      attachRuleTableListeners(container);
+    });
+  }
+  const groupKindSel = container.querySelector('#auto-group-kind');
+  if (groupKindSel) {
+    groupKindSel.addEventListener('change', () => {
+      const rangeKind = document.getElementById('auto-range-kind').value;
+      container.querySelectorAll('.rule-group').forEach((g, gi) => {
+        g.querySelector('.group-cond').innerHTML = buildConditionValueInputs({}, groupKindSel.value);
+      });
+    });
+  }
+  const rangeKindSel = container.querySelector('#auto-range-kind');
+  if (rangeKindSel) {
+    rangeKindSel.addEventListener('change', () => {
+      container.querySelectorAll('.rule-range').forEach(r => {
+        r.querySelector('.range-cond').innerHTML = buildConditionValueInputs({}, rangeKindSel.value);
+      });
+    });
+  }
+  attachRuleTableListeners(container);
+}
+
+function attachRuleTableListeners(container) {
+  container.querySelectorAll('.btn-remove-group').forEach(b => {
+    b.onclick = () => b.closest('.rule-group').remove();
+  });
+  container.querySelectorAll('.btn-remove-range').forEach(b => {
+    b.onclick = () => b.closest('.rule-range').remove();
+  });
+  container.querySelectorAll('.btn-add-range').forEach(b => {
+    b.onclick = () => {
+      const group = b.closest('.rule-group');
+      const rangeKind = document.getElementById('auto-range-kind').value;
+      const ranges = group.querySelector('.rule-ranges');
+      const ri = ranges.querySelectorAll('.rule-range').length;
+      ranges.insertAdjacentHTML('beforeend', buildRangeRow(group.dataset.gi, ri, { condition: {}, action_value: null }, rangeKind));
+      attachRuleTableListeners(container);
+    };
+  });
+}
+
+function collectConditionFromContainer(el, kind) {
+  const meta = automationConditions[kind] || {};
+  let cond = { kind };
+  if (!el) return cond;
+  if (kind === 'time_of_day') {
+    const start = el.querySelector('.cond-start')?.value || '00:00';
+    const end = el.querySelector('.cond-end')?.value || '00:00';
+    cond.value = `${start}-${end}`;
+  } else if (meta.value_type === 'select') {
+    cond.value = el.querySelector('.cond-value')?.value;
+  } else {
+    const minV = el.querySelector('.cond-min')?.value;
+    const maxV = el.querySelector('.cond-max')?.value;
+    if (minV !== '') cond.min = parseFloat(minV);
+    if (maxV !== '') cond.max = parseFloat(maxV);
+  }
+  return cond;
+}
+
+function collectFormAutomation(type, containerId) {
+  const container = document.getElementById(containerId);
+  const name = document.getElementById('auto-name').value.trim() || 'Unnamed automation';
+  const enabled = document.getElementById('auto-enabled').checked;
+
+  const conditions = [];
+  container.querySelectorAll('.auto-condition-row').forEach(row => {
+    const kindSel = row.querySelector('.auto-condition-kind');
+    const kind = kindSel ? kindSel.value : '';
+    if (!kind) return;
+    const meta = automationConditions[kind] || {};
+    let cond = { kind };
+    if (kind === 'time_of_day') {
+      const start = row.querySelector('.cond-start')?.value || '00:00';
+      const end = row.querySelector('.cond-end')?.value || '00:00';
+      cond.value = `${start}-${end}`;
+    } else if (meta.value_type === 'select') {
+      cond.value = row.querySelector('.cond-value')?.value;
+    } else {
+      const minV = row.querySelector('.cond-min')?.value;
+      const maxV = row.querySelector('.cond-max')?.value;
+      if (minV !== '') cond.min = parseFloat(minV);
+      if (maxV !== '') cond.max = parseFloat(maxV);
+    }
+    conditions.push(cond);
+  });
+
+  const auto = { id: editingAutomationId || ('auto_' + Date.now()), name, type, enabled, conditions };
+
+  if (type === 'rule_table') {
+    auto.setting = document.getElementById('auto-setting').value;
+    auto.group_kind = document.getElementById('auto-group-kind').value;
+    auto.range_kind = document.getElementById('auto-range-kind').value;
+    auto.groups = [];
+    container.querySelectorAll('.rule-group').forEach(groupEl => {
+      const gcond = collectConditionFromContainer(groupEl.querySelector('.group-cond'), auto.group_kind);
+      const ranges = [];
+      groupEl.querySelectorAll('.rule-range').forEach(rangeEl => {
+        const rcond = collectConditionFromContainer(rangeEl.querySelector('.range-cond'), auto.range_kind);
+        const av = rangeEl.querySelector('.range-action-value').value;
+        ranges.push({ condition: rcond, action_value: av !== '' ? parseFloat(av) : null });
+      });
+      auto.groups.push({ condition: gcond, ranges });
+    });
+    const rv = document.getElementById('auto-restore-value').value;
+    auto.restore_value = rv !== '' ? parseFloat(rv) : null;
+  } else if (type === 'battery_protection') {
+    auto.threshold = parseFloat(document.getElementById('auto-threshold').value);
+    const av = document.getElementById('auto-action-value').value;
+    auto.action_value = av !== '' ? parseFloat(av) : null;
+    const rv = document.getElementById('auto-restore-value').value;
+    auto.restore_value = rv !== '' ? parseFloat(rv) : null;
+  } else if (type === 'battery_soc') {
+    auto.points = [];
+    container.querySelectorAll('.battery-soc-point').forEach(pt => {
+      auto.points.push({
+        time: pt.querySelector('.pt-time').value,
+        soc: parseFloat(pt.querySelector('.pt-soc').value),
+        source: pt.querySelector('.pt-source').value,
+      });
+    });
+  } else if (type === 'notify') {
+    auto.notify_message = document.getElementById('auto-notify-message').value;
+  }
+
+  return auto;
+}
+
+async function saveNewAutomation() {
+  if (!newAutomationType) return;
+  const auto = collectFormAutomation(newAutomationType, 'automation-form');
+  automationState.automations.push(auto);
+  await saveAutomationState();
+  closeAddAutomation();
+}
+
+function openEditAutomation(id) {
+  editingAutomationId = id;
+  const a = automationState.automations.find(x => x.id === id);
+  if (!a) return;
+  document.getElementById('edit-automation-modal').style.display = 'block';
+  document.getElementById('edit-automation-form').innerHTML = buildAutomationForm(a.type, a);
+  attachAutomationFormListeners(a.type, 'edit-automation-form');
+}
+
+function closeEditAutomation() {
+  document.getElementById('edit-automation-modal').style.display = 'none';
+  editingAutomationId = null;
+}
+
+async function saveEditedAutomation() {
+  if (!editingAutomationId) return;
+  const idx = automationState.automations.findIndex(x => x.id === editingAutomationId);
+  if (idx < 0) return;
+  const type = automationState.automations[idx].type;
+  const auto = collectFormAutomation(type, 'edit-automation-form');
+  automationState.automations[idx] = auto;
+  await saveAutomationState();
+  closeEditAutomation();
+}
+
+async function deleteAutomation(id) {
+  if (!confirm('Delete this automation?')) return;
+  try {
+    await fetchJson(API + '/api/automation/rules/' + encodeURIComponent(id), { method: 'DELETE' });
+    await loadAutomationState();
+    renderAutomations();
+  } catch (e) {
+    console.error(e);
+    showAutoMsg('Delete failed: ' + e.message);
+  }
+}
+
+async function testAutomations() {
+  try {
+    const res = await fetchJson(API + '/api/automation/test', { method: 'POST' });
+    showAutoMsg('Test complete. Check the log for dry-run results.');
+    await loadAutomationState();
+    renderAutomations();
+  } catch (e) {
+    console.error(e);
+    showAutoMsg('Test failed: ' + e.message);
+  }
+}
+
 function showPage(page) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
@@ -1606,13 +1709,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     c.addEventListener('click', e => { e.preventDefault(); showDetail(c.dataset.detail); });
   });
 
-  document.getElementById('btn-add-rule').addEventListener('click', openTypePicker);
-  document.getElementById('btn-load-rules').addEventListener('click', loadAutomation);
-  document.getElementById('btn-test-rules').addEventListener('click', testRules);
   document.getElementById('btn-save-schedule').addEventListener('click', saveSchedule);
-  document.getElementById('auto-enabled').addEventListener('change', toggleAutomationEnabled);
-  document.getElementById('btn-rule-editor-close').addEventListener('click', closeRuleEditor);
-  document.getElementById('btn-type-picker-close').addEventListener('click', closeTypePicker);
+  document.getElementById('btn-save-schedule').addEventListener('click', saveSchedule);
+
+  // Automation controls
+  document.getElementById('btn-add-automation').addEventListener('click', openAddAutomation);
+  document.getElementById('close-add-auto').addEventListener('click', closeAddAutomation);
+  document.getElementById('btn-auto-back').addEventListener('click', () => {
+    document.getElementById('add-automation-step-1').style.display = 'block';
+    document.getElementById('add-automation-step-2').style.display = 'none';
+  });
+  document.getElementById('btn-auto-save').addEventListener('click', saveNewAutomation);
+  document.getElementById('close-edit-auto').addEventListener('click', closeEditAutomation);
+  document.getElementById('btn-edit-auto-cancel').addEventListener('click', closeEditAutomation);
+  document.getElementById('btn-edit-auto-save').addEventListener('click', saveEditedAutomation);
+  document.getElementById('btn-save-auto-global').addEventListener('click', saveAutomationState);
 
   // Quick charge controls
   document.getElementById('btn-quick-charge').addEventListener('click', toggleQuickCharge);

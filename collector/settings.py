@@ -192,9 +192,10 @@ DEFAULTS = {
     "alerts_webhook_enabled": "false",      # Enable webhook alerts
     "alerts_webhook_url": "",               # Webhook URL for POST JSON alerts
 
-    # ── Automation / Rules Engine ──
-    "automation_enabled": "false",          # Enable time/sensor automation rules
-    "automation_rules": "[]",               # JSON list of automation rules
+    # ── Automation ──
+    "automation_enabled": "false",          # Enable the automation engine globally
+    "automation_global_dry_run": "true",    # Global dry-run: log actions, don't write
+    "automations_v2": "[]",                 # JSON array of SolarAssistant-style automations
 
     # ── Quick Charge ──
     "quick_charge_minutes": "60",           # Quick charge duration (min)
@@ -620,16 +621,22 @@ SETTING_META = {
 
     # ── Automation ──
     "automation_enabled": {
-        "label": "Enable Automation Rules",
+        "label": "Enable Automation Engine",
         "type": "checkbox",
         "section": "automation",
-        "hint": "Evaluate time/sensor rules and write inverter settings automatically",
+        "hint": "Globally enable/disable all automations",
     },
-    "automation_rules": {
-        "label": "Automation Rules (JSON)",
+    "automation_global_dry_run": {
+        "label": "Global Dry Run",
+        "type": "checkbox",
+        "section": "automation",
+        "hint": "When enabled, automations log what they would write but never send Modbus commands",
+    },
+    "automations_v2": {
+        "label": "Automations (JSON)",
         "type": "textarea",
         "section": "automation",
-        "hint": "JSON array of rules; use the Automations page for a friendly editor",
+        "hint": "JSON array managed by the Automations page; do not hand-edit unless you know the schema",
     },
 
     # ── Quick Charge ──

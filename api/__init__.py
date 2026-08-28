@@ -941,7 +941,7 @@ def _load_db_setting(name: str) -> Optional[str]:
         conn.close()
 
 
-# ── automation / rules engine ───────────────────────────────────────────────
+# ── holding-register metadata (schedule editor) ─────────────────────────────
 
 from collector.protocol import (
     HOLDING_REGISTERS,
@@ -952,44 +952,12 @@ from collector.protocol import (
     find_frames,
     MODBUS_READ_HOLD,
 )
-from collector.automation import (
-    AutomationEngine,
-    _engineering_to_raw,
-    _write_holding_register,
-    SETTING_KEY as AUTOMATION_SETTING,
-    ENABLED_KEY as AUTOMATION_ENABLED,
-    AUTOMATION_TYPES,
-    SUBSET_KINDS,
-    SUBSET_SENSOR,
-    TYPE_RULE_TABLE,
-    TYPE_BATTERY_SOC,
-    TYPE_BATTERY_PROTECTION,
-    TYPE_NOTIFY,
-    RuleTable,
-    BatterySocAutomation,
-    BatteryProtectionAutomation,
-    NotifyAutomation,
-)
-
-
-class AutomationTestBody(BaseModel):
-    snapshot: Optional[dict] = None
-    timezone: Optional[str] = None
-
-
-def _load_automation_engine() -> AutomationEngine:
-    return AutomationEngine(
-        db_host=DB_CONFIG["host"],
-        db_port=DB_CONFIG["port"],
-        db_user=DB_CONFIG["user"],
-        db_password=DB_CONFIG["password"],
-        db_name=DB_CONFIG["database"],
-    )
+from collector.automation import _engineering_to_raw, _write_holding_register, AutomationEngine, AUTOMATION_TYPES, ALL_CONDITION_KINDS, SETTING_NAME_TO_REGISTER
 
 
 @app.get("/api/automation/registers")
 def api_automation_registers():
-    """Return the list of writable holding registers for automation targets."""
+    """Return the list of writable holding registers (used by the schedule editor)."""
     return {
         "registers": [
             {
@@ -1007,230 +975,215 @@ def api_automation_registers():
     }
 
 
+
+# ── automation v2 endpoints (SolarAssistant-style) ──────────────────────────
+
+from collector.automation import (
+    AutomationEngine,
+    AUTOMATION_TYPES,
+    ALL_CONDITION_KINDS,
+    SETTING_NAME_TO_REGISTER,
+)
+
+
+def _load_automation_engine() -> AutomationEngine:
+    return AutomationEngine(
+        db_host=DB_CONFIG["host"],
+        db_port=DB_CONFIG["port"],
+        db_user=DB_CONFIG["user"],
+        db_password=DB_CONFIG["password"],
+        db_name=DB_CONFIG["database"],
+        table_prefix="lux_",
+    )
+
+
 @app.get("/api/automation/types")
 def api_automation_types():
-    """Return the automation types, subset kinds, and target registers.
+    """Return the four top-level automation types."""
+    return {"types": AUTOMATION_TYPES}
 
-    This is the metadata the wizard UI needs to build a rule table:
-      * the four automation types
-      * the subset (condition) dimensions available as columns
-      * the writable target registers
-    """
-    return {
-        "types": [
-            {"id": TYPE_RULE_TABLE, "label": "Rule table"},
-            {"id": TYPE_BATTERY_SOC, "label": "Battery state of charge"},
-            {"id": TYPE_BATTERY_PROTECTION, "label": "Battery protection"},
-            {"id": TYPE_NOTIFY, "label": "Send notification"},
-        ],
-        "subsets": [
-            {
-                "kind": kind,
-                "label": meta["label"],
-                "unit": meta["unit"],
-                "value_type": meta["value_type"],
-            }
-            for kind, meta in SUBSET_KINDS.items()
-        ],
-        "registers": [
-            {
-                "name": info["name"],
-                "label": holding_label(info["name"]),
-                "address": reg,
-                "unit": info["unit"],
-                "scale": info["scale"],
+
+@app.get("/api/automation/conditions")
+def api_automation_conditions():
+    """Return all condition dimensions available to automations."""
+    return {"conditions": ALL_CONDITION_KINDS}
+
+
+@app.get("/api/automation/settings")
+def api_automation_settings():
+    """Return the 50 SolarAssistant-style setting names with lux-mon register mapping."""
+    from collector.protocol import HOLDING_REGISTERS, HOLDING_BY_NAME
+    settings = []
+    for sa_name, reg_name in SETTING_NAME_TO_REGISTER.items():
+        mapped = None
+        if reg_name and reg_name in HOLDING_BY_NAME:
+            reg_addr = HOLDING_BY_NAME[reg_name]
+            info = HOLDING_REGISTERS[reg_addr]
+            mapped = {
+                "name": reg_name,
+                "address": reg_addr,
+                "unit": info.get("unit"),
+                "scale": info.get("scale"),
                 "min": info.get("min"),
                 "max": info.get("max"),
-                "desc": info["desc"],
+                "desc": info.get("desc"),
             }
-            for reg, info in sorted(HOLDING_REGISTERS.items())
-        ],
-    }
+        settings.append({
+            "name": sa_name,
+            "label": sa_name.replace("_", " ").title(),
+            "mapped": mapped,
+        })
+    return {"settings": settings}
 
 
 @app.get("/api/automation/rules")
 def api_automation_rules():
-    """Return the current automations and global enable flag."""
-    from collector.settings import get
-
-    conn = _get_conn()
-    try:
-        enabled_raw = get(conn, AUTOMATION_ENABLED)
-        rules_raw = get(conn, AUTOMATION_SETTING)
-    finally:
-        conn.close()
-
-    return {
-        "enabled": str(enabled_raw).lower() in ("true", "1", "yes", "on") if enabled_raw else False,
-        "rules": json.loads(rules_raw or "[]"),
-    }
+    """Return all automations + global enable + global dry-run."""
+    engine = _load_automation_engine()
+    return engine.load_dict()
 
 
-def _target_key(automation: dict) -> Optional[str]:
-    """Return the 'target type' key used to enforce one-per-target-type.
-
-    For rule tables, the target is the register name.  For battery protection,
-    it's the shutdown register.  Battery SOC and notify are singletons by type.
-    """
-    atype = automation.get("type", TYPE_RULE_TABLE)
-    if atype == TYPE_RULE_TABLE:
-        return f"rule_table:{automation.get('target', '')}"
-    if atype == TYPE_BATTERY_PROTECTION:
-        return f"battery_protection:{automation.get('shutdown_register', '')}"
-    if atype == TYPE_BATTERY_SOC:
-        return "battery_soc"
-    if atype == TYPE_NOTIFY:
-        return "notify"
-    return None
+class AutomationConfigBody(BaseModel):
+    enabled: bool
+    global_dry_run: bool = True
+    automations: List[Any]
 
 
 @app.post("/api/automation/rules")
-def api_automation_rules_save(body: List[dict]):
-    """Replace the entire automation set, enforcing one-per-target-type."""
-    from collector.settings import set_
-
-    # Enforce one automation per target type.
-    seen: dict = {}
-    for item in body:
-        key = _target_key(item)
-        if key is None:
-            continue
-        if key in seen:
-            raise HTTPException(
-                400,
-                f"Only one automation per target type is allowed (duplicate: {key})",
-            )
-        seen[key] = True
-
-    conn = _get_conn()
-    try:
-        set_(conn, AUTOMATION_SETTING, json.dumps(body))
-        return {"saved": True, "count": len(body)}
-    finally:
-        conn.close()
+def api_automation_rules_save(body: AutomationConfigBody):
+    """Replace the full automation configuration."""
+    engine = _load_automation_engine()
+    engine.save_dict(body.dict())
+    return engine.load_dict()
 
 
-@app.delete("/api/automation/rules/{rule_id}")
-def api_automation_rule_delete(rule_id: str):
+@app.delete("/api/automation/rules/{automation_id}")
+def api_automation_delete(automation_id: str):
     """Delete a single automation by id."""
-    from collector.settings import get, set_
+    engine = _load_automation_engine()
+    data = engine.load_dict()
+    before = len(data["automations"])
+    data["automations"] = [a for a in data["automations"] if a.get("id") != automation_id]
+    if len(data["automations"]) == before:
+        raise HTTPException(status_code=404, detail="Automation not found")
+    engine.save_dict(data)
+    return engine.load_dict()
 
-    conn = _get_conn()
-    try:
-        rules_raw = get(conn, AUTOMATION_SETTING) or "[]"
-        rules = json.loads(rules_raw)
-        new_rules = [r for r in rules if str(r.get("id")) != rule_id]
-        set_(conn, AUTOMATION_SETTING, json.dumps(new_rules))
-        return {"deleted": True, "removed": len(rules) - len(new_rules)}
-    finally:
-        conn.close()
+
+class EnableBody(BaseModel):
+    enabled: bool
 
 
 @app.post("/api/automation/enable")
-def api_automation_enable(enabled: bool = True):
-    """Enable or disable the automation engine globally."""
-    from collector.settings import set_
-
-    conn = _get_conn()
-    try:
-        set_(conn, AUTOMATION_ENABLED, "true" if enabled else "false")
-        return {"enabled": enabled}
-    finally:
-        conn.close()
-
-
-@app.post("/api/automation/test")
-def api_automation_test(body: AutomationTestBody):
-    """Dry-run evaluate automations against a snapshot (or the latest DB snapshot)."""
+def api_automation_enable(body: EnableBody):
     engine = _load_automation_engine()
+    engine._set_setting("automation_enabled", "true" if body.enabled else "false")
+    return engine.load_dict()
 
-    snapshot = body.snapshot
-    if snapshot is None:
-        snap = _fetch_latest_snapshot()
-        if snap is None:
-            raise HTTPException(404, "No snapshot available")
-        snapshot = snap["registers"]
 
-    tz = body.timezone or _load_db_setting("timezone") or "America/Chicago"
+class DryRunBody(BaseModel):
+    dry_run: bool
 
-    from zoneinfo import ZoneInfo
-    from datetime import datetime
 
-    now = datetime.now(ZoneInfo(tz))
-    automations = engine.load_automations()
-    results = []
-    for auto in automations:
-        auto.dry_run = True
-        if isinstance(auto, RuleTable):
-            target = auto.evaluate(snapshot, now)
-            if target is None:
-                results.append({"rule_id": auto.id, "name": auto.name, "type": TYPE_RULE_TABLE, "matched": False})
-                continue
-            meta = HOLDING_REGISTERS[HOLDING_BY_NAME[auto.target]]
-            raw = int(round(target / meta["scale"]))
-            results.append({
-                "rule_id": auto.id,
-                "name": auto.name,
-                "type": TYPE_RULE_TABLE,
-                "matched": True,
-                "register": meta["name"],
-                "value": target,
-                "raw": raw,
-            })
-        elif isinstance(auto, BatterySocAutomation):
-            action = auto.evaluate(snapshot, now)
-            results.append({
-                "rule_id": auto.id,
-                "name": auto.name,
-                "type": TYPE_BATTERY_SOC,
-                "matched": action is not None,
-                "action": action,
-            })
-        elif isinstance(auto, BatteryProtectionAutomation):
-            target = auto.evaluate(snapshot, now)
-            results.append({
-                "rule_id": auto.id,
-                "name": auto.name,
-                "type": TYPE_BATTERY_PROTECTION,
-                "matched": target is not None,
-                "value": target,
-            })
-        elif isinstance(auto, NotifyAutomation):
-            fired = auto.evaluate(snapshot, now)
-            results.append({
-                "rule_id": auto.id,
-                "name": auto.name,
-                "type": TYPE_NOTIFY,
-                "matched": fired,
-            })
-    return {"enabled": engine.is_enabled(), "timezone": tz, "results": results}
+@app.post("/api/automation/dry-run")
+def api_automation_dry_run(body: DryRunBody):
+    engine = _load_automation_engine()
+    engine._set_setting("automation_global_dry_run", "true" if body.dry_run else "false")
+    return engine.load_dict()
+
+
+class DisableBody(BaseModel):
+    minutes: int
+
+
+@app.post("/api/automation/rules/{automation_id}/disable")
+def api_automation_disable(automation_id: str, body: DisableBody):
+    """Temporarily disable an automation for N minutes."""
+    engine = _load_automation_engine()
+    data = engine.load_dict()
+    found = False
+    now = time.time()
+    for a in data["automations"]:
+        if a.get("id") == automation_id:
+            a["disabled_until"] = now + body.minutes * 60
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Automation not found")
+    engine.save_dict(data)
+    return engine.load_dict()
 
 
 @app.get("/api/automation/log")
-def api_automation_log(limit: int = Query(50, ge=1, le=500)):
-    """Return recent automation actions / dry-runs."""
-    engine = _load_automation_engine()
-    conn = _get_conn()
+def api_automation_log(limit: int = Query(100, ge=1, le=1000)):
+    """Return recent automation log rows."""
+    rows = []
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT id, ts, rule_id, rule_name, register_name,
-                       raw_value, scaled_value, dry_run, success, message
-                FROM {engine.log_table}
-                ORDER BY ts DESC LIMIT %s
-                """,
-                (limit,),
-            )
-            columns = [
-                "id", "timestamp", "rule_id", "rule_name", "register_name",
-                "raw_value", "scaled_value", "dry_run", "success", "message",
-            ]
-            rows = cur.fetchall()
-        return {"log": [_row_to_dict(row, columns) for row in rows], "count": len(rows)}
-    finally:
-        conn.close()
+        with pymysql.connect(**DB_CONFIG) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT rule_id, rule_name, register_name, raw_value,
+                           scaled_value, dry_run, success, message, ts
+                    FROM lux_automation_log
+                    ORDER BY ts DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                for row in cur.fetchall():
+                    rows.append({
+                        "automation_id": row[0],
+                        "automation_name": row[1],
+                        "register_name": row[2],
+                        "raw_value": row[3],
+                        "scaled_value": row[4],
+                        "dry_run": bool(row[5]),
+                        "success": bool(row[6]),
+                        "message": row[7],
+                        "created_at": row[8].isoformat() if row[8] else None,
+                    })
+    except Exception as exc:
+        logger.exception("Failed to read automation log")
+        raise HTTPException(status_code=500, detail=f"Database error: {exc}")
+    return {"log": rows}
 
+
+def _load_timezone() -> str:
+    try:
+        return _load_db_setting("timezone") or "America/Chicago"
+    except Exception:
+        return "America/Chicago"
+
+
+@app.post("/api/automation/test")
+def api_automation_test():
+    """Dry-run evaluate automations against the latest snapshot."""
+    engine = _load_automation_engine()
+    snap = _fetch_latest_snapshot()
+    if not snap:
+        raise HTTPException(status_code=503, detail="No snapshot available yet")
+
+    dongle = _resolve_dongle()
+    if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
+        raise HTTPException(status_code=503, detail="Datalog/inverter serial not configured")
+
+    # Force dry-run for the test
+    original = engine._get_setting("automation_global_dry_run", "true")
+    engine._set_setting("automation_global_dry_run", "true")
+    try:
+        engine.evaluate_and_apply(
+            snapshot=snap,
+            dongle_host=dongle["dongle_host"],
+            dongle_port=dongle["dongle_port"],
+            datalog_serial=dongle["datalog_serial"],
+            inverter_serial=dongle["inverter_serial"],
+            timezone=_load_timezone(),
+        )
+    finally:
+        engine._set_setting("automation_global_dry_run", original)
+
+    return engine.load_dict()
 
 # ── quick charge / generator charge ────────────────────────────────────────
 

@@ -24,9 +24,9 @@
 - `collector/settings.py` lists `forecast_provider` options `open-meteo` and `forecast.solar`, but `collector/forecast.py` only implements the Open-Meteo path.
 - **To do:** implement the Forecast.Solar provider (or remove the option from settings until it's real).
 
-### 3. Battery protection automations — 🚧 (engine supports it, no UI)
-- The automation engine supports the `battery_protection` type (SOC threshold + restore-on-exit), but there is no dashboard UI to configure it.
-- **To do:** add a battery-protection wizard/panel to the Automations page.
+### 3. Battery protection automations — ✅ (implemented in v2 automation engine)
+- Implemented 2026-08-28 as part of the SolarAssistant-style automation engine.
+- The `battery_protection` type triggers on SOC ≤ threshold, writes the shutdown battery voltage, and restores when SOC recovers.
 
 ### 4. Inverter Edit Mode page — ⬜ (explicitly "in progress")
 - Manual Read/Set for every editable EG4 6000XP holding register, mirroring the EG4 Monitor Maintenance tab.
@@ -38,9 +38,10 @@
 - Also fixed: charge-priority prefix mismatch (`charge_priority_period_*` → `forced_charge_period_*`) and added the missing **AC First Mode** group.
 - Verified against the EG4 Monitor portal Maintenance tab (read + write round-trip on `ac_charge_period_1_start`).
 
-### 6. Automation page overhaul — ⬜ (explicitly "in progress")
-- Rebuild around a premade option list + wizard (like SolarAssistant's Power Management), with restore-value support and time/day conditions.
-- The rule-table engine is done; the UI is still the older flat form.
+### 6. Automation page overhaul — ✅ (SolarAssistant-style v2 implemented)
+- Implemented 2026-08-28 with option-first field generation, four automation types, two-level conditions, restore-on-exit, disable-for timer, global dry-run, and top cards.
+- **Mapping status:** 38 of 57 settings mapped to known holding registers. 19 remain unmapped (enum/toggle modes and generator/smart-load threshold families) pending confirmed register addresses.
+- **To do:** discover + map the remaining 19 settings, or confirm they are controlled through combined/undocumented registers.
 
 ### 7. Holding register map corrections — ⬜ (explicitly "in progress")
 - Align `collector/protocol.py` with `LXP_REGISTERS.txt`, add missing registers, fix ranges, correct AC charge current to register 168.
@@ -89,7 +90,7 @@
 ## Future direction (from README roadmap)
 
 - ⬜ Generator and AC-coupled charge support (see #1)
-- ⬜ Battery protection automations UI (see #3)
+- 🚧 Complete SolarAssistant setting → register mapping for automations (generator-charge + smart-load families)
 - ⬜ More inverter models via pluggable Modbus RTU drivers (see #7)
 - ⬜ Forecast.Solar provider (see #2)
 
@@ -103,4 +104,4 @@
 - ✅ RS-485 BMS daemon (EG4 A5/5A, JK BMS, Modbus RTU)
 - ✅ Native Home Assistant integration (`jmewing/ha_luxmon`) + HAOS add-on (`jmewing/ha_luxmon_addons`)
 - ✅ API port default changed 8080 → 80 repo-wide
-- ✅ Automation rule-table engine (target-first, nested subsets, restore-on-exit)
+- ✅ Automation v2 engine — SolarAssistant-style rule table, SOC control, battery protection, notifications, global dry-run, multilevel conditions, disable-for timer

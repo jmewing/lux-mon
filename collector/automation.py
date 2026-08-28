@@ -1,61 +1,44 @@
-"""
-lux-mon automation / rule engine.
+"""SolarAssistant-style automation engine for lux-mon.
 
-Rebuilt around a "rule table" model (target-first, nested subset columns,
-one automation per target type, restore-on-exit) that mirrors the behavior of
-the reference "Power Management" feature on the EG4/Luxpower inverter portal.
+This module provides:
 
-The core abstraction is a *rule table*:
+1. Low-level holding-register read/write primitives (`_write_holding_register`,
+   `_read_holding_register`, `_engineering_to_raw`, `_raw_to_engineering`).
+2. A general automation engine (`AutomationEngine`) that evaluates condition →
+   action rules after every snapshot and writes named holding registers.
 
-  * A rule table controls ONE target setting (a writable holding register).
-  * It has an ordered list of *subset columns*.  Each column is a condition
-    dimension (e.g. "time of day", "battery voltage", "battery state of
-    charge").  Columns nest left-to-right: the first column is the outer
-    grouping, the second is the inner grouping, and so on.
-  * Each column holds a list of *ranges*.  A range is a [from, to] interval
-    (inclusive) plus, at the leaf, the value to write to the target.
-  * The rightmost column's ranges carry the target value; every other column's
-    ranges just partition the space.
+Design choices (v2):
 
-Example (grid charge current as a function of time and battery voltage):
+* Storage: automations are stored as JSON in the MariaDB `lux_settings` table
+  under the key `automations_v2`.  Global enable and global dry-run are
+  separate settings (`automation_enabled`, `automation_global_dry_run`).
+* Execution: the collector evaluates automations after each successful snapshot.
+* Safety: a **global dry-run toggle** controls whether writes are actually
+  sent.  When dry-run is true the engine logs every intended action but never
+  writes to the inverter.  Individual automations can still be enabled/disabled.
+* Restore-on-exit: each automation may specify a `restore_value`.  When the
+  automation's conditions stop matching and a previous write was recorded, the
+  restore value is written (unless dry-run is enabled).
+* Disable-for timer: each automation has a `disabled_until` Unix timestamp.
+  The dashboard sets this via a dropdown (30m, 1h, 2h, 4h, 8h, 12h, 24h).
+* Quick charge: automations remain active during quick charge; they are a
+  separate concern.
+* Priority: Quick Charge > Automation > Timer Schedule.
 
-    Time of day        Battery voltage        Set: grid charge current
-    21:00 - 23:59      0.0 - 54.0 V          85 A
-                       55.0 - 56.0 V         45 A
-                       57.0 - 58.0 V         1 A
-    23:59 - 23:59      0.0 - 54.0 V          85 A
-                       55.0 - 56.0 V         45 A
-                       57.5 - 58.4 V         0 A
+Supported automation types:
 
-This is stored as a nested tree, not a flat if/then list.
+* `rule_table`         — two-level nested grid: set <setting> -> when <group
+                         condition> -> and when <range condition> -> set value
+                         to <range action_value>
+* `battery_soc`        — time-of-day + SOC grid/battery source scheduler
+* `battery_protection` — SOC threshold → shutdown + restore voltage
+* `notify`             — condition met → email/webhook notification
 
-Automation types
-----------------
-There are four automation types, matching the reference portal:
-
-  1. "rule_table"            — the generic multi-dimensional rule table above.
-  2. "battery_soc"           — battery state-of-charge control (Point A / Point B
-                               time + SOC thresholds -> Grid/Battery output source).
-  3. "battery_protection"    — "if SOC <= X%, shutdown output; restore to Y when
-                               recovered" (restore-on-exit semantics).
-  4. "notify"                — send a notification when a condition is met.
-
-Only ONE automation may be active per target type (e.g. you cannot have two
-"grid charge current" rule tables).  This is enforced on save.
-
-Restore-on-exit
----------------
-A rule table may declare a `restore` value.  When the rule table's conditions
-stop matching (or the automation is disabled), the engine writes the restore
-value back to the target register.  This is how "battery protection" reverts
-the shutdown voltage once the battery recovers.
-
-Safety design (unchanged from the prior engine):
-  * Only registers listed in protocol.HOLDING_REGISTERS can be written.
-  * Each register has hard min/max clamping.
-  * Writes are performed on a separate short-lived socket so they cannot
-    corrupt the collector's read stream.
-  * A `dry_run` flag evaluates and logs without writing.
+The rule-table type is a two-level nested grid (matching Solar Assistant): the
+top level is the setting to write, the outer level is a list of group blocks
+(each a free-choice condition), and the inner level is a list of ranges (each a
+free-choice condition plus its own action value).  Only the top-level setting
+is ever written to the inverter; the conditions are pure validation gates.
 """
 
 from __future__ import annotations
@@ -64,16 +47,14 @@ import json
 import logging
 import socket
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
-import pymysql
-
 from .protocol import (
-    HOLDING_REGISTERS,
     HOLDING_BY_NAME,
+    HOLDING_REGISTERS,
     MODBUS_READ_HOLD,
     MODBUS_WRITE_SINGLE,
     build_read_request,
@@ -83,694 +64,13 @@ from .protocol import (
 
 logger = logging.getLogger("luxmon.automation")
 
-# Setting keys (stored in lux_settings)
-SETTING_KEY = "automation_rules"
-ENABLED_KEY = "automation_enabled"
-DRY_RUN_DEFAULT = False
+# ── Settings keys ───────────────────────────────────────────────────────────
+SETTING_AUTOMATIONS = "automations_v2"
+SETTING_ENABLED = "automation_enabled"
+SETTING_DRY_RUN = "automation_global_dry_run"
 
-# ── Automation types ────────────────────────────────────────────────────────
+# ── Register primitives (shared with quick_charge.py and api/__init__.py) ────
 
-TYPE_RULE_TABLE = "rule_table"
-TYPE_BATTERY_SOC = "battery_soc"
-TYPE_BATTERY_PROTECTION = "battery_protection"
-TYPE_NOTIFY = "notify"
-
-AUTOMATION_TYPES = [
-    TYPE_RULE_TABLE,
-    TYPE_BATTERY_SOC,
-    TYPE_BATTERY_PROTECTION,
-    TYPE_NOTIFY,
-]
-
-# ── Subset (condition) dimensions ───────────────────────────────────────────
-
-# A subset column is a condition dimension.  Each has a kind, a display label,
-# a unit, and a value type (time vs number).
-SUBSET_KINDS = {
-    "time_of_day": {"label": "Time of day", "unit": "", "value_type": "time"},
-    "battery_voltage": {"label": "Battery voltage", "unit": "V", "value_type": "number"},
-    "battery_soc": {"label": "Battery state of charge", "unit": "%", "value_type": "number"},
-    "battery_current": {"label": "Battery current", "unit": "A", "value_type": "number"},
-    "pv_power": {"label": "Solar PV power", "unit": "W", "value_type": "number"},
-    "grid_power": {"label": "Grid power", "unit": "W", "value_type": "number"},
-    "load_power": {"label": "Load power", "unit": "W", "value_type": "number"},
-    "inverter_temp": {"label": "Inverter temperature", "unit": "°C", "value_type": "number"},
-    "battery_temp": {"label": "Battery temperature", "unit": "°C", "value_type": "number"},
-}
-
-# Map subset kind -> the sensor name(s) in a decoded snapshot.
-SUBSET_SENSOR = {
-    "time_of_day": None,  # handled specially (uses wall clock)
-    "battery_voltage": "battery_voltage",
-    "battery_soc": "soc",
-    "battery_current": "battery_current",
-    "pv_power": "pv1_power",
-    "grid_power": "grid_import_power",
-    "load_power": "eps_power",
-    "inverter_temp": "temp_inverter",
-    "battery_temp": "temp_battery",
-}
-
-
-# ── Data models ─────────────────────────────────────────────────────────────
-
-@dataclass
-class Range:
-    """A single [from, to] interval within a subset column.
-
-    For the leaf (rightmost) column, `value` is the target value to write.
-    For non-leaf columns, `value` is None and the range just partitions space.
-    """
-    from_value: Optional[float] = None
-    to_value: Optional[float] = None
-    value: Optional[float] = None
-
-    def contains(self, v: float) -> bool:
-        if self.from_value is not None and v < self.from_value:
-            return False
-        if self.to_value is not None and v > self.to_value:
-            return False
-        return True
-
-
-@dataclass
-class SubsetColumn:
-    """A condition dimension (column) in a rule table."""
-    kind: str  # one of SUBSET_KINDS
-    ranges: List[Range] = field(default_factory=list)
-
-
-@dataclass
-class RuleTable:
-    """A target-first, multi-dimensional rule table."""
-    id: str
-    name: str
-    target: str  # holding register name to write
-    columns: List[SubsetColumn] = field(default_factory=list)
-    enabled: bool = True
-    dry_run: bool = False
-    restore: Optional[float] = None  # value to write when conditions stop matching
-
-    def evaluate(self, snapshot: dict, now: datetime) -> Optional[float]:
-        """Return the target value to write, or None if no leaf matches."""
-        if not self.enabled:
-            return None
-        if not self.columns:
-            return None
-        return _eval_columns(self.columns, 0, snapshot, now)
-
-
-@dataclass
-class BatterySocPoint:
-    """A single Point (A or B) on the SOC-vs-time boundary line.
-
-    Each point has a time of day and a SOC threshold.  The two points define
-    a line on the SOC-vs-hour graph: above the line = battery, below = grid.
-    """
-    time: str = "00:00"  # "HH:MM"
-    soc: float = 50.0    # SOC threshold (%) at this time
-
-
-@dataclass
-class BatterySocAutomation:
-    """Battery state-of-charge control (Point A / Point B boundary line).
-
-    The points define a piecewise-linear SOC threshold over the day.  When the
-    current SOC is above the interpolated threshold, the output source is
-    battery; below it, grid.
-    """
-    id: str
-    name: str
-    points: List[BatterySocPoint] = field(default_factory=list)
-    enabled: bool = True
-    dry_run: bool = False
-
-    def evaluate(self, snapshot: dict, now: datetime) -> Optional[str]:
-        """Return 'grid' or 'battery' (output source priority), or None."""
-        if not self.enabled:
-            return None
-        soc = _snapshot_value(snapshot, "soc")
-        if soc is None:
-            return None
-        if not self.points:
-            return None
-        threshold = self._threshold_at(now)
-        if threshold is None:
-            return None
-        return "battery" if soc >= threshold else "grid"
-
-    def _threshold_at(self, now: datetime) -> Optional[float]:
-        """Interpolate the SOC threshold at the current time of day.
-
-        Points are sorted by time.  The threshold is interpolated between the
-        two points that bracket the current time.  Before the first point and
-        after the last point, the boundary wraps around midnight (the line is
-        periodic over 24h).
-        """
-        pts = sorted(self.points, key=lambda p: _hm_to_minutes(p.time))
-        if not pts:
-            return None
-        now_min = now.hour * 60 + now.minute
-
-        # If only one point, it's a flat line.
-        if len(pts) == 1:
-            return pts[0].soc
-
-        # Build a circular list: append the first point again at +24h.
-        times = [_hm_to_minutes(p.time) for p in pts]
-        socs = [p.soc for p in pts]
-        times.append(times[0] + 1440)
-        socs.append(socs[0])
-
-        # Find the segment that brackets now_min (or now_min + 1440 for wrap).
-        for i in range(len(pts)):
-            t0, t1 = times[i], times[i + 1]
-            s0, s1 = socs[i], socs[i + 1]
-            # Handle the wrap-around segment (last -> first across midnight).
-            seg_start = t0
-            seg_end = t1
-            probe = now_min
-            if seg_start > seg_end:
-                # This shouldn't happen after sorting + append, but guard.
-                continue
-            if seg_start <= probe <= seg_end:
-                if t1 == t0:
-                    return s0
-                frac = (probe - t0) / (t1 - t0)
-                return s0 + frac * (s1 - s0)
-            # Also check the wrapped probe (now_min + 1440) for the last segment.
-            probe_wrap = now_min + 1440
-            if seg_start <= probe_wrap <= seg_end:
-                if t1 == t0:
-                    return s0
-                frac = (probe_wrap - t0) / (t1 - t0)
-                return s0 + frac * (s1 - s0)
-        return None
-
-
-@dataclass
-class BatteryProtectionAutomation:
-    """Battery protection: if SOC <= X%, shutdown output; restore to Y when recovered."""
-    id: str
-    name: str
-    threshold_soc: float = 25.0       # "if SOC is X% or lower"
-    shutdown_register: str = "shutdown_battery_voltage"  # target to drive
-    restore_value: float = 40.0       # value to restore when recovered
-    enabled: bool = True
-    dry_run: bool = False
-
-    def evaluate(self, snapshot: dict, now: datetime) -> Optional[float]:
-        """Return the value to write (shutdown value) when SOC <= threshold, else None."""
-        if not self.enabled:
-            return None
-        soc = _snapshot_value(snapshot, "soc")
-        if soc is None:
-            return None
-        if soc <= self.threshold_soc:
-            # Shutdown: write the shutdown value (0.0V typically).
-            return 0.0
-        return None
-
-
-@dataclass
-class NotifyAutomation:
-    """Send a notification when a condition is met."""
-    id: str
-    name: str
-    condition_kind: str = "battery_soc"
-    threshold: Optional[float] = None
-    operator: str = "<="  # "<=", ">=", "<", ">", "=="
-    enabled: bool = True
-    dry_run: bool = False
-
-    def evaluate(self, snapshot: dict, now: datetime) -> bool:
-        if not self.enabled:
-            return False
-        sensor = SUBSET_SENSOR.get(self.condition_kind)
-        if sensor is None:
-            return False
-        v = _snapshot_value(snapshot, sensor)
-        if v is None or self.threshold is None:
-            return False
-        if self.operator == "<=":
-            return v <= self.threshold
-        if self.operator == ">=":
-            return v >= self.threshold
-        if self.operator == "<":
-            return v < self.threshold
-        if self.operator == ">":
-            return v > self.threshold
-        if self.operator == "==":
-            return v == self.threshold
-        return False
-
-
-# ── Evaluation helpers ──────────────────────────────────────────────────────
-
-def _hm_to_minutes(hm: str) -> int:
-    """Convert 'HH:MM' to minutes since midnight."""
-    parts = str(hm).split(":")
-    if len(parts) != 2:
-        raise ValueError(f"Invalid time string: {hm}")
-    return int(parts[0]) * 60 + int(parts[1])
-
-
-def _normalize_range_value(v: Any, value_type: str) -> Optional[float]:
-    """Normalize a range boundary to a float.
-
-    For time-of-day subsets, 'HH:MM' strings are converted to minutes since
-    midnight.  For numeric subsets, the value is passed through as a float.
-    """
-    if v is None or v == "":
-        return None
-    if value_type == "time":
-        if isinstance(v, str) and ":" in v:
-            return float(_hm_to_minutes(v))
-        return float(v)
-    return float(v)
-
-
-def _snapshot_value(snapshot: dict, sensor: str) -> Optional[float]:
-    """Extract a numeric value from a decoded snapshot dict."""
-    if sensor not in snapshot:
-        return None
-    entry = snapshot[sensor]
-    if isinstance(entry, dict):
-        return entry.get("value")
-    return entry
-
-
-def _subset_value(kind: str, snapshot: dict, now: datetime) -> Optional[float]:
-    """Return the current value for a subset kind, or None if unavailable."""
-    if kind == "time_of_day":
-        return float(now.hour * 60 + now.minute)
-    sensor = SUBSET_SENSOR.get(kind)
-    if sensor is None:
-        return None
-    return _snapshot_value(snapshot, sensor)
-
-
-def _eval_columns(
-    columns: List[SubsetColumn],
-    idx: int,
-    snapshot: dict,
-    now: datetime,
-) -> Optional[float]:
-    """Recursively evaluate nested subset columns.
-
-    Returns the leaf target value, or None if no range matches at any level.
-    """
-    if idx >= len(columns):
-        return None
-    col = columns[idx]
-    v = _subset_value(col.kind, snapshot, now)
-    if v is None:
-        return None
-    is_leaf = (idx == len(columns) - 1)
-    for rng in col.ranges:
-        if not rng.contains(v):
-            continue
-        if is_leaf:
-            return rng.value
-        result = _eval_columns(columns, idx + 1, snapshot, now)
-        if result is not None:
-            return result
-    return None
-
-
-# ── Public API ───────────────────────────────────────────────────────────────
-
-class AutomationEngine:
-    """Evaluate automation rules and perform safe inverter writes."""
-
-    def __init__(
-        self,
-        db_host: str,
-        db_port: int,
-        db_user: str,
-        db_password: str,
-        db_name: str,
-        table_prefix: str = "lux_",
-        notifiers: Any = None,
-    ):
-        self.db_args = (db_host, db_port, db_user, db_password, db_name)
-        self.table_prefix = table_prefix
-        self.settings_table = f"{table_prefix}settings"
-        self.log_table = f"{table_prefix}automation_log"
-        self._last_written: Dict[str, Tuple[int, str]] = {}
-        self._restore_pending: Dict[str, bool] = {}
-        self._notifiers = notifiers
-        self._notify_last_sent: Dict[str, float] = {}
-        self._notify_min_interval_sec = 300  # throttle repeated notify automations
-        self._ensure_tables()
-
-    def _conn(self):
-        return pymysql.connect(
-            host=self.db_args[0],
-            port=self.db_args[1],
-            user=self.db_args[2],
-            password=self.db_args[3],
-            database=self.db_args[4],
-            autocommit=True,
-        )
-
-    def _ensure_tables(self) -> None:
-        conn = self._conn()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
-                    CREATE TABLE IF NOT EXISTS {self.log_table} (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        ts DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        rule_id VARCHAR(64),
-                        rule_name VARCHAR(255),
-                        register_name VARCHAR(64),
-                        raw_value INT,
-                        scaled_value FLOAT,
-                        dry_run TINYINT(1) DEFAULT 0,
-                        success TINYINT(1) DEFAULT 0,
-                        message TEXT
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    """
-                )
-        finally:
-            conn.close()
-
-    # ── loading ──────────────────────────────────────────────────────────────
-
-    def load_automations(self) -> List[Any]:
-        """Load all automations from the settings table."""
-        try:
-            conn = self._conn()
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"SELECT value FROM {self.settings_table} WHERE name = %s",
-                    (SETTING_KEY,),
-                )
-                row = cur.fetchone()
-        finally:
-            conn.close()
-
-        if not row or not row[0]:
-            return []
-        try:
-            data = json.loads(row[0])
-        except json.JSONDecodeError as exc:
-            logger.error("Failed to parse automation JSON: %s", exc)
-            return []
-        return [_parse_automation(item) for item in data if isinstance(item, dict)]
-
-    def is_enabled(self) -> bool:
-        try:
-            conn = self._conn()
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"SELECT value FROM {self.settings_table} WHERE name = %s",
-                    (ENABLED_KEY,),
-                )
-                row = cur.fetchone()
-        finally:
-            conn.close()
-        if not row or not row[0]:
-            return False
-        return str(row[0]).strip().lower() in ("true", "1", "yes", "on")
-
-    # ── evaluation + apply ──────────────────────────────────────────────────
-
-    def evaluate_and_apply(
-        self,
-        snapshot: dict,
-        dongle_host: str,
-        dongle_port: int,
-        datalog_serial: str,
-        inverter_serial: str,
-        timezone: str = "America/Chicago",
-    ) -> List[Dict[str, Any]]:
-        """Evaluate all automations and apply any pending writes.
-
-        Returns a list of action results.
-        """
-        results: List[Dict[str, Any]] = []
-        if not self.is_enabled():
-            return results
-
-        tz = ZoneInfo(timezone)
-        now = datetime.now(tz)
-        automations = self.load_automations()
-        if not automations:
-            return results
-
-        for auto in automations:
-            try:
-                if isinstance(auto, RuleTable):
-                    results.extend(self._apply_rule_table(auto, snapshot, now, dongle_host, dongle_port, datalog_serial, inverter_serial))
-                elif isinstance(auto, BatterySocAutomation):
-                    results.extend(self._apply_battery_soc(auto, snapshot, now, dongle_host, dongle_port, datalog_serial, inverter_serial))
-                elif isinstance(auto, BatteryProtectionAutomation):
-                    results.extend(self._apply_battery_protection(auto, snapshot, now, dongle_host, dongle_port, datalog_serial, inverter_serial))
-                elif isinstance(auto, NotifyAutomation):
-                    results.extend(self._apply_notify(auto, snapshot, now))
-            except Exception:
-                logger.exception("Automation %s failed", getattr(auto, "id", "?"))
-        return results
-
-    def _apply_rule_table(
-        self,
-        auto: RuleTable,
-        snapshot: dict,
-        now: datetime,
-        dongle_host: str,
-        dongle_port: int,
-        datalog_serial: str,
-        inverter_serial: str,
-    ) -> List[Dict[str, Any]]:
-        results: List[Dict[str, Any]] = []
-        target = auto.evaluate(snapshot, now)
-
-        if target is None:
-            # Conditions no longer match — apply restore value if configured.
-            if auto.restore is not None:
-                results.append(self._write_target(auto, auto.restore, dongle_host, dongle_port, datalog_serial, inverter_serial, reason="restore"))
-            return results
-
-        results.append(self._write_target(auto, target, dongle_host, dongle_port, datalog_serial, inverter_serial))
-        return results
-
-    def _apply_battery_soc(
-        self,
-        auto: BatterySocAutomation,
-        snapshot: dict,
-        now: datetime,
-        dongle_host: str,
-        dongle_port: int,
-        datalog_serial: str,
-        inverter_serial: str,
-    ) -> List[Dict[str, Any]]:
-        action = auto.evaluate(snapshot, now)
-        if action is None:
-            return []
-
-        # NOTE: In the reference portal, "Battery state of charge" control is
-        # an *internal* feature that requires a direct battery data source
-        # (BMS or emulated BMS).  It does NOT write a Luxpower holding
-        # register; it switches the portal's own "output source priority"
-        # between grid and battery based on the SOC boundary line.
-        #
-        # lux-mon mirrors this: the automation evaluates the SOC boundary and
-        # reports the intended source (grid/battery), but the actual
-        # grid/battery switching is performed by the inverter's own AC-first
-        # schedule / charge-priority settings, not by a single writable
-        # register.  We therefore log the intended action rather than fabricate
-        # a register write that the hardware does not support.
-        results: List[Dict[str, Any]] = []
-        results.append({
-            "rule_id": auto.id,
-            "name": auto.name,
-            "type": TYPE_BATTERY_SOC,
-            "action": action,
-            "dry_run": auto.dry_run,
-        })
-        return results
-
-    def _apply_battery_protection(
-        self,
-        auto: BatteryProtectionAutomation,
-        snapshot: dict,
-        now: datetime,
-        dongle_host: str,
-        dongle_port: int,
-        datalog_serial: str,
-        inverter_serial: str,
-    ) -> List[Dict[str, Any]]:
-        results: List[Dict[str, Any]] = []
-        target = auto.evaluate(snapshot, now)
-        if target is None:
-            # SOC recovered — restore the configured value.
-            results.append(self._write_target(auto, auto.restore_value, dongle_host, dongle_port, datalog_serial, inverter_serial, reason="restore"))
-            return results
-        # Shutdown: write 0.0V to the shutdown register.
-        results.append(self._write_target(auto, target, dongle_host, dongle_port, datalog_serial, inverter_serial, reason="shutdown"))
-        return results
-
-    def _apply_notify(self, auto: NotifyAutomation, snapshot: dict, now: datetime) -> List[Dict[str, Any]]:
-        if not auto.evaluate(snapshot, now):
-            return []
-
-        # Rate-limit repeated notifications for the same automation.
-        now_ts = time.time()
-        last = self._notify_last_sent.get(auto.id, 0)
-        if now_ts - last < self._notify_min_interval_sec:
-            return []
-        self._notify_last_sent[auto.id] = now_ts
-
-        sensor = SUBSET_SENSOR.get(auto.condition_kind)
-        value = _snapshot_value(snapshot, sensor) if sensor else None
-        message = (
-            f"{auto.name}: {auto.condition_kind} {auto.operator} {auto.threshold} "
-            f"(current {value})"
-        )
-
-        if auto.dry_run:
-            logger.info("DRY-RUN notify: %s", message)
-            return [{
-                "rule_id": auto.id,
-                "name": auto.name,
-                "type": TYPE_NOTIFY,
-                "notified": True,
-                "dry_run": True,
-                "message": message,
-            }]
-
-        if self._notifiers is not None:
-            try:
-                self._notifiers.send(
-                    alert_name=auto.name,
-                    active=True,
-                    value=float(value) if value is not None else 0.0,
-                    message=message,
-                )
-            except Exception:
-                logger.exception("Notify dispatch failed for %s", auto.name)
-
-        return [{
-            "rule_id": auto.id,
-            "name": auto.name,
-            "type": TYPE_NOTIFY,
-            "notified": True,
-            "dry_run": auto.dry_run,
-            "message": message,
-        }]
-
-    def _write_target(
-        self,
-        auto: Any,
-        target: float,
-        dongle_host: str,
-        dongle_port: int,
-        datalog_serial: str,
-        inverter_serial: str,
-        reason: str = "set",
-    ) -> Dict[str, Any]:
-        """Write a target value to the automation's target register."""
-        register_name = getattr(auto, "target", None) or getattr(auto, "shutdown_register", None)
-        if register_name is None:
-            return {"rule_id": auto.id, "error": "No target register"}
-
-        reg_addr = HOLDING_BY_NAME.get(register_name)
-        if reg_addr is None:
-            msg = f"Unknown holding register: {register_name}"
-            logger.warning(msg)
-            self._log(auto, register_name, None, None, False, msg)
-            return {"rule_id": auto.id, "error": msg}
-
-        meta = HOLDING_REGISTERS[reg_addr]
-        raw = _engineering_to_raw(target, meta)
-        if raw is None:
-            msg = f"Invalid target {target} for {meta['name']}"
-            logger.warning(msg)
-            self._log(auto, register_name, raw, target, False, msg)
-            return {"rule_id": auto.id, "error": msg}
-
-        # Clamp to safety limits.
-        raw_min = _engineering_to_raw(meta.get("min", 0), meta)
-        raw_max = _engineering_to_raw(meta.get("max", 65535), meta)
-        if raw_min is not None and raw < raw_min:
-            raw = raw_min
-            target = _raw_to_engineering(raw, meta)
-        if raw_max is not None and raw > raw_max:
-            raw = raw_max
-            target = _raw_to_engineering(raw, meta)
-
-        if auto.dry_run:
-            msg = f"DRY-RUN would {reason} {meta['name']} = {target} (raw={raw})"
-            logger.info(msg)
-            self._log(auto, register_name, raw, target, True, msg)
-            return {
-                "rule_id": auto.id,
-                "register": meta["name"],
-                "value": target,
-                "raw": raw,
-                "dry_run": True,
-                "reason": reason,
-            }
-
-        # Skip if we already wrote this exact raw value recently.
-        last = self._last_written.get(meta["name"])
-        if last and last[0] == raw:
-            logger.debug("Skipping repeat write of %s = %s", meta["name"], raw)
-            return {"rule_id": auto.id, "register": meta["name"], "skipped": True}
-
-        success, msg = _write_holding_register(
-            dongle_host, dongle_port, datalog_serial, inverter_serial, reg_addr, raw
-        )
-        if success:
-            self._last_written[meta["name"]] = (raw, datetime.now().isoformat())
-        self._log(auto, register_name, raw, target, success, msg)
-        return {
-            "rule_id": auto.id,
-            "register": meta["name"],
-            "value": target,
-            "raw": raw,
-            "success": success,
-            "message": msg,
-            "reason": reason,
-        }
-
-    def _log(
-        self,
-        auto: Any,
-        register_name: str,
-        raw: Optional[int],
-        scaled: Optional[float],
-        success: bool,
-        message: str,
-    ) -> None:
-        try:
-            conn = self._conn()
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
-                    INSERT INTO {self.log_table}
-                    (rule_id, rule_name, register_name, raw_value, scaled_value, dry_run, success, message)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        auto.id,
-                        auto.name,
-                        register_name,
-                        raw,
-                        scaled,
-                        getattr(auto, "dry_run", False),
-                        success,
-                        message,
-                    ),
-                )
-        finally:
-            conn.close()
-
-
-# ── Helpers ─────────────────────────────────────────────────────────────────
 
 def _engineering_to_raw(value: float, meta: dict) -> Optional[int]:
     """Convert an engineering-unit value to a raw Modbus register value."""
@@ -796,11 +96,7 @@ def _write_holding_register(
     value: int,
     timeout: float = 10.0,
 ) -> Tuple[bool, str]:
-    """
-    Send a WriteSingleRegister request and verify the echo.
-
-    Uses a fresh socket so the collector's read transport is not disturbed.
-    """
+    """Send a WriteSingleRegister request and verify the echo."""
     req = build_write_request(datalog_serial, inverter_serial, register, value)
     sock: Optional[socket.socket] = None
     try:
@@ -890,86 +186,765 @@ def _read_holding_register(
                 pass
 
 
-# ── Parsing ─────────────────────────────────────────────────────────────────
+# ── SolarAssistant setting name → lux-mon holding-register name ─────────────
+#
+# SolarAssistant exposes 50 abstract inverter settings.  We map each to a
+# lux-mon holding-register name in HOLDING_BY_NAME where known.  Unmapped keys
+# can still be configured in the UI but will log a warning and skip the write.
 
-def _parse_automation(data: Dict[str, Any]) -> Any:
-    """Parse a single automation dict into the appropriate dataclass."""
-    atype = data.get("type", TYPE_RULE_TABLE)
+SETTING_NAME_TO_REGISTER: Dict[str, Optional[str]] = {
+    # Charging voltages
+    "absorption_charge_voltage": "lead_acid_charge_voltage",
+    "float_charge_voltage": "floating_voltage",
+    "equalization_voltage": "equalization_voltage",
 
-    if atype == TYPE_BATTERY_SOC:
-        points = []
-        for p in data.get("points", []):
-            points.append(BatterySocPoint(
-                time=p.get("time", "00:00"),
-                soc=float(p.get("soc", 50.0)),
-            ))
-        return BatterySocAutomation(
-            id=str(data.get("id", "unknown")),
-            name=data.get("name", "Battery state of charge"),
-            points=points,
-            enabled=bool(data.get("enabled", True)),
-            dry_run=bool(data.get("dry_run", DRY_RUN_DEFAULT)),
+    # Grid charge
+    "grid_charge": None,
+    "grid_charge_according_to": None,
+    "grid_charge_current": "ac_charge_battery_current",
+    "grid_charge_slot_1_start": "ac_charge_period_1_start",
+    "grid_charge_slot_1_end": "ac_charge_period_1_end",
+    "grid_charge_slot_2_start": "ac_charge_period_2_start",
+    "grid_charge_slot_2_end": "ac_charge_period_2_end",
+    "grid_charge_slot_3_start": "ac_charge_period_3_start",
+    "grid_charge_slot_3_end": "ac_charge_period_3_end",
+    "grid_charge_start_capacity": "ac_charge_start_battery_soc",
+    "grid_charge_start_voltage": "ac_charge_start_battery_voltage",
+    "grid_charge_stop_capacity": "ac_charge_end_battery_soc",
+    "grid_charge_stop_voltage": "ac_charge_end_battery_voltage",
+
+    # AC first / grid first
+    "grid_first_slot_1_start": "ac_first_period_1_start",
+    "grid_first_slot_1_end": "ac_first_period_1_end",
+    "grid_first_slot_2_start": "ac_first_period_2_start",
+    "grid_first_slot_2_end": "ac_first_period_2_end",
+    "grid_first_slot_3_start": "ac_first_period_3_start",
+    "grid_first_slot_3_end": "ac_first_period_3_end",
+
+    # Max charge/discharge currents
+    "max_charge_current": "ac_charge_battery_current",  # best available proxy
+    "max_discharge_current": "lead_acid_discharge_rate",
+
+    # Force off-grid / on-grid mode
+    "force_off_grid": None,
+    "on-grid_mode": None,
+
+    # AC couple / combine PV/AC supply
+    "ac_couple": None,
+    "combine_pv/ac_supply": None,
+
+    # Export / feed-in
+    "export_to_grid": None,
+    "export_power_rate": "feed_in_grid_power_percent",
+
+    # Discharge limits
+    "discharge_according_to": None,
+    "stop_discharge_voltage": "lead_acid_discharge_cut_voltage",
+    "stop_discharge_capacity": "discharge_cutoff_soc_eod",
+
+    # Shutdown / battery protection
+    "shutdown_battery_voltage": "battery_low_to_utility_voltage",
+    "shutdown_battery_capacity": "battery_low_to_utility_soc",
+
+    # Warning thresholds
+    "warning_start_voltage": "battery_warning_voltage",
+    "warning_start_capacity": "battery_warning_soc",
+
+    # Generator charge
+    "generator_charge_according_to": None,
+    "generator_charge_current": "forced_charge_power",
+    "generator_charge_start_voltage": None,
+    "generator_charge_start_capacity": None,
+    "generator_charge_stop_voltage": None,
+    "generator_charge_stop_capacity": None,
+    "generator_power": "max_generator_input_power",
+
+    # Smart load
+    "smart_load": None,
+    "smart_load_start_pv_power": None,
+    "smart_load_start_capacity": None,
+    "smart_load_start_voltage": None,
+    "smart_load_stop_capacity": None,
+    "smart_load_stop_voltage": None,
+
+    # Soft start / power factor
+    "soft_start_slope": "soft_start_slope",
+    "active_power_percent": "active_power_percent",
+    "reactive_power_percent": "reactive_power_percent",
+    "power_factor_command": "power_factor_command",
+
+    # Charge / discharge power percent
+    "charge_power_percent": "charge_power_percent",
+    "discharge_power_percent": "discharge_power_percent",
+    "ac_charge_power_percent": "ac_charge_power_percent",
+}
+
+REGISTER_TO_SETTING_NAME = {
+    reg_name: sa_name
+    for sa_name, reg_name in SETTING_NAME_TO_REGISTER.items()
+    if reg_name
+}
+
+
+# ── Condition dimensions ─────────────────────────────────────────────────────
+
+CONDITION_KINDS: Dict[str, Dict[str, Any]] = {
+    "time_of_day": {"label": "Time of day", "unit": "", "value_type": "time"},
+    "day_of_week": {"label": "Day of week", "unit": "", "value_type": "select",
+                    "options": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]},
+    "month_of_year": {"label": "Month of year", "unit": "", "value_type": "select",
+                      "options": ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]},
+    "battery_voltage": {"label": "Battery voltage", "unit": "V", "value_type": "number"},
+    "battery_soc": {"label": "Battery state of charge", "unit": "%", "value_type": "number"},
+    "battery_current": {"label": "Battery current", "unit": "A", "value_type": "number"},
+    "grid_voltage": {"label": "Grid voltage", "unit": "V", "value_type": "number"},
+    "grid_frequency": {"label": "Grid frequency", "unit": "Hz", "value_type": "number"},
+    "pv_energy_progress": {"label": "PV energy progress", "unit": "%", "value_type": "number"},
+    "pv_energy_remaining_today": {"label": "PV energy remaining today", "unit": "%", "value_type": "number"},
+    "load_power": {"label": "Load power", "unit": "W", "value_type": "number"},
+    "inverter_temp": {"label": "Inverter temperature", "unit": "°C", "value_type": "number"},
+    "battery_temp": {"label": "Battery temperature", "unit": "°C", "value_type": "number"},
+}
+
+# Condition kind -> snapshot sensor key (None for scheduler-only kinds).
+CONDITION_SENSOR = {
+    "time_of_day": None,
+    "day_of_week": None,
+    "month_of_year": None,
+    "battery_voltage": "battery_voltage",
+    "battery_soc": "soc",
+    "battery_current": "battery_current",
+    "grid_voltage": "grid_voltage",
+    "grid_frequency": "grid_frequency",
+    "pv_energy_progress": None,
+    "pv_energy_remaining_today": None,
+    "load_power": "eps_power",
+    "inverter_temp": "temp_inverter",
+    "battery_temp": "temp_battery",
+}
+
+# Extra lux-mon-only conditions surfaced under "show all".
+EXTRA_CONDITION_KINDS = {
+    "pv_power": {"label": "Solar PV power", "unit": "W", "value_type": "number"},
+    "grid_power": {"label": "Grid power", "unit": "W", "value_type": "number"},
+}
+EXTRA_CONDITION_SENSOR = {
+    "pv_power": "pv1_power",
+    "grid_power": "grid_import_power",
+}
+
+ALL_CONDITION_KINDS = {**CONDITION_KINDS, **EXTRA_CONDITION_KINDS}
+ALL_CONDITION_SENSOR = {**CONDITION_SENSOR, **EXTRA_CONDITION_SENSOR}
+
+
+# ── Automation types ─────────────────────────────────────────────────────────
+
+TYPE_RULE_TABLE = "rule_table"
+TYPE_BATTERY_SOC = "battery_soc"
+TYPE_BATTERY_PROTECTION = "battery_protection"
+TYPE_NOTIFY = "notify"
+
+AUTOMATION_TYPES = [
+    {"id": TYPE_RULE_TABLE, "label": "Rule table", "phx_value_id": "set-setting"},
+    {"id": TYPE_BATTERY_SOC, "label": "Battery state of charge control", "phx_value_id": "battery-soc"},
+    {"id": TYPE_BATTERY_PROTECTION, "label": "Battery protection", "phx_value_id": "battery-protection"},
+    {"id": TYPE_NOTIFY, "label": "Send notification", "phx_value_id": "notify"},
+]
+
+
+# ── Data models ─────────────────────────────────────────────────────────────
+
+@dataclass
+class Condition:
+    kind: str
+    min: Optional[float] = None
+    max: Optional[float] = None
+    value: Optional[Any] = None  # exact/select value (e.g. day_of_week)
+
+    def to_dict(self) -> dict:
+        return {"kind": self.kind, "min": self.min, "max": self.max, "value": self.value}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Condition":
+        return cls(
+            kind=data.get("kind", "time_of_day"),
+            min=_to_float(data.get("min")),
+            max=_to_float(data.get("max")),
+            value=data.get("value"),
         )
 
-    if atype == TYPE_BATTERY_PROTECTION:
-        return BatteryProtectionAutomation(
-            id=str(data.get("id", "unknown")),
-            name=data.get("name", "Battery protection"),
-            threshold_soc=float(data.get("threshold_soc", 25.0)),
-            shutdown_register=data.get("shutdown_register", "shutdown_battery_voltage"),
-            restore_value=float(data.get("restore_value", 40.0)),
-            enabled=bool(data.get("enabled", True)),
-            dry_run=bool(data.get("dry_run", DRY_RUN_DEFAULT)),
+
+@dataclass
+class Range:
+    """An inner range: a condition gate plus the value to write when it matches."""
+    condition: Condition
+    action_value: Optional[float] = None
+
+    def to_dict(self) -> dict:
+        return {"condition": self.condition.to_dict(), "action_value": self.action_value}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Range":
+        return cls(
+            condition=Condition.from_dict(data.get("condition", {})),
+            action_value=_to_float(data.get("action_value")),
         )
 
-    if atype == TYPE_NOTIFY:
-        return NotifyAutomation(
-            id=str(data.get("id", "unknown")),
-            name=data.get("name", "Notification"),
-            condition_kind=data.get("condition_kind", "battery_soc"),
-            threshold=data.get("threshold"),
-            operator=data.get("operator", "<="),
-            enabled=bool(data.get("enabled", True)),
-            dry_run=bool(data.get("dry_run", DRY_RUN_DEFAULT)),
+
+@dataclass
+class Group:
+    """An outer block: a condition gate plus the inner ranges it contains."""
+    condition: Condition
+    ranges: List[Range] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {"condition": self.condition.to_dict(), "ranges": [r.to_dict() for r in self.ranges]}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Group":
+        return cls(
+            condition=Condition.from_dict(data.get("condition", {})),
+            ranges=[Range.from_dict(r) for r in data.get("ranges", [])],
         )
 
-    # Default: rule table
-    columns = []
-    for c in data.get("columns", []):
-        kind = c.get("kind", "time_of_day")
-        value_type = SUBSET_KINDS.get(kind, {}).get("value_type", "number")
-        ranges = []
-        for r in c.get("ranges", []):
-            ranges.append(Range(
-                from_value=_normalize_range_value(r.get("from"), value_type),
-                to_value=_normalize_range_value(r.get("to"), value_type),
-                value=r.get("value"),
-            ))
-        columns.append(SubsetColumn(kind=kind, ranges=ranges))
 
-    return RuleTable(
-        id=str(data.get("id", "unknown")),
-        name=data.get("name", "Unnamed rule"),
-        target=data.get("target", "ac_charge_battery_current"),
-        columns=columns,
-        enabled=bool(data.get("enabled", True)),
-        dry_run=bool(data.get("dry_run", DRY_RUN_DEFAULT)),
-        restore=data.get("restore"),
-    )
+@dataclass
+class Automation:
+    """A single automation rule.
+
+    The rule-table type is a two-level nested grid, matching Solar Assistant:
+
+        set <setting>  ->  when <group condition>  ->  and when <range condition>
+                           ->  set value to <range action_value>
+
+    * `setting` is the top-level action (the holding register to write).
+    * `group_kind` is the outer grouping condition kind (free choice).
+    * `range_kind` is the inner range condition kind (free choice).
+    * `groups` is the list of outer blocks; each block has a `condition` (the
+      outer gate) and a list of `ranges`.
+    * Each `range` has its own `condition` (the inner gate) and `action_value`
+      (the value written to `setting` when both the group and range match).
+    * Only `setting` is ever written to the inverter; the conditions are pure
+      validation gates.
+
+    Both the group kind and range kind are free choices from the full condition
+    list — nothing is hardcoded to time/voltage.
+    """
+    id: str
+    name: str
+    type: str
+    enabled: bool = True
+    disabled_until: float = 0.0
+    setting: Optional[str] = None
+    group_kind: Optional[str] = None
+    range_kind: Optional[str] = None
+    groups: List[Group] = field(default_factory=list)
+    conditions: List[Condition] = field(default_factory=list)  # notify only
+    action_value: Optional[float] = None  # battery_protection only
+    restore_value: Optional[float] = None
+    points: List[dict] = field(default_factory=list)
+    threshold: Optional[float] = None
+    notify_message: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "type": self.type,
+            "enabled": self.enabled,
+            "disabled_until": self.disabled_until,
+            "setting": self.setting,
+            "group_kind": self.group_kind,
+            "range_kind": self.range_kind,
+            "groups": [g.to_dict() for g in self.groups],
+            "conditions": [c.to_dict() for c in self.conditions],
+            "action_value": self.action_value,
+            "restore_value": self.restore_value,
+            "points": self.points,
+            "threshold": self.threshold,
+            "notify_message": self.notify_message,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Automation":
+        return cls(
+            id=str(data.get("id", "")),
+            name=data.get("name", ""),
+            type=data.get("type", TYPE_RULE_TABLE),
+            enabled=bool(data.get("enabled", True)),
+            disabled_until=float(data.get("disabled_until", 0.0) or 0.0),
+            setting=data.get("setting"),
+            group_kind=data.get("group_kind"),
+            range_kind=data.get("range_kind"),
+            groups=[Group.from_dict(g) for g in data.get("groups", [])],
+            conditions=[Condition.from_dict(c) for c in data.get("conditions", [])],
+            action_value=_to_float(data.get("action_value")),
+            restore_value=_to_float(data.get("restore_value")),
+            points=list(data.get("points", [])),
+            threshold=_to_float(data.get("threshold")),
+            notify_message=data.get("notify_message", ""),
+        )
 
 
-# ── Standalone test entrypoint ──────────────────────────────────────────────
+# ── Helpers ─────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
-    import os
-    logging.basicConfig(level=logging.INFO)
-    engine = AutomationEngine(
-        db_host=os.getenv("LUX_MARIADB_HOST", "localhost"),
-        db_port=int(os.getenv("LUX_MARIADB_PORT", "3306")),
-        db_user=os.getenv("LUX_MARIADB_USER", "luxmon"),
-        db_password=os.getenv("LUX_MARIADB_PASSWORD", "luxmon"),
-        db_name=os.getenv("LUX_MARIADB_DATABASE", "luxmon"),
-    )
-    print("Enabled:", engine.is_enabled())
-    for a in engine.load_automations():
-        print(a)
+def _to_float(value: Any) -> Optional[float]:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _now_in_tz(tz_name: str) -> datetime:
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo("UTC")
+    return datetime.now(tz)
+
+
+def _parse_hhmm(value: str) -> Optional[int]:
+    try:
+        h, m = str(value).strip().split(":", 1)
+        return int(h) * 60 + int(m)
+    except Exception:
+        return None
+
+
+def _time_matches(value: Any, kind: str, tz_name: str = "America/Chicago") -> bool:
+    """Check scheduler-only condition kinds."""
+    now = _now_in_tz(tz_name)
+    if kind == "time_of_day":
+        txt = str(value) if value else ""
+        if "-" in txt:
+            start, end = txt.split("-", 1)
+        else:
+            return False
+        start_mins = _parse_hhmm(start)
+        end_mins = _parse_hhmm(end)
+        if start_mins is None or end_mins is None:
+            return False
+        current = now.hour * 60 + now.minute
+        if start_mins <= end_mins:
+            return start_mins <= current <= end_mins
+        return current >= start_mins or current <= end_mins
+    if kind == "day_of_week":
+        return now.strftime("%a") == str(value)
+    if kind == "month_of_year":
+        return now.strftime("%b") == str(value)
+    return False
+
+
+def _sensor_value(snapshot: Dict, sensor: str) -> Optional[float]:
+    if sensor not in snapshot:
+        return None
+    val = snapshot[sensor]
+    if isinstance(val, dict):
+        return float(val.get("value", 0))
+    try:
+        return float(val)
+    except Exception:
+        return None
+
+
+def _condition_matches(condition: Condition, snapshot: Dict, tz_name: str = "America/Chicago") -> bool:
+    kind = condition.kind
+    if kind in ("time_of_day", "day_of_week", "month_of_year"):
+        return _time_matches(condition.value, kind, tz_name)
+
+    sensor = ALL_CONDITION_SENSOR.get(kind)
+    if sensor is None:
+        logger.warning("Condition kind %s has no live sensor mapping yet", kind)
+        return False
+
+    value = _sensor_value(snapshot, sensor)
+    if value is None:
+        return False
+
+    if condition.min is not None and value < condition.min:
+        return False
+    if condition.max is not None and value > condition.max:
+        return False
+    return True
+
+
+def _all_conditions_match(conditions: List[Condition], snapshot: Dict, tz_name: str = "America/Chicago") -> bool:
+    if not conditions:
+        return True
+    return all(_condition_matches(c, snapshot, tz_name) for c in conditions)
+
+
+def _find_matching_range(
+    auto: "Automation", snapshot: Dict, tz_name: str = "America/Chicago"
+) -> Optional[Tuple[Group, Range]]:
+    """Find the (group, range) whose conditions both match the snapshot.
+
+    The outer group condition is evaluated first; if it matches, the inner
+    ranges are evaluated in order and the first matching range wins.  Returns
+    None when no group/range matches.
+    """
+    for group in auto.groups:
+        if not _condition_matches(group.condition, snapshot, tz_name):
+            continue
+        for rng in group.ranges:
+            if _condition_matches(rng.condition, snapshot, tz_name):
+                return group, rng
+    return None
+
+
+def _clamp_to_register(value: float, meta: dict) -> float:
+    min_v = meta.get("min")
+    max_v = meta.get("max")
+    if min_v is not None:
+        value = max(value, float(min_v))
+    if max_v is not None:
+        value = min(value, float(max_v))
+    return value
+
+
+# ── Automation engine ───────────────────────────────────────────────────────
+
+class AutomationEngine:
+    """Evaluate and execute SolarAssistant-style automations."""
+
+    def __init__(
+        self,
+        db_host: str,
+        db_port: int,
+        db_user: str,
+        db_password: str,
+        db_name: str,
+        table_prefix: str = "lux_",
+        notifiers: Optional[Any] = None,
+    ):
+        self.db_host = db_host
+        self.db_port = db_port
+        self.db_user = db_user
+        self.db_password = db_password
+        self.db_name = db_name
+        self.table_prefix = table_prefix
+        self.settings_table = f"{table_prefix}settings"
+        self.log_table = f"{table_prefix}automation_log"
+        self._notifiers = notifiers
+        self._last_eval: Dict[str, bool] = {}
+        self._last_notify: Dict[str, float] = {}
+
+    def _db(self):
+        import pymysql
+        return pymysql.connect(
+            host=self.db_host,
+            port=self.db_port,
+            user=self.db_user,
+            password=self.db_password,
+            database=self.db_name,
+            autocommit=True,
+        )
+
+    def _get_setting(self, name: str, default: str = "") -> str:
+        try:
+            with self._db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"SELECT value FROM {self.settings_table} WHERE name = %s",
+                        (name,),
+                    )
+                    row = cur.fetchone()
+                    return row[0] if row and row[0] is not None else default
+        except Exception:
+            logger.exception("Failed to read setting %s", name)
+            return default
+
+    def _set_setting(self, name: str, value: str) -> None:
+        try:
+            with self._db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"INSERT INTO {self.settings_table} (name, value) VALUES (%s, %s) "
+                        f"ON DUPLICATE KEY UPDATE value = VALUES(value)",
+                        (name, value),
+                    )
+        except Exception:
+            logger.exception("Failed to write setting %s", name)
+
+    def load(self) -> List[Automation]:
+        raw = self._get_setting(SETTING_AUTOMATIONS, "[]")
+        try:
+            data = json.loads(raw) if raw else []
+            return [Automation.from_dict(a) for a in data]
+        except Exception:
+            logger.exception("Failed to parse automations JSON")
+            return []
+
+    def save(self, automations: List[Automation]) -> None:
+        data = [a.to_dict() for a in automations]
+        self._set_setting(SETTING_AUTOMATIONS, json.dumps(data))
+
+    def load_dict(self) -> Dict[str, Any]:
+        return {
+            "enabled": str(self._get_setting(SETTING_ENABLED, "false")).lower() in ("true", "1", "yes"),
+            "global_dry_run": str(self._get_setting(SETTING_DRY_RUN, "true")).lower() in ("true", "1", "yes"),
+            "automations": [a.to_dict() for a in self.load()],
+        }
+
+    def save_dict(self, data: Dict[str, Any]) -> None:
+        self._set_setting(SETTING_ENABLED, "true" if data.get("enabled") else "false")
+        self._set_setting(SETTING_DRY_RUN, "true" if data.get("global_dry_run", True) else "false")
+        if "automations" in data:
+            self.save([Automation.from_dict(a) for a in data["automations"]])
+
+    def _log(
+        self,
+        automation_id: str,
+        automation_name: str,
+        register_name: str,
+        raw_value: Optional[int],
+        scaled_value: Optional[float],
+        dry_run: bool,
+        success: bool,
+        message: str,
+    ) -> None:
+        try:
+            with self._db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"""
+                        INSERT INTO {self.log_table}
+                        (rule_id, rule_name, register_name, raw_value, scaled_value,
+                         dry_run, success, message, ts)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                        """,
+                        (automation_id, automation_name, register_name, raw_value,
+                         scaled_value, int(dry_run), int(success), message),
+                    )
+        except Exception:
+            logger.exception("Failed to write automation log")
+
+    def evaluate_and_apply(
+        self,
+        snapshot: Dict,
+        dongle_host: str,
+        dongle_port: int,
+        datalog_serial: str,
+        inverter_serial: str,
+        timezone: str = "America/Chicago",
+    ) -> None:
+        enabled = str(self._get_setting(SETTING_ENABLED, "false")).lower() in ("true", "1", "yes")
+        dry_run = str(self._get_setting(SETTING_DRY_RUN, "true")).lower() in ("true", "1", "yes")
+        automations = self.load()
+        now = time.time()
+
+        for auto in automations:
+            if not enabled or not auto.enabled:
+                continue
+            if auto.disabled_until and now < auto.disabled_until:
+                continue
+
+            try:
+                self._evaluate_one(
+                    auto, snapshot,
+                    dongle_host, dongle_port, datalog_serial, inverter_serial,
+                    dry_run=dry_run, timezone=timezone,
+                )
+            except Exception:
+                logger.exception("Automation %s evaluation failed", auto.id)
+
+    def _evaluate_one(
+        self,
+        auto: Automation,
+        snapshot: Dict,
+        dongle_host: str,
+        dongle_port: int,
+        datalog_serial: str,
+        inverter_serial: str,
+        dry_run: bool,
+        timezone: str,
+    ) -> None:
+        matched = _all_conditions_match(auto.conditions, snapshot, timezone)
+        was_active = self._last_eval.get(auto.id, False)
+
+        if auto.type == TYPE_NOTIFY:
+            if matched and not was_active:
+                self._send_notification(auto)
+            self._last_eval[auto.id] = matched
+            return
+
+        if auto.type == TYPE_BATTERY_PROTECTION:
+            self._evaluate_battery_protection(
+                auto, snapshot,
+                dongle_host, dongle_port, datalog_serial, inverter_serial,
+                dry_run, timezone,
+            )
+            return
+
+        if auto.type == TYPE_BATTERY_SOC:
+            self._evaluate_battery_soc(
+                auto, snapshot,
+                dongle_host, dongle_port, datalog_serial, inverter_serial,
+                dry_run, timezone,
+            )
+            return
+
+        # TYPE_RULE_TABLE — two-level nested grid:
+        #   set <setting> -> when <group condition> -> and when <range condition>
+        #   -> set value to <range action_value>
+        # Only `setting` is written; the group/range conditions are pure gates.
+        match = _find_matching_range(auto, snapshot, timezone)
+        if match is not None and auto.setting is not None:
+            _, rng = match
+            if rng.action_value is not None:
+                self._do_write(
+                    auto.id, auto.name, auto.setting, float(rng.action_value),
+                    dongle_host, dongle_port, datalog_serial, inverter_serial,
+                    dry_run,
+                )
+                self._last_eval[auto.id] = True
+                return
+        if was_active and auto.restore_value is not None and auto.setting is not None:
+            self._do_write(
+                auto.id, auto.name, auto.setting, float(auto.restore_value),
+                dongle_host, dongle_port, datalog_serial, inverter_serial,
+                dry_run,
+            )
+        self._last_eval[auto.id] = False
+
+    def _evaluate_battery_protection(
+        self,
+        auto: Automation,
+        snapshot: Dict,
+        dongle_host: str,
+        dongle_port: int,
+        datalog_serial: str,
+        inverter_serial: str,
+        dry_run: bool,
+        timezone: str,
+    ) -> None:
+        soc = _sensor_value(snapshot, "soc")
+        if soc is None or auto.threshold is None:
+            return
+
+        was_active = self._last_eval.get(auto.id, False)
+        matched = soc <= auto.threshold
+
+        if matched:
+            if auto.action_value is not None:
+                self._do_write(
+                    auto.id, auto.name, "shutdown_battery_voltage", float(auto.action_value),
+                    dongle_host, dongle_port, datalog_serial, inverter_serial, dry_run,
+                )
+            self._last_eval[auto.id] = True
+        else:
+            if was_active and auto.restore_value is not None:
+                self._do_write(
+                    auto.id, auto.name, "shutdown_battery_voltage", float(auto.restore_value),
+                    dongle_host, dongle_port, datalog_serial, inverter_serial, dry_run,
+                )
+            self._last_eval[auto.id] = False
+
+    def _evaluate_battery_soc(
+        self,
+        auto: Automation,
+        snapshot: Dict,
+        dongle_host: str,
+        dongle_port: int,
+        datalog_serial: str,
+        inverter_serial: str,
+        dry_run: bool,
+        timezone: str,
+    ) -> None:
+        """Battery SOC control: choose grid or battery source based on time + SOC."""
+        soc = _sensor_value(snapshot, "soc")
+        if soc is None:
+            return
+
+        now = _now_in_tz(timezone)
+        current_mins = now.hour * 60 + now.minute
+
+        target_source = "battery"
+        if auto.points:
+            # Find the active interval.  Points are sorted by time; each point
+            # defines the source from its time until the next point.
+            points = sorted(auto.points, key=lambda p: _parse_hhmm(p.get("time", "00:00")) or 0)
+            for i, point in enumerate(points):
+                t = _parse_hhmm(point.get("time", "00:00"))
+                if t is None:
+                    continue
+                next_t = _parse_hhmm(points[(i + 1) % len(points)].get("time", "00:00"))
+                if next_t is None:
+                    next_t = t
+                if t <= next_t:
+                    if t <= current_mins < next_t:
+                        target_source = point.get("source", "battery")
+                        break
+                else:
+                    # interval wraps midnight
+                    if current_mins >= t or current_mins < next_t:
+                        target_source = point.get("source", "battery")
+                        break
+
+        # TODO: wire to the real source-select registers once their semantics are
+        # confirmed.  For now we log the decision so the user can verify behavior.
+        msg = f"Battery SOC control: active interval source={target_source}, SOC={soc:.1f}%"
+        self._log(auto.id, auto.name, "battery_source", None, None, dry_run, True, msg)
+        logger.info("[Automation %s] %s", auto.id, msg)
+
+    def _do_write(
+        self,
+        automation_id: str,
+        automation_name: str,
+        setting_name: str,
+        value: float,
+        dongle_host: str,
+        dongle_port: int,
+        datalog_serial: str,
+        inverter_serial: str,
+        dry_run: bool,
+    ) -> None:
+        reg_name = SETTING_NAME_TO_REGISTER.get(setting_name)
+        if reg_name is None:
+            self._log(automation_id, automation_name, setting_name, None, value, dry_run, False,
+                      f"Setting '{setting_name}' is not mapped to a holding register yet")
+            return
+        reg_addr = HOLDING_BY_NAME.get(reg_name)
+        if reg_addr is None:
+            self._log(automation_id, automation_name, setting_name, None, value, dry_run, False,
+                      f"Register '{reg_name}' not found in HOLDING_BY_NAME")
+            return
+
+        meta = HOLDING_REGISTERS[reg_addr]
+        clamped = _clamp_to_register(value, meta)
+        raw = _engineering_to_raw(clamped, meta)
+        if raw is None:
+            self._log(automation_id, automation_name, setting_name, None, value, dry_run, False,
+                      f"Failed to convert {clamped} to raw value for {reg_name}")
+            return
+
+        if dry_run:
+            self._log(automation_id, automation_name, setting_name, raw, clamped, True, True,
+                      f"DRY-RUN would write {setting_name}={clamped} ({reg_name}@{reg_addr}={raw})")
+            logger.info("[DRY-RUN] Automation %s: %s=%s", automation_id, setting_name, clamped)
+            return
+
+        ok, msg = _write_holding_register(
+            dongle_host, dongle_port, datalog_serial, inverter_serial, reg_addr, raw
+        )
+        self._log(automation_id, automation_name, setting_name, raw, clamped, False, ok, msg)
+        if not ok:
+            logger.warning("Automation %s write failed: %s", automation_id, msg)
+
+    def _send_notification(self, auto: Automation) -> None:
+        if self._notifiers is None:
+            return
+        last = self._last_notify.get(auto.id, 0)
+        now = time.time()
+        if now - last < 300:
+            return
+        self._last_notify[auto.id] = now
+        try:
+            msg = auto.notify_message or f"Automation '{auto.name}' condition matched"
+            self._notifiers.send(auto.name, True, 0.0, msg)
+            self._log(auto.id, auto.name, "notify", None, None, False, True, msg)
+        except Exception:
+            logger.exception("Automation notification failed")
