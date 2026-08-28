@@ -282,6 +282,24 @@ a.status:hover > div .label { color: var(--link-color); }
         </div>
       </div>
 
+      <!-- Automation Log -->
+      <div class="card" id="automation-log-card" style="margin-bottom:1em;">
+        <div class="card-section">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
+            <div>
+              <h3>Automation Log</h3>
+              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Recent writes and dry-runs from automations.</p>
+            </div>
+            <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+              <button class="btn" id="btn-refresh-automation-log">Refresh</button>
+            </div>
+          </div>
+          <div id="automation-log-list" style="max-height:360px; overflow:auto;">
+            <p class="text-light" style="font-size:0.85rem;">Loading...</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Add automation modal -->
       <div id="add-automation-modal" class="modal" style="display:none;">
         <div class="modal-content" style="max-width:720px;">
@@ -1174,6 +1192,39 @@ async function initAutomation() {
     loadAutomationState(),
   ]);
   renderAutomations();
+  loadAutomationLog();
+}
+
+async function loadAutomationLog() {
+  const list = document.getElementById('automation-log-list');
+  if (!list) return;
+  try {
+    const data = await fetchJson(API + '/api/automation/log');
+    const entries = (data.log || []).slice(0, 100);
+    if (!entries.length) {
+      list.innerHTML = '<p class="text-light" style="font-size:0.85rem;">No automation activity yet.</p>';
+      return;
+    }
+    const rows = entries.map(e => {
+      const when = new Date(e.created_at || e.ts).toLocaleString();
+      const dry = e.dry_run ? ' <span class="badge" style="background:#666;padding:2px 6px;border-radius:4px;font-size:0.75rem;">DRY-RUN</span>' : '';
+      const ok = e.success
+        ? '<span style="color:var(--success,#2ecc71)">✓</span>'
+        : '<span style="color:var(--danger,#e74c3c)">✗</span>';
+      return `<div style="border-bottom:1px solid var(--border);padding:0.5rem 0;font-size:0.85rem;">
+        <div style="display:flex;justify-content:space-between;gap:0.5rem;">
+          <strong>${e.automation_name || e.rule_name || '(unknown)'}</strong>
+          <span class="text-light" style="font-size:0.8rem;">${when}</span>
+        </div>
+        <div>${ok} ${e.register_name || e.rule_id || ''} = ${e.scaled_value !== null ? e.scaled_value : e.raw_value}${dry}</div>
+        <div class="text-light" style="font-size:0.8rem;margin-top:0.2rem;">${e.message || ''}</div>
+      </div>`;
+    }).join('');
+    list.innerHTML = rows;
+  } catch (e) {
+    console.error(e);
+    list.innerHTML = '<p class="text-light" style="font-size:0.85rem;">Failed to load automation log.</p>';
+  }
 }
 
 function formatDisabledUntil(ts) {
@@ -1724,6 +1775,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-edit-auto-cancel').addEventListener('click', closeEditAutomation);
   document.getElementById('btn-edit-auto-save').addEventListener('click', saveEditedAutomation);
   document.getElementById('btn-save-auto-global').addEventListener('click', saveAutomationState);
+  document.getElementById('btn-refresh-automation-log').addEventListener('click', loadAutomationLog);
 
   // Quick charge controls
   document.getElementById('btn-quick-charge').addEventListener('click', toggleQuickCharge);

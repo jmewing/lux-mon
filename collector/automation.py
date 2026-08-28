@@ -631,6 +631,7 @@ class AutomationEngine:
         self._notifiers = notifiers
         self._last_eval: Dict[str, bool] = {}
         self._last_notify: Dict[str, float] = {}
+        self._last_written_value: Dict[str, Any] = {}
 
     def _db(self):
         import pymysql
@@ -795,19 +796,27 @@ class AutomationEngine:
         if match is not None and auto.setting is not None:
             _, rng = match
             if rng.action_value is not None:
-                self._do_write(
-                    auto.id, auto.name, auto.setting, float(rng.action_value),
-                    dongle_host, dongle_port, datalog_serial, inverter_serial,
-                    dry_run,
-                )
+                value = float(rng.action_value)
+                last = self._last_written_value.get(auto.id)
+                if last != value:
+                    self._do_write(
+                        auto.id, auto.name, auto.setting, value,
+                        dongle_host, dongle_port, datalog_serial, inverter_serial,
+                        dry_run,
+                    )
+                    self._last_written_value[auto.id] = value
                 self._last_eval[auto.id] = True
                 return
         if was_active and auto.restore_value is not None and auto.setting is not None:
-            self._do_write(
-                auto.id, auto.name, auto.setting, float(auto.restore_value),
-                dongle_host, dongle_port, datalog_serial, inverter_serial,
-                dry_run,
-            )
+            value = float(auto.restore_value)
+            last = self._last_written_value.get(auto.id)
+            if last != value:
+                self._do_write(
+                    auto.id, auto.name, auto.setting, value,
+                    dongle_host, dongle_port, datalog_serial, inverter_serial,
+                    dry_run,
+                )
+                self._last_written_value[auto.id] = value
         self._last_eval[auto.id] = False
 
     def _evaluate_battery_protection(
@@ -830,17 +839,25 @@ class AutomationEngine:
 
         if matched:
             if auto.action_value is not None:
-                self._do_write(
-                    auto.id, auto.name, "shutdown_battery_voltage", float(auto.action_value),
-                    dongle_host, dongle_port, datalog_serial, inverter_serial, dry_run,
-                )
+                value = float(auto.action_value)
+                last = self._last_written_value.get(auto.id)
+                if last != value:
+                    self._do_write(
+                        auto.id, auto.name, "shutdown_battery_voltage", value,
+                        dongle_host, dongle_port, datalog_serial, inverter_serial, dry_run,
+                    )
+                    self._last_written_value[auto.id] = value
             self._last_eval[auto.id] = True
         else:
             if was_active and auto.restore_value is not None:
-                self._do_write(
-                    auto.id, auto.name, "shutdown_battery_voltage", float(auto.restore_value),
-                    dongle_host, dongle_port, datalog_serial, inverter_serial, dry_run,
-                )
+                value = float(auto.restore_value)
+                last = self._last_written_value.get(auto.id)
+                if last != value:
+                    self._do_write(
+                        auto.id, auto.name, "shutdown_battery_voltage", value,
+                        dongle_host, dongle_port, datalog_serial, inverter_serial, dry_run,
+                    )
+                    self._last_written_value[auto.id] = value
             self._last_eval[auto.id] = False
 
     def _evaluate_battery_soc(
