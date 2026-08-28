@@ -42,7 +42,7 @@ TZ = ZoneInfo("America/Chicago")
 
 logger = logging.getLogger("luxmon.api")
 
-app = FastAPI(title="lux-mon API", version="2.1.2")
+app = FastAPI(title="lux-mon API", version="2.1.3")
 
 LUXMON_VERSION = "2.1.0"
 
