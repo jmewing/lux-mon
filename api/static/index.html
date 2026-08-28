@@ -771,9 +771,9 @@ async function loadMainCharts() {
       mk('Solar','pv1_power','#eab308'),
       mk('Battery charge','charge_power','#a855f7'),
       mk('Battery discharge','discharge_power','#22c55e'),
+      mk('Load','load_power','#f97316'),
       mk('Grid import','grid_import_power','#3b82f6'),
-      mk('Grid export','grid_export_power','#ef4444'),
-      mk('Load','load_power','#f97316')
+      mk('Grid export','grid_export_power','#ef4444')
     ]);
     // Battery power = discharge - charge (net). There is no single 'battery_power'
     // register in history, so compute it from the two that do exist.
@@ -846,9 +846,9 @@ async function loadHistorical() {
       {label:'PV', data: rows.map(r=>r.pv), backgroundColor:'#eab308'},
       {label:'Battery in', data: rows.map(r=>r.battery_in), backgroundColor:'#a855f7'},
       {label:'Battery out', data: rows.map(r=>r.battery_out), backgroundColor:'#22c55e'},
+      {label:'Load', data: rows.map(r=>r.load), backgroundColor:'#f97316'},
       {label:'Grid import', data: rows.map(r=>r.grid_in), backgroundColor:'#3b82f6'},
-      {label:'Grid export', data: rows.map(r=>r.grid_out), backgroundColor:'#ef4444'},
-      {label:'Load', data: rows.map(r=>r.load), backgroundColor:'#f97316'}
+      {label:'Grid export', data: rows.map(r=>r.grid_out), backgroundColor:'#ef4444'}
     ]);
   } catch (e) { console.error(e); }
 }
