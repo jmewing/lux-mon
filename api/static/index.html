@@ -247,13 +247,13 @@ a.status:hover > div .label { color: var(--link-color); }
     <!-- Historical Dashboard -->
     <div id="page-historical" class="section">
       <div class="page-header"><div class="title"><h2>Historical Dashboard</h2></div></div>
-      <p class="text-light" style="margin-bottom:1em;">Last year and daily totals</p>
-      <div class="card chart card-section" style="margin-bottom:1em;"><h4>Daily Totals — PV / Battery / Grid / Load</h4><div style="height:320px"><canvas id="hist-totals"></canvas></div></div>
+      <p class="text-light" style="margin-bottom:1em;">Monthly totals — last 24 months</p>
+      <div class="card chart card-section" style="margin-bottom:1em;"><h4>Monthly Totals — PV / Battery / Grid / Load</h4><div style="height:320px"><canvas id="hist-totals"></canvas></div></div>
       <div class="card-grid dashboard">
-        <div class="card chart card-section height-flex"><h4>Battery (1 Year)</h4><div style="height:300px"><canvas id="hist-battery"></canvas></div></div>
-        <div class="card chart card-section height-flex"><h4>Grid (1 Year)</h4><div style="height:300px"><canvas id="hist-grid"></canvas></div></div>
-        <div class="card chart card-section height-flex"><h4>Inverter (1 Year)</h4><div style="height:300px"><canvas id="hist-inverter"></canvas></div></div>
-        <div class="card chart card-section height-flex"><h4>Solar (1 Year)</h4><div style="height:300px"><canvas id="hist-solar"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Battery (Monthly)</h4><div style="height:300px"><canvas id="hist-battery"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Grid (Monthly)</h4><div style="height:300px"><canvas id="hist-grid"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Inverter (Monthly)</h4><div style="height:300px"><canvas id="hist-inverter"></canvas></div></div>
+        <div class="card chart card-section height-flex"><h4>Solar (Monthly)</h4><div style="height:300px"><canvas id="hist-solar"></canvas></div></div>
       </div>
     </div>
 
@@ -342,7 +342,6 @@ a.status:hover > div .label { color: var(--link-color); }
       <div class="sub-nav" style="margin-bottom:1em;">
         <button class="btn config-tab active" data-config="inverter">Inverter</button>
         <button class="btn config-tab" data-config="system">System</button>
-        <button class="btn config-tab" data-config="network">Network</button>
         <button class="btn config-tab" data-config="mqtt">MQTT</button>
         <button class="btn config-tab" data-config="backup">Backup</button>
       </div>
@@ -371,11 +370,8 @@ a.status:hover > div .label { color: var(--link-color); }
       <div id="config-system" class="config-panel">
         <div class="card"><div class="card-section"><h3>System Time & Date</h3>
           <div class="form-grid" style="margin-top:0.75rem;">
-            <div class="field"><label>Timezone</label><input type="text" data-key="timezone" placeholder="America/Chicago"></div>
-            <div class="field"><label>Date</label><input type="date" data-key="system_date"></div>
-            <div class="field"><label>Time</label><input type="time" data-key="system_time"></div>
+            <div class="field"><label>Timezone</label><select data-key="timezone" id="timezone-select"></select></div>
           </div>
-          <div class="actions"><button class="btn" id="btn-sync-time">Sync to Browser</button><button class="btn" id="btn-ntp-sync">Sync NTP</button></div>
         </div></div>
         <div class="card" style="margin-top:1em;"><div class="card-section"><h3>Data Retention</h3>
           <div class="form-grid" style="margin-top:0.75rem;">
@@ -383,24 +379,6 @@ a.status:hover > div .label { color: var(--link-color); }
             <div class="field"><label>Write interval (seconds)</label><input type="number" data-key="write_interval" placeholder="5"></div>
           </div>
         </div></div>
-      </div>
-
-      <div id="config-network" class="config-panel">
-        <div class="card"><div class="card-section"><h3>Wi-Fi</h3>
-          <div class="form-grid" style="margin-top:0.75rem;">
-            <div class="field"><label>SSID</label><input type="text" data-key="wifi_ssid"></div>
-            <div class="field"><label>Password</label><input type="password" data-key="wifi_password"></div>
-          </div>
-        </div></div>
-        <div class="card" style="margin-top:1em;"><div class="card-section"><h3>Ethernet</h3>
-          <div class="form-grid" style="margin-top:0.75rem;">
-            <div class="field"><label>Mode</label><select data-key="eth_mode"><option value="dhcp">DHCP</option><option value="static">Static</option></select></div>
-            <div class="field"><label>IP Address</label><input type="text" data-key="eth_ip" placeholder="192.168.1.10"></div>
-            <div class="field"><label>Gateway</label><input type="text" data-key="eth_gateway" placeholder="192.168.1.1"></div>
-            <div class="field"><label>DNS</label><input type="text" data-key="eth_dns" placeholder="1.1.1.1"></div>
-          </div>
-        </div></div>
-        <p class="text-light" style="font-size:0.8rem; margin-top:0.5rem;">Network changes may require a system restart and must be applied by the host OS.</p>
       </div>
 
       <div id="config-mqtt" class="config-panel">
@@ -847,30 +825,30 @@ async function loadCharts30d() {
 }
 async function loadHistorical() {
   try {
-    const res365 = await fetchJson(API + '/api/energy?range=daily&periods=365');
-    const rows365 = processEnergy(res365);
-    const labels = rows365.map(r => r.period);
+    const res = await fetchJson(API + '/api/energy?range=monthly&periods=24');
+    const rows = processEnergy(res);
+    const labels = rows.map(r => r.period);
     createBarChart('hist-battery', labels, [
-      {label:'Charge', data: rows365.map(r=>r.battery_in), backgroundColor:'#a855f7'},
-      {label:'Discharge', data: rows365.map(r=>r.battery_out), backgroundColor:'#22c55e'}
+      {label:'Charge', data: rows.map(r=>r.battery_in), backgroundColor:'#a855f7'},
+      {label:'Discharge', data: rows.map(r=>r.battery_out), backgroundColor:'#22c55e'}
     ]);
     createBarChart('hist-grid', labels, [
-      {label:'Import', data: rows365.map(r=>r.grid_in), backgroundColor:'#3b82f6'},
-      {label:'Export', data: rows365.map(r=>r.grid_out), backgroundColor:'#ef4444'}
+      {label:'Import', data: rows.map(r=>r.grid_in), backgroundColor:'#3b82f6'},
+      {label:'Export', data: rows.map(r=>r.grid_out), backgroundColor:'#ef4444'}
     ]);
     createBarChart('hist-inverter', labels, [
-      {label:'Load', data: rows365.map(r=>r.load), backgroundColor:'#f97316'}
+      {label:'Load', data: rows.map(r=>r.load), backgroundColor:'#f97316'}
     ]);
     createBarChart('hist-solar', labels, [
-      {label:'PV', data: rows365.map(r=>r.pv), backgroundColor:'#eab308'}
+      {label:'PV', data: rows.map(r=>r.pv), backgroundColor:'#eab308'}
     ]);
     createBarChart('hist-totals', labels, [
-      {label:'PV', data: rows365.map(r=>r.pv), backgroundColor:'#eab308'},
-      {label:'Battery in', data: rows365.map(r=>r.battery_in), backgroundColor:'#a855f7'},
-      {label:'Battery out', data: rows365.map(r=>r.battery_out), backgroundColor:'#22c55e'},
-      {label:'Grid import', data: rows365.map(r=>r.grid_in), backgroundColor:'#3b82f6'},
-      {label:'Grid export', data: rows365.map(r=>r.grid_out), backgroundColor:'#ef4444'},
-      {label:'Load', data: rows365.map(r=>r.load), backgroundColor:'#f97316'}
+      {label:'PV', data: rows.map(r=>r.pv), backgroundColor:'#eab308'},
+      {label:'Battery in', data: rows.map(r=>r.battery_in), backgroundColor:'#a855f7'},
+      {label:'Battery out', data: rows.map(r=>r.battery_out), backgroundColor:'#22c55e'},
+      {label:'Grid import', data: rows.map(r=>r.grid_in), backgroundColor:'#3b82f6'},
+      {label:'Grid export', data: rows.map(r=>r.grid_out), backgroundColor:'#ef4444'},
+      {label:'Load', data: rows.map(r=>r.load), backgroundColor:'#f97316'}
     ]);
   } catch (e) { console.error(e); }
 }
@@ -1465,6 +1443,19 @@ async function loadConfiguration() {
     }
   });
 }
+
+// Populate the timezone dropdown with all IANA timezones.
+function populateTimezones() {
+  const sel = document.getElementById('timezone-select');
+  if (!sel) return;
+  const tz = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [];
+  const list = tz.length ? tz : ['America/Chicago', 'UTC'];
+  sel.innerHTML = list.map(z => `<option value="${z}">${z}</option>`).join('');
+  // Preserve the currently-configured timezone if present.
+  const cur = settings.timezone;
+  const curVal = (cur !== null && typeof cur === 'object') ? cur.value : cur;
+  if (curVal && list.includes(curVal)) sel.value = curVal;
+}
 async function saveConfiguration() {
   const msg = document.getElementById('config-msg');
   msg.textContent = 'Saving...'; msg.style.color = 'var(--light-text-color)';
@@ -1477,7 +1468,16 @@ async function saveConfiguration() {
       const res = await fetch(API + '/api/settings/' + key, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})});
       if (!res.ok) throw new Error(key + ': ' + res.statusText);
     }
-    msg.textContent = 'Configuration saved.'; msg.style.color = 'var(--green-color)';
+    msg.textContent = 'Configuration saved. Syncing time...'; msg.style.color = 'var(--light-text-color)';
+    // Save now also triggers NTP sync + timezone apply on the host.
+    try {
+      const ntp = await fetch(API + '/api/system/ntp-sync', {method:'POST'});
+      const ntpJson = await ntp.json().catch(() => ({}));
+      msg.textContent = ntpJson.ok ? 'Configuration saved & time synced.' : 'Saved, but NTP sync failed.';
+      msg.style.color = ntpJson.ok ? 'var(--green-color)' : 'var(--red-color)';
+    } catch (e) {
+      msg.textContent = 'Configuration saved (NTP sync unavailable).'; msg.style.color = 'var(--green-color)';
+    }
   } catch (e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red-color)'; }
 }
 
@@ -1590,7 +1590,7 @@ function showPage(page) {
   if (page === 'charts') loadCharts30d();
   if (page === 'historical') loadHistorical();
   if (page === 'automations') loadAutomation();
-  if (page === 'configuration') loadConfiguration();
+  if (page === 'configuration') { loadConfiguration(); populateTimezones(); }
 }
 function showConfigPanel(name) {
   document.querySelectorAll('.config-panel').forEach(p => p.classList.remove('active'));
@@ -1636,14 +1636,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.querySelectorAll('.config-tab').forEach(b => b.addEventListener('click', () => showConfigPanel(b.dataset.config)));
   document.getElementById('btn-save-config').addEventListener('click', saveConfiguration);
-  document.getElementById('btn-sync-time').addEventListener('click', () => {
-    const now = new Date();
-    document.querySelector('[data-key="system_date"]').value = now.toISOString().slice(0,10);
-    document.querySelector('[data-key="system_time"]').value = now.toTimeString().slice(0,5);
-  });
-  document.getElementById('btn-ntp-sync').addEventListener('click', () => {
-    document.getElementById('config-msg').textContent = 'NTP sync requested (host-side service must apply).';
-  });
   document.getElementById('btn-backup-now').addEventListener('click', async () => {
     const r = await fetch(API + '/api/backup', {method:'POST'});
     document.getElementById('config-msg').textContent = r.ok ? 'Backup started.' : 'Backup failed.';

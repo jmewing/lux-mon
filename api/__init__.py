@@ -245,6 +245,39 @@ def api_version():
     return {"version": LUXMON_VERSION}
 
 
+@app.post("/api/system/ntp-sync")
+def api_ntp_sync():
+    """Apply the configured timezone to the running process.
+
+    The host runs systemd-timesyncd (NTP is always on); the only runtime
+    action needed when the user changes the timezone is to apply it to this
+    process so timestamps/scheduling use the new zone. Returns the applied
+    timezone and a success flag.
+    """
+    import os
+    import time as _time
+    from collector.settings import get
+
+    conn = _get_conn()
+    tz = None
+    try:
+        tz = get(conn, "timezone")
+    finally:
+        conn.close()
+
+    applied = False
+    if tz:
+        try:
+            os.environ["TZ"] = tz
+            if hasattr(_time, "tzset"):
+                _time.tzset()
+            applied = True
+        except Exception as exc:
+            logger.warning("Failed to apply timezone %s: %s", tz, exc)
+
+    return {"ok": applied, "timezone": tz, "ntp": "host-managed (systemd-timesyncd)"}
+
+
 @app.get("/api/alerts")
 def api_alerts(limit: int = Query(50, ge=1, le=500, description="Number of recent alert events")):
     """Return recent alert events from MariaDB."""
@@ -486,8 +519,13 @@ def api_energy(
                 d = today - timedelta(weeks=i)
                 period = f"{d.isocalendar().year}-W{d.isocalendar().week:02d}"
             else:
-                d = today - timedelta(days=i * 30)
-                period = d.strftime("%Y-%m")
+                # Walk back month-by-month (not i*30 days) so periods are true calendar months.
+                y = today.year
+                m = today.month - i
+                while m <= 0:
+                    m += 12
+                    y -= 1
+                period = f"{y:04d}-{m:02d}"
             existing = data.get(period, {})
             full_data[period] = {
                 cat: existing.get(cat, {"in_kwh": 0.0, "out_kwh": 0.0})
