@@ -49,6 +49,8 @@ body { font-family: Exo, system-ui, sans-serif; background-color: var(--backgrou
 .header .container .menu .menu-item.active { background-color: var(--background-color); }
 .header .container .menu .menu-item .item-img svg { color: var(--light-text-color); }
 .main .content { max-width: 1600px; margin: 0 auto; padding: 16px 32px 32px; }
+.footer { border-top: 1px solid var(--border-color); background-color: var(--header-bg-color); }
+.footer .container { max-width: 1600px; margin: 0 auto; padding: 12px 32px; }
 .card { background: var(--foreground-color); border-color: var(--border-color); box-shadow: var(--shadow-2); }
 .card .card-section:not(:first-child) { border-color: var(--border-color); }
 a.status, a.status:visited { color: var(--text-color); }
@@ -440,6 +442,13 @@ a.status:hover > div .label { color: var(--link-color); }
 
   </div>
 </main>
+
+<footer class="footer">
+  <div class="container" style="display:flex; justify-content:space-between; align-items:center;">
+    <span class="text-light" style="font-size:0.8rem;">Powered by lux-mon</span>
+    <span class="text-light" id="footer-version" style="font-size:0.8rem;">v—</span>
+  </div>
+</footer>
 
 <script>
 const API = location.origin;
@@ -994,11 +1003,14 @@ async function saveSchedule() {
   if (!Object.keys(values).length) { msg.textContent = 'Nothing to save.'; return; }
   msg.textContent = 'Saving schedule...'; msg.style.color = 'var(--light-text-color)';
   try {
-    await Promise.all(Object.entries(values).map(([name, value]) =>
-      fetch(API + '/api/holding/' + encodeURIComponent(name), {
+    // Write sequentially (not in parallel) — the dongle rejects bursts of
+    // simultaneous write connections, which surfaced as intermittent 502s.
+    for (const [name, value] of Object.entries(values)) {
+      const r = await fetch(API + '/api/holding/' + encodeURIComponent(name), {
         method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value: Number(value)})
-      }).then(r => { if (!r.ok) throw new Error(name + ': ' + r.statusText); })
-    ));
+      });
+      if (!r.ok) throw new Error(name + ': ' + r.statusText);
+    }
     msg.textContent = 'Schedule saved.'; msg.style.color = 'var(--green-color)';
   } catch (e) {
     msg.textContent = 'Error saving schedule: ' + e.message; msg.style.color = 'var(--red-color)';
@@ -1650,6 +1662,12 @@ document.addEventListener('DOMContentLoaded', () => {
   connectWS();
   setInterval(refresh, 15000);
   setInterval(loadQuickCharge, 15000);
+
+  // Footer version
+  try {
+    const v = await fetchJson(API + '/api/version');
+    document.getElementById('footer-version').textContent = 'v' + (v.version || '—');
+  } catch (e) { console.error(e); }
 });
 </script>
 </body>

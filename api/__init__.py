@@ -44,6 +44,8 @@ logger = logging.getLogger("luxmon.api")
 
 app = FastAPI(title="lux-mon API", version="2.1.1")
 
+LUXMON_VERSION = "2.1.0"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -235,6 +237,12 @@ def api_history(
 def api_health():
     """Health check."""
     return {"status": "ok"}
+
+
+@app.get("/api/version")
+def api_version():
+    """Return the lux-mon version string."""
+    return {"version": LUXMON_VERSION}
 
 
 @app.get("/api/alerts")
