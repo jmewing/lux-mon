@@ -22,12 +22,14 @@ import pymysql
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import Response
 from fastapi.staticfiles import StaticFiles
 from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 from starlette.types import Scope, Receive, Send
 
 class CacheStaticFiles(StarletteStaticFiles):
-    """StaticFiles variant that adds long-term cache headers to immutable assets."""
+    """StaticFiles variant that adds long-term cache headers to immutable assets
+    and prevents caching of index.html so the inline JS is always current."""
 
     IMMUTABLE = {".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".woff2", ".woff", ".ttf", ".ico"}
 
@@ -36,6 +38,10 @@ class CacheStaticFiles(StarletteStaticFiles):
         ext = os.path.splitext(path)[1].lower()
         if ext in self.IMMUTABLE:
             response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+        elif ext == ".html" or path == "" or path.lower() in ("index.html", "/index.html"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
         return response
 
 TZ = ZoneInfo("America/Chicago")
@@ -1493,4 +1499,20 @@ def api_quick_charge_stop(dry_run: bool = False):
 
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_DIR.mkdir(exist_ok=True)
+
+@app.get("/")
+@app.get("/index.html")
+async def serve_index():
+    """Serve index.html with no-cache headers so the inline JS is always current."""
+    content = (STATIC_DIR / "index.html").read_bytes()
+    return Response(
+        content=content,
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
 app.mount("/", CacheStaticFiles(directory=str(STATIC_DIR), html=True), name="static")

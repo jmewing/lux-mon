@@ -85,8 +85,11 @@ a.status:hover > div .label { color: var(--link-color); }
 .field label { font-size: 0.75rem; color: var(--light-text-color); }
 .field input, .field select, .field textarea {
   background: var(--midground-color); border: 1px solid var(--border-color); border-radius: 0.5rem;
-  padding: 0.55rem 0.7rem; color: var(--text-color); font-size: 0.9rem;
+  padding: 0.6rem 0.75rem; color: var(--text-color); font-size: 1rem; line-height: 1.3;
+  width: 100%; min-width: 0; box-sizing: border-box; min-height: 2.6rem; height: auto;
 }
+select, input, textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+select { -webkit-appearance: menulist; appearance: menulist; }
 .actions { display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; }
 .config-panel { display: none; }
 .config-panel.active { display: block; }
@@ -136,8 +139,8 @@ a.status:hover > div .label { color: var(--link-color); }
           <span id="last-updated" class="text-light" style="font-size:0.8rem;">--</span>
           <div id="quick-charge-header" style="position:relative; display:flex; align-items:center; gap:0.5rem;">
             <button class="btn" id="btn-quick-charge" style="font-size:0.8rem; padding:0.35rem 0.8rem;">Enable Quick Charge</button>
-            <div id="quick-charge-popover" style="display:none; position:absolute; top:100%; right:0; margin-top:0.35rem; z-index:50;">
-              <input type="number" id="quick-charge-duration" min="1" max="240" placeholder="default charge time (1 to 240 minutes)" style="width:220px;">
+            <div id="quick-charge-popover" style="display:none; position:absolute; top:100%; right:0; margin-top:0.35rem; z-index:50; width:220px;">
+              <input type="number" id="quick-charge-duration" min="1" max="240" placeholder="default charge time (1 to 240 minutes)">
             </div>
           </div>
         </div>
@@ -258,6 +261,21 @@ a.status:hover > div .label { color: var(--link-color); }
     <!-- Automation Dashboard -->
     <div id="page-automations" class="section">
       <div class="page-header"><div class="title"><h2>Power Management</h2></div></div>
+
+      <!-- Active automation values (SolarAssistant-style) -->
+      <div class="card" id="active-values-card" style="margin-bottom:1em;">
+        <div class="card-section">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
+            <div>
+              <h3>Active Automation Values</h3>
+              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Current inverter settings written by automations. Click to override and disable automations temporarily.</p>
+            </div>
+            <button class="btn btn-small" id="btn-refresh-active-values">Refresh</button>
+          </div>
+          <div id="active-values-list" style="cursor:pointer;"></div>
+          <div id="active-values-edit" style="display:none;"></div>
+        </div>
+      </div>
 
       <!-- Automations (SolarAssistant-style) -->
       <div class="card" id="automations-card" style="margin-bottom:1em;">
@@ -1184,6 +1202,155 @@ async function loadAutomationState() {
   } catch (e) { console.error(e); }
 }
 
+let activeAutomationValues = {};
+
+async function loadActiveAutomationValues() {
+  if (!automationState.automations) return;
+  const controlled = new Map();
+  automationState.automations.forEach(a => {
+    if (a.type === 'rule_table' && a.setting) {
+      const meta = automationSettings.find(s => s.name === a.setting) || {};
+      controlled.set(a.setting, meta.mapped?.name || a.setting);
+    }
+    if (a.type === 'battery_protection') {
+      controlled.set('shutdown_battery_voltage', 'battery_low_to_utility_voltage');
+      controlled.set('battery_recovery_voltage', 'battery_recovery_voltage');
+    }
+  });
+  const list = document.getElementById('active-values-list');
+  const edit = document.getElementById('active-values-edit');
+  if (!controlled.size) {
+    if (list) list.innerHTML = '<p class="text-light" style="font-size:0.85rem;">No settings are currently controlled by automations.</p>';
+    return;
+  }
+  activeAutomationValues = {};
+  for (const [name, holdingName] of controlled) {
+    const meta = automationSettings.find(s => s.name === name) || { label: name, mapped: {} };
+    try {
+      const data = await fetchJson(API + '/api/holding/' + encodeURIComponent(holdingName));
+      activeAutomationValues[name] = {
+        label: meta.label || name,
+        value: data.raw !== undefined ? data.raw : data.value,
+        unit: data.unit || meta.mapped?.unit || '',
+        scale: data.scale || meta.mapped?.scale || 1,
+        current_scaled: data.value !== undefined ? data.value : data.raw,
+      };
+    } catch (e) {
+      activeAutomationValues[name] = { label: meta.label || name, value: null, unit: meta.mapped?.unit || '', scale: meta.mapped?.scale || 1, current_scaled: null, error: e.message };
+    }
+  }
+  renderActiveAutomationValues();
+}
+
+function renderActiveAutomationValues() {
+  const list = document.getElementById('active-values-list');
+  const edit = document.getElementById('active-values-edit');
+  if (!list) return;
+  const rows = Object.entries(activeAutomationValues).map(([name, info]) => {
+    const val = info.current_scaled !== null ? info.current_scaled : (info.value !== null ? info.value : '—');
+    return `<div style="display:flex; justify-content:space-between; padding:0.35rem 0; border-bottom:1px solid var(--border);"
+      onclick="openActiveValuesEdit()">
+      <span>${info.label}</span>
+      <strong>${val}${info.unit ? ' ' + info.unit : ''}</strong>
+    </div>`;
+  }).join('');
+  list.innerHTML = rows || '<p class="text-light" style="font-size:0.85rem;">No active automation values.</p>';
+  list.style.display = 'block';
+  if (edit) edit.style.display = 'none';
+}
+
+function openActiveValuesEdit() {
+  const list = document.getElementById('active-values-list');
+  const edit = document.getElementById('active-values-edit');
+  if (!edit) return;
+  let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+    <strong>Override automation values</strong>
+    <button class="btn btn-small" type="button" onclick="closeActiveValuesEdit()">Cancel</button>
+  </div>`;
+  html += `<div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">`;
+  Object.entries(activeAutomationValues).forEach(([name, info]) => {
+    const val = info.current_scaled !== null ? info.current_scaled : (info.value !== null ? info.value : '');
+    html += `<div class="field">
+      <label>${info.label}</label>
+      <input type="number" step="any" id="active-override-${name}" value="${val}" placeholder="${info.unit || 'value'}">
+    </div>`;
+  });
+  html += `</div>`;
+  html += `<div class="field" style="margin-top:0.75rem;">
+    <label>Disable automations for</label>
+    <select id="active-disable-for">
+      <option value="">— do not disable —</option>
+      ${DISABLE_OPTIONS.map(o => `<option value="${o.m}">${o.label}</option>`).join('')}
+    </select>
+  </div>`;
+  html += `<div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;">
+    <button class="btn btn-secondary" type="button" onclick="closeActiveValuesEdit()">Cancel</button>
+    <button class="btn" type="button" id="btn-save-active-values">Save & Apply</button>
+  </div>`;
+  edit.innerHTML = html;
+  edit.style.display = 'block';
+  list.style.display = 'none';
+  document.getElementById('btn-save-active-values').addEventListener('click', saveActiveValuesOverride);
+}
+
+function closeActiveValuesEdit() {
+  const list = document.getElementById('active-values-list');
+  const edit = document.getElementById('active-values-edit');
+  if (list) list.style.display = 'block';
+  if (edit) edit.style.display = 'none';
+}
+
+async function saveActiveValuesOverride() {
+  const minutes = parseInt(document.getElementById('active-disable-for').value, 10);
+  const writes = [];
+  const affectedSettings = new Set();
+  Object.keys(activeAutomationValues).forEach(name => {
+    const input = document.getElementById('active-override-' + name);
+    if (!input || input.value === '') return;
+    const newValue = parseFloat(input.value);
+    if (isNaN(newValue)) return;
+    const meta = automationSettings.find(s => s.name === name) || {};
+    writes.push({ name: meta.mapped?.name || name, displayName: name, value: newValue });
+    affectedSettings.add(name);
+  });
+  if (!writes.length) {
+    showAutoMsg('No values to write.');
+    return;
+  }
+  for (const { name, displayName, value } of writes) {
+    try {
+      await fetchJson(API + '/api/holding/' + encodeURIComponent(name), {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value })
+      });
+    } catch (e) {
+      showAutoMsg(`Failed to write ${displayName}: ${e.message}`);
+      return;
+    }
+  }
+  if (minutes) {
+    const toDisable = (automationState.automations || []).filter(a => {
+      if (a.type === 'rule_table' && affectedSettings.has(a.setting)) return true;
+      return false;
+    });
+    for (const a of toDisable) {
+      try {
+        await fetchJson(API + '/api/automation/rules/' + encodeURIComponent(a.id) + '/disable', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ minutes })
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }
+  showAutoMsg('Values written' + (minutes ? ` and automations disabled for ${minutes} min` : '') + '.');
+  await loadAutomationState();
+  await loadActiveAutomationValues();
+  renderAutomations();
+  closeActiveValuesEdit();
+}
+
 async function initAutomation() {
   await Promise.all([
     loadAutomationTypes(),
@@ -1193,6 +1360,7 @@ async function initAutomation() {
   ]);
   renderAutomations();
   loadAutomationLog();
+  loadActiveAutomationValues();
 }
 
 async function loadAutomationLog() {
@@ -1243,58 +1411,35 @@ function renderAutomations() {
     return;
   }
 
-  list.innerHTML = automationState.automations.map(a => {
+  list.innerHTML = automationState.automations.map((a, idx) => {
     const disabled = a.disabled_until && Date.now() / 1000 < a.disabled_until;
     const typeLabel = (automationTypes.find(t => t.id === a.type) || {}).label || a.type;
-    let details = [];
-    if (a.setting) {
-      const s = automationSettings.find(x => x.name === a.setting);
-      details.push(`<strong>${s ? s.label : a.setting}</strong>`);
-    }
-    if (a.type === 'rule_table' && a.groups && a.groups.length) {
-      const gk = (automationConditions[a.group_kind] || {}).label || a.group_kind;
-      const rk = (automationConditions[a.range_kind] || {}).label || a.range_kind;
-      const nRanges = a.groups.reduce((n, g) => n + (g.ranges ? g.ranges.length : 0), 0);
-      details.push(`when ${gk} → ${rk} (${a.groups.length} groups, ${nRanges} ranges)`);
-    } else if (a.action_value !== null && a.action_value !== undefined) {
-      const s = a.setting ? (automationSettings.find(x => x.name === a.setting) || {}) : {};
-      details.push(`→ set ${a.action_value}${s.mapped && s.mapped.unit ? ' ' + s.mapped.unit : ''}`);
-    }
-    if (a.conditions && a.conditions.length) {
-      details.push('when ' + a.conditions.map(c => describeCondition(c)).join(' AND '));
-    }
-    if (a.threshold !== null && a.threshold !== undefined) {
-      details.push(`when SOC ≤ ${a.threshold}%`);
-    }
-    if (a.restore_value !== null && a.restore_value !== undefined) {
-      details.push(`restore ${a.restore_value}`);
-    }
-
+    const setting = a.setting ? (automationSettings.find(x => x.name === a.setting) || { label: a.setting, mapped: {} }) : null;
     return `
-      <div class="automation-card" style="border:1px solid var(--border); border-radius:8px; padding:0.85rem; margin-bottom:0.75rem; ${a.enabled ? '' : 'opacity:0.7;'}">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.75rem;">
+      <div class="automation-card" data-id="${a.id}" style="border:1px solid var(--border); border-radius:8px; padding:0.85rem; margin-bottom:0.75rem; ${a.enabled ? '' : 'opacity:0.7;'}" onclick="openInlineEdit('${a.id}')">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.75rem; cursor:pointer;">
           <div>
             <div style="font-weight:600;">${a.name || '(unnamed)'} <span class="text-light" style="font-size:0.8rem;">(${typeLabel})</span></div>
-            <div style="font-size:0.85rem; margin-top:0.3rem;">${details.join(' <span class="text-light">•</span> ') || 'No conditions or actions'}</div>
+            <div style="font-size:0.85rem; margin-top:0.3rem;">${renderAutomationSummary(a, setting)}</div>
             ${disabled ? `<div style="font-size:0.8rem; color:var(--warn); margin-top:0.35rem;">Disabled until ${formatDisabledUntil(a.disabled_until)}</div>` : ''}
           </div>
-          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;" onclick="event.stopPropagation();">
             <label style="display:flex; align-items:center; gap:0.25rem; font-size:0.8rem;">
               <input type="checkbox" class="auto-enable" data-id="${a.id}" ${a.enabled ? 'checked' : ''}> On
             </label>
-            <button class="btn btn-small btn-edit-auto" data-id="${a.id}">Edit</button>
-            <button class="btn btn-small btn-danger" onclick="deleteAutomation('${a.id}')">Delete</button>
+            <button class="btn btn-small btn-danger" onclick="event.stopPropagation(); deleteAutomation('${a.id}')">Delete</button>
           </div>
         </div>
-        <div style="margin-top:0.75rem; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+        <div style="margin-top:0.75rem; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;" onclick="event.stopPropagation();">
           <span class="text-light" style="font-size:0.85rem;">Disable for:</span>
-          <select class="auto-disable-for" data-id="${a.id}">
+          <select class="auto-disable-for" data-id="${a.id}" style="width:auto; min-width:120px;">
             <option value="">—</option>
             ${DISABLE_OPTIONS.map(o => `<option value="${o.m}">${o.label}</option>`).join('')}
           </select>
           <button class="btn btn-small btn-auto-apply-disable" data-id="${a.id}">Apply</button>
         </div>
-      </div>`;
+      </div>
+      <div id="auto-edit-${a.id}" style="display:none; border:1px solid var(--border); border-radius:8px; padding:0.85rem; margin-bottom:0.75rem; background:rgba(255,255,255,0.03);"></div>`;
   }).join('');
 
   document.querySelectorAll('.auto-enable').forEach(cb => {
@@ -1303,9 +1448,6 @@ function renderAutomations() {
       const a = automationState.automations.find(x => x.id === id);
       if (a) { a.enabled = cb.checked; await saveAutomationState(); }
     });
-  });
-  document.querySelectorAll('.btn-edit-auto').forEach(b => {
-    b.addEventListener('click', () => openEditAutomation(b.dataset.id));
   });
   document.querySelectorAll('.btn-auto-apply-disable').forEach(b => {
     b.addEventListener('click', async () => {
@@ -1323,15 +1465,357 @@ function renderAutomations() {
   });
 }
 
-function describeCondition(c) {
-  const meta = automationConditions[c.kind] || { label: c.kind, unit: '' };
-  if (c.kind === 'time_of_day') return `${meta.label} ${c.value || ''}`;
-  if (c.kind === 'day_of_week' || c.kind === 'month_of_year') return `${meta.label} = ${c.value}`;
-  let parts = [];
-  if (c.min !== null && c.min !== undefined) parts.push(`≥ ${c.min}${meta.unit || ''}`);
-  if (c.max !== null && c.max !== undefined) parts.push(`≤ ${c.max}${meta.unit || ''}`);
-  return `${meta.label} ${parts.join(' and ')}`;
+function renderAutomationSummary(a, setting) {
+  const parts = [];
+  if (a.type === 'rule_table') {
+    const gk = (automationConditions[a.group_kind] || {}).label || a.group_kind;
+    const rk = (automationConditions[a.range_kind] || {}).label || a.range_kind;
+    const settingLabel = setting ? setting.label : a.setting;
+    parts.push(`<strong>${settingLabel || '—'}</strong> by ${gk} → ${rk}`);
+    if (a.groups && a.groups.length) {
+      parts.push('<div style="margin-top:0.4rem; padding-left:0.5rem; border-left:2px solid var(--border);">');
+      for (const g of a.groups) {
+        const gc = describeConditionCompact(g.condition);
+        parts.push(`<div style="margin-bottom:0.3rem;"><span class="text-light">when ${gk}:</span> ${gc}</div>`);
+        if (g.ranges && g.ranges.length) {
+          parts.push('<div style="padding-left:0.75rem;">');
+          for (const r of g.ranges) {
+            const rc = describeConditionCompact(r.condition);
+            const unit = setting && setting.mapped && setting.mapped.unit ? ` ${setting.mapped.unit}` : '';
+            parts.push(`<div><span class="text-light">& ${rk}:</span> ${rc} → <strong>${r.action_value !== null ? r.action_value : '—'}${unit}</strong></div>`);
+          }
+          parts.push('</div>');
+        }
+      }
+      parts.push('</div>');
+    }
+    if (a.restore_value !== null && a.restore_value !== undefined) {
+      const unit = setting && setting.mapped && setting.mapped.unit ? ` ${setting.mapped.unit}` : '';
+      parts.push(`<div style="margin-top:0.3rem;"><span class="text-light">Restore:</span> ${a.restore_value}${unit}</div>`);
+    }
+  } else if (a.type === 'battery_protection') {
+    parts.push(`If SOC ≤ <strong>${a.threshold}%</strong> → shutdown voltage <strong>${a.action_value}V</strong>`);
+    if (a.restore_value !== null && a.restore_value !== undefined) parts.push(` • restore <strong>${a.restore_value}V</strong>`);
+  } else if (a.type === 'battery_soc') {
+    parts.push('Battery SOC points:');
+    if (a.points && a.points.length) {
+      parts.push('<div style="padding-left:0.5rem; border-left:2px solid var(--border);">' + a.points.map(p => `<div>${p.time}: SOC ≤ ${p.soc}% → <strong>${p.source}</strong></div>`).join('') + '</div>');
+    }
+  } else if (a.type === 'notify') {
+    parts.push(`Message: "${a.notify_message || ''}"`);
+    if (a.conditions && a.conditions.length) parts.push(`when ${a.conditions.map(c => describeConditionCompact(c)).join(' AND ')}`);
+  }
+  return parts.join('');
 }
+
+function describeConditionCompact(c) {
+  if (!c || !c.kind) return '—';
+  const meta = automationConditions[c.kind] || { label: c.kind, unit: '' };
+  if (c.kind === 'time_of_day') return c.value || '00:00-00:00';
+  if (c.kind === 'day_of_week' || c.kind === 'month_of_year') return `${meta.label}=${c.value}`;
+  let parts = [];
+  if (c.min !== null && c.min !== undefined) parts.push(`≥${c.min}${meta.unit || ''}`);
+  if (c.max !== null && c.max !== undefined) parts.push(`≤${c.max}${meta.unit || ''}`);
+  if (!parts.length && c.value !== undefined) parts.push(c.value);
+  return `${meta.label} ${parts.join(' ')}`;
+}
+
+function openInlineEdit(id) {
+  // close any other open edits
+  automationState.automations.forEach(a => {
+    const el = document.getElementById('auto-edit-' + a.id);
+    if (el) el.style.display = 'none';
+    const card = document.querySelector(`.automation-card[data-id="${a.id}"]`);
+    if (card) card.style.display = 'block';
+  });
+  const card = document.querySelector(`.automation-card[data-id="${id}"]`);
+  const editEl = document.getElementById('auto-edit-' + id);
+  if (!card || !editEl) return;
+  const a = automationState.automations.find(x => x.id === id);
+  if (!a) return;
+  editingAutomationId = id;
+  editEl.innerHTML = buildInlineEditForm(a);
+  editEl.style.display = 'block';
+  card.style.display = 'none';
+  attachInlineEditListeners(a, editEl);
+}
+
+function closeInlineEdit(id) {
+  const card = document.querySelector(`.automation-card[data-id="${id}"]`);
+  const editEl = document.getElementById('auto-edit-' + id);
+  if (card) card.style.display = 'block';
+  if (editEl) editEl.style.display = 'none';
+  editingAutomationId = null;
+}
+
+function buildInlineEditForm(a) {
+  const setting = a.setting ? (automationSettings.find(x => x.name === a.setting) || { label: a.setting, mapped: {} }) : null;
+  const unit = setting && setting.mapped && setting.mapped.unit ? ` (${setting.mapped.unit})` : '';
+  let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;"><strong>Edit ${a.name || '(unnamed)'}</strong><button class="btn btn-small" type="button" onclick="closeInlineEdit('${a.id}')">Cancel</button></div>`;
+
+  html += `<div class="field"><label>Name</label><input type="text" id="edit-name-${a.id}" value="${a.name || ''}" placeholder="e.g. Grid charge current"></div>`;
+
+  if (a.type === 'rule_table') {
+    html += `<div class="field"><label>Setting to control</label><select id="edit-setting-${a.id}"><option value="">— Select setting —</option>${automationSettings.map(s => `<option value="${s.name}" ${a.setting === s.name ? 'selected' : ''}>${s.label}</option>`).join('')}</select></div>`;
+    html += `<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:0.75rem;">`;
+    html += `<div class="field"><label>Group by</label><select id="edit-group-kind-${a.id}">${Object.entries(automationConditions).map(([k, m]) => `<option value="${k}" ${a.group_kind === k ? 'selected' : ''}>${m.label}</option>`).join('')}</select></div>`;
+    html += `<div class="field"><label>And when</label><select id="edit-range-kind-${a.id}">${Object.entries(automationConditions).map(([k, m]) => `<option value="${k}" ${a.range_kind === k ? 'selected' : ''}>${m.label}</option>`).join('')}</select></div>`;
+    html += `</div>`;
+
+    html += `<div style="margin-top:0.75rem;"><strong>Groups & ranges</strong></div>`;
+    html += `<div id="edit-groups-${a.id}" style="margin-top:0.5rem;">`;
+    (a.groups || []).forEach((g, gi) => {
+      html += buildInlineGroupRow(a.id, gi, g, a.group_kind, a.range_kind);
+    });
+    html += `</div>`;
+    html += `<button class="btn btn-small" type="button" id="edit-add-group-${a.id}" style="margin-top:0.5rem;">+ Add group</button>`;
+
+    html += `<div class="field" style="margin-top:0.75rem;"><label>Restore value${unit ? ' ' + unit : ''}</label><input type="number" step="any" id="edit-restore-${a.id}" value="${a.restore_value !== undefined && a.restore_value !== null ? a.restore_value : ''}" placeholder="optional"></div>`;
+  } else if (a.type === 'battery_protection') {
+    html += `<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:0.75rem;">`;
+    html += `<div class="field"><label>Shutdown if SOC ≤ (%)</label><input type="number" id="edit-threshold-${a.id}" min="0" max="100" value="${a.threshold || 25}"></div>`;
+    html += `<div class="field"><label>Shutdown battery voltage (V)</label><input type="number" step="0.1" id="edit-action-${a.id}" value="${a.action_value !== undefined ? a.action_value : '48.0'}"></div>`;
+    html += `<div class="field"><label>Restore voltage (V)</label><input type="number" step="0.1" id="edit-restore-${a.id}" value="${a.restore_value !== undefined ? a.restore_value : '50.0'}"></div>`;
+    html += `</div>`;
+  } else if (a.type === 'battery_soc') {
+    html += `<div id="edit-points-${a.id}">${(a.points || []).map((pt, i) => buildInlineSocPointRow(a.id, i, pt)).join('')}</div>`;
+    html += `<button class="btn btn-small" type="button" id="edit-add-point-${a.id}" style="margin-top:0.5rem;">+ Add point</button>`;
+  } else if (a.type === 'notify') {
+    html += buildInlineConditionFields(a.id, a.conditions || []);
+    html += `<div class="field" style="margin-top:0.75rem;"><label>Message</label><input type="text" id="edit-message-${a.id}" value="${a.notify_message || ''}" placeholder="Automation condition matched"></div>`;
+  }
+
+  html += `<div class="field" style="margin-top:0.75rem;"><label style="display:flex; align-items:center; gap:0.35rem;"><input type="checkbox" id="edit-enabled-${a.id}" ${a.enabled !== false ? 'checked' : ''}> Enabled</label></div>`;
+  html += `<div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1rem;"><button class="btn btn-secondary" type="button" onclick="closeInlineEdit('${a.id}')">Cancel</button><button class="btn" type="button" id="edit-save-${a.id}">Save</button></div>`;
+  return html;
+}
+
+function buildInlineRangeRow(aid, gi, ri, r, rangeKind) {
+  r = r || { condition: {}, action_value: null };
+  const cond = r.condition || {};
+  const setting = aid ? (automationSettings.find(x => x.name === (automationState.automations.find(a => a.id === aid) || {}).setting) || { mapped: {} }) : { mapped: {} };
+  const unit = setting.mapped && setting.mapped.unit ? ` (${setting.mapped.unit})` : '';
+  return `
+    <div class="inline-range" data-gi="${gi}" data-ri="${ri}" style="display:grid; grid-template-columns: 1fr auto auto; gap:0.5rem; align-items:end; margin-top:0.4rem; border-top:1px dashed var(--border); padding-top:0.4rem;">
+      <div style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
+        ${buildConditionValueInputs(cond, rangeKind)}
+      </div>
+      <div class="field" style="min-width:100px; max-width:160px;"><label>Set${unit}</label><input type="number" step="any" class="inline-action-value" value="${r.action_value !== undefined && r.action_value !== null ? r.action_value : ''}" placeholder="value"></div>
+      <button class="btn btn-small btn-remove-inline-range" type="button" style="white-space:nowrap; height:fit-content;">−</button>
+    </div>`;
+}
+
+function buildInlineGroupRow(aid, gi, g, groupKind, rangeKind) {
+  g = g || { condition: {}, ranges: [] };
+  const cond = g.condition || {};
+  return `
+    <div class="inline-group" data-gi="${gi}" style="border:1px solid var(--border); border-radius:6px; padding:0.6rem; margin-top:0.5rem;">
+      <div style="display:grid; grid-template-columns: 1fr auto; gap:0.5rem; align-items:end; margin-bottom:0.5rem;">
+        <div style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">${buildConditionValueInputs(cond, groupKind)}</div>
+        <button class="btn btn-small btn-remove-inline-group" type="button" style="white-space:nowrap; height:fit-content;">×</button>
+      </div>
+      <div class="inline-ranges" style="padding-left:0.75rem; border-left:2px solid var(--border);">
+        ${(g.ranges || []).map((r, ri) => buildInlineRangeRow(aid, gi, ri, r, rangeKind)).join('')}
+      </div>
+      <button class="btn btn-small btn-add-inline-range" type="button" style="margin-top:0.4rem;">+ Add range</button>
+    </div>`;
+}
+
+function buildInlineSocPointRow(aid, i, pt) {
+  pt = pt || { time: '08:00', soc: 50, source: 'battery' };
+  return `
+    <div class="inline-soc-point" data-idx="${i}" style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:0.5rem;">
+      <div class="field"><label>Time</label><input type="time" class="inline-pt-time" value="${pt.time || '08:00'}"></div>
+      <div class="field"><label>SOC ≤</label><input type="number" class="inline-pt-soc" min="0" max="100" value="${pt.soc !== undefined ? pt.soc : 50}"></div>
+      <div class="field"><label>Source</label><select class="inline-pt-source"><option value="battery" ${pt.source === 'battery' ? 'selected' : ''}>Battery</option><option value="grid" ${pt.source === 'grid' ? 'selected' : ''}>Grid</option></select></div>
+      <button class="btn btn-small btn-remove-inline-soc" type="button">×</button>
+    </div>`;
+}
+
+function buildInlineConditionFields(aid, conditions) {
+  let html = `<div style="margin-top:0.75rem;"><strong>Conditions</strong></div>`;
+  for (let i = 0; i < 2; i++) {
+    const c = conditions[i] || {};
+    const kinds = Object.entries(automationConditions);
+    const isOptional = i === 1;
+    html += `
+      <div class="inline-condition-row" style="border:1px solid var(--border); border-radius:6px; padding:0.6rem; margin-top:0.5rem;">
+        <div style="font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;">${isOptional ? 'Condition 2 (optional)' : 'Condition 1'}</div>
+        <div class="field">
+          <label>Kind</label>
+          <select class="inline-condition-kind" data-idx="${i}">
+            ${isOptional ? `<option value="">— Optional —</option>` : ''}
+            ${kinds.map(([k, m]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${m.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="inline-condition-value" data-idx="${i}">${buildConditionValueInputs(c)}</div>
+      </div>`;
+  }
+  return html;
+}
+
+function attachInlineEditListeners(a, containerEl) {
+  containerEl.querySelectorAll('.inline-condition-kind').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const idx = sel.dataset.idx;
+      const meta = automationConditions[sel.value] || {};
+      const valueDiv = containerEl.querySelector(`.inline-condition-value[data-idx="${idx}"]`);
+      if (!sel.value) { valueDiv.innerHTML = ''; return; }
+      valueDiv.innerHTML = buildConditionValueInputs({ kind: sel.value });
+    });
+  });
+
+  const addGroupBtn = containerEl.querySelector(`#edit-add-group-${a.id}`);
+  if (addGroupBtn) {
+    addGroupBtn.addEventListener('click', () => {
+      const wrapper = containerEl.querySelector(`#edit-groups-${a.id}`);
+      const gi = wrapper.querySelectorAll('.inline-group').length;
+      const groupKind = containerEl.querySelector(`#edit-group-kind-${a.id}`).value;
+      const rangeKind = containerEl.querySelector(`#edit-range-kind-${a.id}`).value;
+      wrapper.insertAdjacentHTML('beforeend', buildInlineGroupRow(a.id, gi, { condition: {}, ranges: [{ condition: {}, action_value: null }] }, groupKind, rangeKind));
+      attachInlineRowListeners(containerEl, a.id);
+    });
+  }
+
+  const groupKindSel = containerEl.querySelector(`#edit-group-kind-${a.id}`);
+  if (groupKindSel) {
+    groupKindSel.addEventListener('change', () => {
+      const groupKind = groupKindSel.value;
+      containerEl.querySelectorAll('.inline-group').forEach(g => {
+        const condDiv = g.querySelector('.cond-inputs');
+        const old = collectConditionFromContainer(condDiv, groupKind);
+        condDiv.innerHTML = buildConditionValueInputs(old, groupKind);
+      });
+    });
+  }
+  const rangeKindSel = containerEl.querySelector(`#edit-range-kind-${a.id}`);
+  if (rangeKindSel) {
+    rangeKindSel.addEventListener('change', () => {
+      const rangeKind = rangeKindSel.value;
+      containerEl.querySelectorAll('.inline-range').forEach(r => {
+        const condDiv = r.querySelector('.cond-inputs');
+        const old = collectConditionFromContainer(condDiv, rangeKind);
+        condDiv.innerHTML = buildConditionValueInputs(old, rangeKind);
+      });
+    });
+  }
+
+  const addPointBtn = containerEl.querySelector(`#edit-add-point-${a.id}`);
+  if (addPointBtn) {
+    addPointBtn.addEventListener('click', () => {
+      const wrapper = containerEl.querySelector(`#edit-points-${a.id}`);
+      const idx = wrapper.querySelectorAll('.inline-soc-point').length;
+      wrapper.insertAdjacentHTML('beforeend', buildInlineSocPointRow(a.id, idx));
+      attachInlineRowListeners(containerEl, a.id);
+    });
+  }
+
+  const saveBtn = containerEl.querySelector(`#edit-save-${a.id}`);
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      const idx = automationState.automations.findIndex(x => x.id === a.id);
+      if (idx < 0) return;
+      const auto = collectInlineEditAutomation(a.id, a.type);
+      console.log('Saving automation', a.id, JSON.parse(JSON.stringify(auto)));
+      automationState.automations[idx] = auto;
+      await saveAutomationState();
+      closeInlineEdit(a.id);
+    });
+  }
+
+  attachInlineRowListeners(containerEl, a.id);
+}
+
+function attachInlineRowListeners(containerEl, aid) {
+  containerEl.querySelectorAll('.btn-remove-inline-group').forEach(b => {
+    b.onclick = () => b.closest('.inline-group').remove();
+  });
+  containerEl.querySelectorAll('.btn-remove-inline-range').forEach(b => {
+    b.onclick = () => b.closest('.inline-range').remove();
+  });
+  containerEl.querySelectorAll('.btn-add-inline-range').forEach(b => {
+    b.onclick = () => {
+      const group = b.closest('.inline-group');
+      const rangeKind = document.querySelector(`#auto-edit-${aid} #edit-range-kind-${aid}`).value;
+      const ranges = group.querySelector('.inline-ranges');
+      const ri = ranges.querySelectorAll('.inline-range').length;
+      ranges.insertAdjacentHTML('beforeend', buildInlineRangeRow(aid, group.dataset.gi, ri, { condition: {}, action_value: null }, rangeKind));
+      attachInlineRowListeners(containerEl, aid);
+    };
+  });
+  containerEl.querySelectorAll('.btn-remove-inline-soc').forEach(b => {
+    b.onclick = () => b.closest('.inline-soc-point').remove();
+  });
+}
+
+function collectInlineConditionFromContainer(el, kind) {
+  return collectConditionFromContainer(el, kind);
+}
+
+function collectInlineEditAutomation(aid, type) {
+  const containerEl = document.getElementById('auto-edit-' + aid);
+  const name = containerEl.querySelector(`#edit-name-${aid}`).value.trim() || 'Unnamed automation';
+  const enabled = containerEl.querySelector(`#edit-enabled-${aid}`).checked;
+  const auto = { id: aid, name, type, enabled, conditions: [] };
+
+  if (type === 'rule_table') {
+    auto.setting = containerEl.querySelector(`#edit-setting-${aid}`).value;
+    auto.group_kind = containerEl.querySelector(`#edit-group-kind-${aid}`).value;
+    auto.range_kind = containerEl.querySelector(`#edit-range-kind-${aid}`).value;
+    auto.groups = [];
+    containerEl.querySelectorAll('.inline-group').forEach(groupEl => {
+      const gcond = collectInlineConditionFromContainer(groupEl.querySelector('.cond-inputs'), auto.group_kind);
+      const ranges = [];
+      groupEl.querySelectorAll('.inline-range').forEach(rangeEl => {
+        const rcond = collectInlineConditionFromContainer(rangeEl.querySelector('.cond-inputs'), auto.range_kind);
+        const av = rangeEl.querySelector('.inline-action-value').value;
+        ranges.push({ condition: rcond, action_value: av !== '' ? parseFloat(av) : null });
+      });
+      auto.groups.push({ condition: gcond, ranges });
+    });
+    const rv = containerEl.querySelector(`#edit-restore-${aid}`).value;
+    auto.restore_value = rv !== '' ? parseFloat(rv) : null;
+  } else if (type === 'battery_protection') {
+    auto.threshold = parseFloat(containerEl.querySelector(`#edit-threshold-${aid}`).value);
+    const av = containerEl.querySelector(`#edit-action-${aid}`).value;
+    auto.action_value = av !== '' ? parseFloat(av) : null;
+    const rv = containerEl.querySelector(`#edit-restore-${aid}`).value;
+    auto.restore_value = rv !== '' ? parseFloat(rv) : null;
+  } else if (type === 'battery_soc') {
+    auto.points = [];
+    containerEl.querySelectorAll('.inline-soc-point').forEach(pt => {
+      auto.points.push({
+        time: pt.querySelector('.inline-pt-time').value,
+        soc: parseFloat(pt.querySelector('.inline-pt-soc').value),
+        source: pt.querySelector('.inline-pt-source').value,
+      });
+    });
+  } else if (type === 'notify') {
+    auto.notify_message = containerEl.querySelector(`#edit-message-${aid}`).value;
+    containerEl.querySelectorAll('.inline-condition-row').forEach(row => {
+      const kindSel = row.querySelector('.inline-condition-kind');
+      const kind = kindSel ? kindSel.value : '';
+      if (!kind) return;
+      const meta = automationConditions[kind] || {};
+      let cond = { kind };
+      if (kind === 'time_of_day') {
+        const start = row.querySelector('.cond-start')?.value || '00:00';
+        const end = row.querySelector('.cond-end')?.value || '00:00';
+        cond.value = `${start}-${end}`;
+      } else if (meta.value_type === 'select') {
+        cond.value = row.querySelector('.cond-value')?.value;
+      } else {
+        const minV = row.querySelector('.cond-min')?.value;
+        const maxV = row.querySelector('.cond-max')?.value;
+        if (minV !== '') cond.min = parseFloat(minV);
+        if (maxV !== '') cond.max = parseFloat(maxV);
+      }
+      auto.conditions.push(cond);
+    });
+  }
+  return auto;
+}
+
 
 async function saveAutomationState() {
   const payload = {
@@ -1339,11 +1823,13 @@ async function saveAutomationState() {
     global_dry_run: document.getElementById('auto-global-dry-run').checked,
     automations: automationState.automations,
   };
+  console.log('POST /api/automation/rules payload:', JSON.parse(JSON.stringify(payload)));
   try {
     automationState = await fetchJson(API + '/api/automation/rules', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+    console.log('Saved automation state response:', JSON.parse(JSON.stringify(automationState)));
     renderAutomations();
     showAutoMsg('Automations saved.');
   } catch (e) {
@@ -1488,15 +1974,22 @@ function buildConditionValueInputs(c, kind) {
   if (!k) return '';
   if (k === 'time_of_day') {
     return `
-      <div class="field"><label>Start</label><input type="time" class="cond-start" value="${c.value ? c.value.split('-')[0] : '00:00'}"></div>
-      <div class="field"><label>End</label><input type="time" class="cond-end" value="${c.value && c.value.includes('-') ? c.value.split('-')[1] : '00:00'}"></div>`;
+      <div class="cond-inputs cond-time" style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
+        <div class="field"><label>Start</label><input type="time" class="cond-start" value="${c.value ? c.value.split('-')[0] : '00:00'}"></div>
+        <div class="field"><label>End</label><input type="time" class="cond-end" value="${c.value && c.value.includes('-') ? c.value.split('-')[1] : '00:00'}"></div>
+      </div>`;
   }
   if (meta.value_type === 'select') {
-    return `<div class="field"><label>Value</label><select class="cond-value">${(meta.options || []).map(o => `<option value="${o}" ${c.value === o ? 'selected' : ''}>${o}</option>`).join('')}</select></div>`;
+    return `<div class="cond-inputs cond-select"><div class="field"><label>Value</label><select class="cond-value">${(meta.options || []).map(o => `<option value="${o}" ${c.value === o ? 'selected' : ''}>${o}</option>`).join('')}</select></div></div>`;
   }
+  const unit = meta.unit || '';
+  const minVal = c.min !== undefined && c.min !== null ? c.min : '';
+  const maxVal = c.max !== undefined && c.max !== null ? c.max : '';
   return `
-    <div class="field"><label>Min</label><input type="number" step="any" class="cond-min" value="${c.min !== undefined && c.min !== null ? c.min : ''}" placeholder="${meta.unit || ''}"></div>
-    <div class="field"><label>Max</label><input type="number" step="any" class="cond-max" value="${c.max !== undefined && c.max !== null ? c.max : ''}" placeholder="${meta.unit || ''}"></div>`;
+    <div class="cond-inputs cond-range" style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+      <div class="field"><label>From${unit ? ' (' + unit + ')' : ''}</label><input type="number" step="any" class="cond-min" value="${minVal}" placeholder="min"></div>
+      <div class="field"><label>To${unit ? ' (' + unit + ')' : ''}</label><input type="number" step="any" class="cond-max" value="${maxVal}" placeholder="max"></div>
+    </div>`;
 }
 
 function buildBatterySocPointRow(i, pt) {
@@ -1555,7 +2048,9 @@ function attachAutomationFormListeners(type, containerId) {
     groupKindSel.addEventListener('change', () => {
       const rangeKind = document.getElementById('auto-range-kind').value;
       container.querySelectorAll('.rule-group').forEach((g, gi) => {
-        g.querySelector('.group-cond').innerHTML = buildConditionValueInputs({}, groupKindSel.value);
+        const condDiv = g.querySelector('.group-cond');
+        const old = collectConditionFromContainer(condDiv, groupKindSel.value);
+        condDiv.innerHTML = buildConditionValueInputs(old, groupKindSel.value);
       });
     });
   }
@@ -1563,7 +2058,9 @@ function attachAutomationFormListeners(type, containerId) {
   if (rangeKindSel) {
     rangeKindSel.addEventListener('change', () => {
       container.querySelectorAll('.rule-range').forEach(r => {
-        r.querySelector('.range-cond').innerHTML = buildConditionValueInputs({}, rangeKindSel.value);
+        const condDiv = r.querySelector('.range-cond');
+        const old = collectConditionFromContainer(condDiv, rangeKindSel.value);
+        condDiv.innerHTML = buildConditionValueInputs(old, rangeKindSel.value);
       });
     });
   }
@@ -1743,7 +2240,7 @@ function showPage(page) {
   if (page === 'main') loadMainCharts();
   if (page === 'charts') loadCharts30d();
   if (page === 'historical') loadHistorical();
-  if (page === 'automations') loadAutomation();
+  if (page === 'automations') initAutomation();
   if (page === 'configuration') { loadConfiguration(); populateTimezones(); }
 }
 function showConfigPanel(name) {
@@ -1776,6 +2273,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-edit-auto-save').addEventListener('click', saveEditedAutomation);
   document.getElementById('btn-save-auto-global').addEventListener('click', saveAutomationState);
   document.getElementById('btn-refresh-automation-log').addEventListener('click', loadAutomationLog);
+  document.getElementById('btn-refresh-active-values').addEventListener('click', loadActiveAutomationValues);
 
   // Quick charge controls
   document.getElementById('btn-quick-charge').addEventListener('click', toggleQuickCharge);
