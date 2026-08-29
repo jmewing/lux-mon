@@ -4,8 +4,8 @@ name: Auto Release
 # whenever commits land on main.
 #
 # Bump rules (see scripts/bump-version.sh):
-#   feat(inverter): ...  -> MAJOR  (new inverter support)
-#   feat: ...            -> MINOR  (new feature)
+#   feat: ...            -> MAJOR  (new feature)
+#   feat(inverter): ...  -> MINOR  (new inverter support)
 #   fix:/chore:/docs:... -> PATCH  (bug fix / maintenance)
 #
 # The version is bumped in api/__init__.py, committed back to main, tagged,

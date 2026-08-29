@@ -3,9 +3,9 @@
 # tag, and (optionally) write it back to api/__init__.py.
 #
 # Bump rules (Conventional Commits):
-#   feat(inverter): ...   -> MAJOR  (new inverter support)
-#   feat: ...             -> MINOR  (new feature)
-#   feat(scope): ...      -> MINOR  (new feature, non-inverter scope)
+#   feat: ...             -> MAJOR  (new feature)
+#   feat(scope): ...      -> MAJOR  (new feature, any scope)
+#   feat(inverter): ...   -> MINOR  (new inverter support)
 #   fix:/chore:/docs:/refactor:/perf:/test:/ci: -> PATCH (bug fix / maintenance)
 #   BREAKING CHANGE / !   -> MAJOR
 #
@@ -84,14 +84,14 @@ if [[ -z "$FORCE_BUMP" ]]; then
       BUMP="major"
       break
     fi
-    # feat(inverter) -> major (new inverter support)
+    # feat(inverter) -> minor (new inverter support), but only if no
+    # higher-priority bump (major) has already been seen.
     if [[ "$subject" =~ ^feat\(inverter\) ]]; then
-      BUMP="major"
-      break
+      [[ "$BUMP" != "major" ]] && BUMP="minor"
     fi
-    # feat -> minor (new feature)
-    if [[ "$subject" =~ ^feat ]]; then
-      BUMP="minor"
+    # feat (non-inverter) -> major (new feature)
+    if [[ "$subject" =~ ^feat ]] && [[ ! "$subject" =~ ^feat\(inverter\) ]]; then
+      BUMP="major"
     fi
   done < <(git log --format='%s' "$RANGE" 2>/dev/null || true)
 fi
