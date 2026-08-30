@@ -89,7 +89,12 @@ def test_eg4_6000xp_is_sna_alias():
 def test_18kpv_has_more_registers_than_sna():
     sna = get_driver("luxpower_sna")
     kpv = get_driver("eg4_18kpv")
-    assert kpv.total_registers() > sna.total_registers()
+    # Both drivers share the per-battery BMS block (5000+), so compare the
+    # non-battery register count (below 5000) to verify the 18KPV's extra
+    # AFCI / split-phase registers.
+    sna_below = {k: v for k, v in sna.input_registers.items() if k < 5000}
+    kpv_below = {k: v for k, v in kpv.input_registers.items() if k < 5000}
+    assert len(kpv_below) > len(sna_below)
     # 18KPV adds AFCI registers
     assert 140 in kpv.input_registers
     assert kpv.input_registers[140].name == "afci_current_ch1"

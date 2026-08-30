@@ -209,6 +209,88 @@ def api_status():
         conn.close()
 
 
+@app.get("/api/batteries")
+def api_batteries():
+    """Return per-battery BMS data decoded from the latest snapshot's raw registers."""
+    from collector.registers import (
+        BATTERY_START, BATTERY_BLOCK_SIZE, BATTERY_COUNT,
+        decode_battery_serial,
+    )
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, raw_registers FROM lux_snapshots ORDER BY id DESC LIMIT 1"
+            )
+            snap = cur.fetchone()
+            if not snap:
+                raise HTTPException(404, "No snapshots found")
+            snap_id, raw_json = snap
+    finally:
+        conn.close()
+
+    try:
+        raw = json.loads(raw_json) if raw_json else {}
+    except (TypeError, ValueError):
+        raw = {}
+
+    # raw_registers is stored as {str(reg_num): value} or {reg_num: value}.
+    reg_values: dict[int, int] = {}
+    for k, v in raw.items():
+        try:
+            reg_values[int(k)] = int(v)
+        except (TypeError, ValueError):
+            continue
+
+    batteries = []
+    for batt in range(1, BATTERY_COUNT + 1):
+        base = BATTERY_START + (batt - 1) * BATTERY_BLOCK_SIZE
+        # A battery is "present" if any of its registers are non-zero.
+        present = any(reg_values.get(base + off, 0) != 0 for off in range(BATTERY_BLOCK_SIZE))
+        if not present:
+            continue
+        serial = decode_battery_serial(reg_values, batt)
+        batteries.append({
+            "index": batt,
+            "serial": serial,
+            "capacity_ah": reg_values.get(base + 3),
+            "max_charge_current_a": _scale(reg_values.get(base + 5), 0.1),
+            "max_discharge_current_a": _scale(reg_values.get(base + 6), 0.1),
+            "voltage_v": _scale(reg_values.get(base + 8), 0.01),
+            "current_a": _scale_signed(reg_values.get(base + 9), 0.1),
+            "soc_pct": reg_values.get(base + 10, 0) & 0xFF,
+            "soh_pct": (reg_values.get(base + 10, 0) >> 8) & 0xFF,
+            "cycle_count": reg_values.get(base + 11),
+            "max_cell_temp_c": _scale(reg_values.get(base + 12), 0.1),
+            "min_cell_temp_c": _scale(reg_values.get(base + 13), 0.1),
+            "max_cell_voltage_v": _scale(reg_values.get(base + 14), 0.001),
+            "min_cell_voltage_v": _scale(reg_values.get(base + 15), 0.001),
+            "firmware": _fmt_firmware(reg_values.get(base + 18)),
+        })
+
+    return {"snapshot_id": snap_id, "batteries": batteries}
+
+
+def _scale(raw, factor):
+    if raw is None:
+        return None
+    return round(raw * factor, 3)
+
+
+def _scale_signed(raw, factor):
+    if raw is None:
+        return None
+    if raw >= 0x8000:
+        raw -= 0x10000
+    return round(raw * factor, 3)
+
+
+def _fmt_firmware(raw):
+    if raw is None:
+        return None
+    return f"{raw >> 8}.{(raw & 0xFF):02}"
+
+
 @app.get("/api/history")
 def api_history(
     minutes: int = Query(60, ge=1, le=1440, description="Time window in minutes"),

@@ -185,6 +185,65 @@ INPUT_REGISTERS: dict[int, RegisterDef] = {
     216:RegisterDef("ntc_temp_dcdch",     "°C",   1.0,    "NTC temperature DCDCH"),
 }
 
+
+# ── Per-battery BMS registers (5000+) ───────────────────────────────
+# Each battery occupies 30 registers starting at 5000 + (n * 30).
+# Offsets and scales derived from the LuxPower HA integration.
+# These are read-only input registers (function code 0x04).
+
+BATTERY_START = 5000
+BATTERY_BLOCK_SIZE = 30
+BATTERY_COUNT = 8  # support up to 8 parallel batteries
+
+BATTERY_REGISTERS: dict[int, RegisterDef] = {}
+for batt in range(1, BATTERY_COUNT + 1):
+    base = BATTERY_START + (batt - 1) * BATTERY_BLOCK_SIZE
+    defs = {
+        3:  RegisterDef(f"battery_{batt}_capacity",             "Ah",   1.0,    f"Battery {batt} capacity"),
+        5:  RegisterDef(f"battery_{batt}_max_charge_current",    "A",    0.1,    f"Battery {batt} max charge current"),
+        6:  RegisterDef(f"battery_{batt}_max_discharge_current", "A",    0.1,    f"Battery {batt} max discharge current"),
+        8:  RegisterDef(f"battery_{batt}_voltage",               "V",    0.01,   f"Battery {batt} voltage"),
+        9:  RegisterDef(f"battery_{batt}_current",               "A",    0.1,    f"Battery {batt} current", signed=True),
+        10: RegisterDef(f"battery_{batt}_soc",                 "%",    1.0,    f"Battery {batt} SOC", bitmask=0xFF, bitshift=0),
+        11: RegisterDef(f"battery_{batt}_cycle_count",         "cycles", 1.0,  f"Battery {batt} cycle count"),
+        12: RegisterDef(f"battery_{batt}_max_cell_temp",         "°C",   0.1,    f"Battery {batt} max cell temperature"),
+        13: RegisterDef(f"battery_{batt}_min_cell_temp",         "°C",   0.1,    f"Battery {batt} min cell temperature"),
+        14: RegisterDef(f"battery_{batt}_max_cell_voltage",    "V",    0.001,  f"Battery {batt} max cell voltage"),
+        15: RegisterDef(f"battery_{batt}_min_cell_voltage",      "V",    0.001,  f"Battery {batt} min cell voltage"),
+        16: RegisterDef(f"battery_{batt}_max_temp_cell",         "",     1.0,    f"Battery {batt} cell with max temperature", bitmask=0xFF00, bitshift=8),
+        17: RegisterDef(f"battery_{batt}_max_voltage_cell",     "",     1.0,    f"Battery {batt} cell with max voltage", bitmask=0xFF00, bitshift=8),
+        18: RegisterDef(f"battery_{batt}_firmware",              "",     1.0,    f"Battery {batt} firmware raw"),
+    }
+    # NOTE: SOH (high byte of register 10), min-temp-cell (low byte of 16),
+    # and min-voltage-cell (low byte of 17) are packed into the SAME registers
+    # as SOC / max-temp-cell / max-voltage-cell. RegisterDef supports only one
+    # field per register, so those secondary fields are decoded directly by the
+    # /api/batteries endpoint from raw registers rather than via this map.
+    for offset, regdef in defs.items():
+        BATTERY_REGISTERS[base + offset] = regdef
+
+    # Serial number spans registers 19-32 (14 registers = 28 bytes).
+    for i in range(14):
+        BATTERY_REGISTERS[base + 19 + i] = RegisterDef(
+            f"battery_{batt}_serial_{i}", "", 1.0, f"Battery {batt} serial char pair {i}"
+        )
+
+# Merge battery registers into the global input register map.
+INPUT_REGISTERS.update(BATTERY_REGISTERS)
+
+
+def decode_battery_serial(reg_values: dict[int, int], battery_index: int = 1) -> str:
+    """Decode the 14-register ASCII serial number for a given battery."""
+    base = BATTERY_START + (battery_index - 1) * BATTERY_BLOCK_SIZE
+    chars = []
+    for i in range(14):
+        raw = reg_values.get(base + 19 + i, 0)
+        # Each register holds two bytes, big-endian: high byte first.
+        chars.append(chr((raw >> 8) & 0xFF))
+        chars.append(chr(raw & 0xFF))
+    serial = "".join(chars).rstrip("\x00").strip()
+    return serial
+
 # SOH is packed in register 5 high byte
 SOH_REGISTER = RegisterDef("soh", "%", 1.0, "Battery SOH", bitmask=0xFF00, bitshift=8)
 

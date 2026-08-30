@@ -16,6 +16,9 @@ from . import ModelDriver
 
 # Active TCP batches covering the input register map used by the SNA family.
 BATCHES = [(0, 40), (40, 40), (80, 40)]
+# Per-battery BMS registers (5000+). 8 batteries x 30 registers = 5000-5239.
+BATTERY_BATCHES = [(5000, 40), (5040, 40), (5080, 40), (5120, 40), (5160, 40), (5200, 40)]
+BATCHES = BATCHES + BATTERY_BATCHES
 
 
 def _decode(raw: Dict[int, int]) -> dict:

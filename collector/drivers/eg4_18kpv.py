@@ -88,6 +88,9 @@ INPUT_REGISTERS.update(_18KPV_EXTRA)
 # Active TCP batches. The 18KPV has 233+ input registers; poll in 40-register
 # groups (the protocol requires group-aligned reads). Covers 0-232.
 BATCHES = [(0, 40), (40, 40), (80, 40), (120, 40), (160, 40), (200, 40)]
+# Per-battery BMS registers (5000+). 8 batteries x 30 registers = 5000-5239.
+BATTERY_BATCHES = [(5000, 40), (5040, 40), (5080, 40), (5120, 40), (5160, 40), (5200, 40)]
+BATCHES = BATCHES + BATTERY_BATCHES
 
 
 def _decode(raw: Dict[int, int]) -> dict:
