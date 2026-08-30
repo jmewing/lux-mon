@@ -516,6 +516,22 @@ function fmtInt(num) {
   if (num === undefined || num === null || Number.isNaN(num)) return null;
   return Math.round(num).toString();
 }
+// Temperature unit preference (celsius default). Reads the live settings
+// object; returns the display suffix and a converter for raw °C values.
+function tempUnit() {
+  const raw = settings.temperature_unit;
+  const unit = (raw !== null && typeof raw === 'object') ? raw.value : raw;
+  return (unit === 'fahrenheit') ? 'fahrenheit' : 'celsius';
+}
+function tempSuffix() {
+  return tempUnit() === 'fahrenheit' ? ' °F' : ' °C';
+}
+function fmtTemp(celsius, digits=1) {
+  if (celsius === undefined || celsius === null || Number.isNaN(celsius)) return null;
+  const c = Number(celsius);
+  const v = tempUnit() === 'fahrenheit' ? c * 9 / 5 + 32 : c;
+  return fmt(v, digits);
+}
 function fmtTime(iso) {
   if (!iso) return '--';
   const d = new Date(iso);
@@ -546,7 +562,7 @@ function renderMain(r) {
   const stateLabel = val(r,'state_label', null);
   setText('sa-inv-state', stateLabel !== null && stateLabel !== undefined ? stateLabel : state);
   const invTemp = val(r,'temp_inverter');
-  setText('sa-inv-temp', invTemp !== undefined ? fmt(invTemp) + ' °C' : null);
+  setText('sa-inv-temp', invTemp !== undefined ? fmtTemp(invTemp) + tempSuffix() : null);
 
   const pv1 = val(r,'pv1_power') || 0;
   const pv2 = val(r,'pv2_power') || 0;
@@ -649,8 +665,9 @@ function prop(label, reg, opts={}) {
   const suffix = opts.suffix || '';
   const intAttr = opts.int ? 'data-int="1"' : '';
   const digitsAttr = opts.digits ? `data-digits="${opts.digits}"` : '';
+  const tempAttr = opts.temp ? 'data-temp="1"' : '';
   const suffixAttr = suffix ? `data-suffix="${suffix}"` : '';
-  return `<div class="prop"><div class="prop-label">${label}</div><div class="prop-value" data-reg="${reg}" ${intAttr} ${digitsAttr} ${suffixAttr}>${suffix || '--'}</div></div>`;
+  return `<div class="prop"><div class="prop-label">${label}</div><div class="prop-value" data-reg="${reg}" ${intAttr} ${digitsAttr} ${tempAttr} ${suffixAttr}>${suffix || '--'}</div></div>`;
 }
 function detailInverter(r) {
   return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Output</h3><div class="props">
@@ -669,10 +686,10 @@ function detailInverter(r) {
       ${prop('Warning','warning_code_text')}
       ${prop('Runtime','runtime',{suffix:' s', int:1})}
     </div></div></div><div class="card"><div class="card-section"><h3>Temperatures</h3><div class="props">
-      ${prop('Inverter','temp_inverter',{suffix:' °C'})}
-      ${prop('Battery','temp_battery',{suffix:' °C'})}
-      ${prop('Radiator 1','temp_radiator_1',{suffix:' °C'})}
-      ${prop('Radiator 2','temp_radiator_2',{suffix:' °C'})}
+      ${prop('Inverter','temp_inverter',{temp:1})}
+      ${prop('Battery','temp_battery',{temp:1})}
+      ${prop('Radiator 1','temp_radiator_1',{temp:1})}
+      ${prop('Radiator 2','temp_radiator_2',{temp:1})}
     </div></div></div></div>`;
 }
 function detailBattery(r) {
@@ -686,7 +703,7 @@ function detailBattery(r) {
       ${prop('Power','battery_power',{suffix:' W', int:1})}
       ${prop('Capacity','battery_capacity',{suffix:' Ah'})}
       ${prop('Cycles','cycle_count',{int:1})}
-      ${prop('Temp','temp_battery',{suffix:' °C'})}
+      ${prop('Temp','temp_battery',{temp:1})}
     </div></div></div><div class="card"><div class="card-section"><h3>Cells</h3><div class="props">${cells}</div></div></div></div>`;
 }
 function detailGrid(r) {
@@ -724,11 +741,11 @@ function detailLoad(r) {
 }
 function detailEnvironment(r) {
   return `<div class="detail-grid"><div class="card"><div class="card-section"><h3>Environment</h3><div class="props">
-      ${prop('Inverter Temp','temp_inverter',{suffix:' °C'})}
-      ${prop('Battery Temp','temp_battery',{suffix:' °C'})}
-      ${prop('Radiator 1','temp_radiator_1',{suffix:' °C'})}
-      ${prop('Radiator 2','temp_radiator_2',{suffix:' °C'})}
-      ${prop('Outside Temp','temp_outside',{suffix:' °C'})}
+      ${prop('Inverter Temp','temp_inverter',{temp:1})}
+      ${prop('Battery Temp','temp_battery',{temp:1})}
+      ${prop('Radiator 1','temp_radiator_1',{temp:1})}
+      ${prop('Radiator 2','temp_radiator_2',{temp:1})}
+      ${prop('Outside Temp','temp_outside',{temp:1})}
     </div></div></div></div>`;
 }
 
@@ -757,10 +774,17 @@ function renderDetailHTML() {
         if (typeof v === 'string') {
           el.textContent = v || '—';
         } else {
-          const fmtFn = el.dataset.int ? fmtInt : (el.dataset.digits ? (n=>fmt(n, Number(el.dataset.digits))) : fmt);
-          let text = fmtFn(v);
+          let text;
+          if (el.dataset.temp) {
+            text = fmtTemp(v);
+            if (text !== null && text !== undefined) text += tempSuffix();
+          } else {
+            const fmtFn = el.dataset.int ? fmtInt : (el.dataset.digits ? (n=>fmt(n, Number(el.dataset.digits))) : fmt);
+            text = fmtFn(v);
+            if (text === null || text === undefined) text = '--';
+            if (el.dataset.suffix) text += el.dataset.suffix;
+          }
           if (text === null || text === undefined) text = '--';
-          if (el.dataset.suffix) text += el.dataset.suffix;
           el.textContent = text;
         }
       }
