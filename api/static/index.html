@@ -170,6 +170,7 @@ select { -webkit-appearance: menulist; appearance: menulist; }
                 <div class="label" id="grid-label">Grid</div>
                 <div class="property" id="sa-grid-v">--</div>
                 <div class="property font-small" id="sa-grid-prop">--</div>
+                <div class="property font-small" id="sa-grid-watts">--</div>
               </div>
             </a></div>
             <div><a href="#" class="status" data-detail="battery" aria-labelledby="battery-label">
@@ -539,7 +540,16 @@ function renderMain(r) {
   const gridIn = val(r,'grid_import_power') || 0;
   const gridOut = val(r,'grid_export_power') || 0;
   setText('sa-grid-v', gridV !== undefined ? fmt(gridV) + ' V' : null);
-  setText('sa-grid-prop', gridIn > 0 ? 'Importing ' + fmtInt(gridIn) + ' W' : (gridOut > 0 ? 'Exporting ' + fmtInt(gridOut) + ' W' : 'Idle'));
+  if (gridIn > 0) {
+    setText('sa-grid-prop', 'Importing');
+    setText('sa-grid-watts', fmtInt(gridIn) + ' W');
+  } else if (gridOut > 0) {
+    setText('sa-grid-prop', 'Exporting');
+    setText('sa-grid-watts', fmtInt(gridOut) + ' W');
+  } else {
+    setText('sa-grid-prop', 'Idle');
+    setText('sa-grid-watts', '--');
+  }
 
   const batV = val(r,'battery_voltage');
   const soc = val(r,'soc');
