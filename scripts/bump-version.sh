@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Current version (file) ─────────────────────────────────────────────────
-FILE_VERSION="$(grep -oE 'version="[0-9]+\.[0-9]+\.[0-9]+"' "$VERSION_FILE" | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+FILE_VERSION="$(grep -oE 'LUXMON_VERSION = "[0-9]+\.[0-9]+\.[0-9]+"' "$VERSION_FILE" | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
 if [[ -z "$FILE_VERSION" ]]; then
   echo "Could not parse version from $VERSION_FILE" >&2
   exit 2
@@ -113,7 +113,7 @@ NEXT="${MAJOR}.${MINOR}.${PATCH}"
 
 # ── Write back (optional) ───────────────────────────────────────────────────
 if [[ "$WRITE" -eq 1 ]]; then
-  sed -i -E "s/version=\"[0-9]+\.[0-9]+\.[0-9]+\"/version=\"${NEXT}\"/" "$VERSION_FILE"
+  sed -i -E "s/LUXMON_VERSION = \"[0-9]+\.[0-9]+\.[0-9]+\"/LUXMON_VERSION = \"${NEXT}\"/" "$VERSION_FILE"
   echo "Updated $VERSION_FILE -> ${NEXT}" >&2
 fi
 

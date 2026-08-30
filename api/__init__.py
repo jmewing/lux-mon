@@ -48,9 +48,12 @@ TZ = ZoneInfo("America/Chicago")
 
 logger = logging.getLogger("luxmon.api")
 
-app = FastAPI(title="lux-mon API", version="2.5.2")
+# Single source of truth for the lux-mon version. The footer reads this via
+# /api/version, and FastAPI's version field derives from it. bump-version.sh
+# updates this one constant.
+LUXMON_VERSION = "2.5.2"
 
-LUXMON_VERSION = "2.1.0"
+app = FastAPI(title="lux-mon API", version=LUXMON_VERSION)
 
 app.add_middleware(
     CORSMiddleware,
