@@ -343,21 +343,76 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     258: {"name": "generator_start_time_1", "unit": "time", "scale": 1.0, "desc": "Generator period 1 start time (hour+minute)", "min": 0, "max": 2359, "capabilities": {"generator"}},
     259: {"name": "generator_end_time_1", "unit": "time", "scale": 1.0, "desc": "Generator period 1 end time (hour+minute)", "min": 0, "max": 2359, "capabilities": {"generator"}},
 
-    # ── Intentionally NOT exposed as writable (read-only or dangerous) ──
-    #   7-10  firmware/version codes (read-only)
-    #   11    reset (dangerous — restarts inverter)
-    #   12-14 inverter clock (dangerous — changing time disrupts operation)
-    #   16    language + device type (read-only, used for model detection)
-    #   19    device type high-speed (read-only)
-    #   113   set composed phase (write-only)
-    #   114   clear parallel alarm (write-only)
-    #   224   LCD config (read-only)
-    #   231   reset G100 lockout (dangerous)
-    #   241   permit service (dangerous)
-    #   244-245 bootloader/flash (read-only)
-    #   500-723 7-day scheduling — requires WriteMultipleRegisters (0x10),
-    #           which lux-mon does not implement yet. Deferred.
+    # ── 7-day scheduling (500-723) — SEVEN_DAY_SCHEDULE capability ──
+    # Four modules, each spanning 7 days × 8 registers/day (4 per period × 2).
+    # Register layout per day:
+    #   +0 period 1 power/SOC
+    #   +1 period 1 voltage
+    #   +2 period 1 start time (hour<<0 | minute<<8)
+    #   +3 period 1 end time
+    #   +4 period 2 power/SOC
+    #   +5 period 2 voltage
+    #   +6 period 2 start time
+    #   +7 period 2 end time
+    # NOTE: untested on 6000XP/SNA family; those models expose one fixed
+    # schedule shared across all seven days, not per-day registers.
 }
+
+# Generate the 7-day scheduling registers (500-723) and merge them into
+# HOLDING_REGISTERS so they remain discoverable by the API/UI while still
+# being capability-gated for unsupported models.
+_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+_SCHEDULE_MODULES = [
+    ("ac_charge",      500, "% / SOC"),
+    ("forced_charge",  556, "A / SOC"),
+    ("forced_discharge", 612, "A / SOC"),
+    ("peak_shaving",   668, "W / SOC"),
+]
+
+_SEVEN_DAY_REGISTERS: Dict[int, dict] = {}
+for module, base, power_unit in _SCHEDULE_MODULES:
+    for day_idx, day in enumerate(_DAYS):
+        day_base = base + day_idx * 8
+        for period in (1, 2):
+            period_base = day_base + (period - 1) * 4
+            _SEVEN_DAY_REGISTERS[period_base + 0] = {
+                "name": f"{module}_schedule_{day}_p{period}_power_soc",
+                "unit": power_unit,
+                "scale": 1.0,
+                "desc": f"{module.replace('_', ' ').title()} {day.title()} period {period} power/SOC setpoint",
+                "min": 0,
+                "max": 65535,
+                "capabilities": {"seven_day_schedule"},
+            }
+            _SEVEN_DAY_REGISTERS[period_base + 1] = {
+                "name": f"{module}_schedule_{day}_p{period}_voltage",
+                "unit": "V",
+                "scale": 0.1,
+                "desc": f"{module.replace('_', ' ').title()} {day.title()} period {period} voltage",
+                "min": 0,
+                "max": 6000,
+                "capabilities": {"seven_day_schedule"},
+            }
+            _SEVEN_DAY_REGISTERS[period_base + 2] = {
+                "name": f"{module}_schedule_{day}_p{period}_start",
+                "unit": "time",
+                "scale": 1.0,
+                "desc": f"{module.replace('_', ' ').title()} {day.title()} period {period} start (min<<8)|hour",
+                "min": 0,
+                "max": 2359,
+                "capabilities": {"seven_day_schedule"},
+            }
+            _SEVEN_DAY_REGISTERS[period_base + 3] = {
+                "name": f"{module}_schedule_{day}_p{period}_end",
+                "unit": "time",
+                "scale": 1.0,
+                "desc": f"{module.replace('_', ' ').title()} {day.title()} period {period} end (min<<8)|hour",
+                "min": 0,
+                "max": 2359,
+                "capabilities": {"seven_day_schedule"},
+            }
+
+HOLDING_REGISTERS.update(_SEVEN_DAY_REGISTERS)
 
 # Friendly display labels matching the reference portal's terminology.
 # These are surfaced in the automation UI so users see "Absorption charge

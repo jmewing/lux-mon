@@ -80,6 +80,7 @@ _18KPV_CAPS: FrozenSet[str] = frozenset({
     VOLT_WATT,
     QV_CURVE,
     QP_CURVE,
+    SEVEN_DAY_SCHEDULE,
     BATTERY_BMS,
 })
 
@@ -94,6 +95,7 @@ _12KPV_CAPS: FrozenSet[str] = frozenset({
     VOLT_WATT,
     QV_CURVE,
     QP_CURVE,
+    SEVEN_DAY_SCHEDULE,
     BATTERY_BMS,
 })
 

@@ -20,7 +20,7 @@ import math
 
 import pymysql
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -1040,7 +1040,7 @@ from collector.protocol import (
 )
 from collector.capabilities import filter_holding_registers
 from collector.drivers.registry import DEFAULT_MODEL
-from collector.automation import _engineering_to_raw, _write_holding_register, AutomationEngine, AUTOMATION_TYPES, ALL_CONDITION_KINDS, SETTING_NAME_TO_REGISTER
+from collector.automation import _engineering_to_raw, _write_holding_register, _write_holding_registers, AutomationEngine, AUTOMATION_TYPES, ALL_CONDITION_KINDS, SETTING_NAME_TO_REGISTER
 
 
 @app.get("/api/automation/registers")
@@ -1325,6 +1325,22 @@ class HoldingUpdate(BaseModel):
     raw: Optional[int] = None
 
 
+class HoldingMultiUpdate(BaseModel):
+    values: List[int]
+
+    @field_validator("values")
+    @classmethod
+    def _validate_values(cls, v: List[int]) -> List[int]:
+        if not v:
+            raise ValueError("values must not be empty")
+        if len(v) > 123:
+            raise ValueError("too many registers for one multi-write (max 123)")
+        for raw in v:
+            if not (0 <= raw <= 0xFFFF):
+                raise ValueError(f"register value out of range: {raw}")
+        return v
+
+
 def _read_holding_block(
     host: str,
     port: int,
@@ -1546,6 +1562,63 @@ def api_holding_put(name: str, body: HoldingUpdate):
         raise HTTPException(502, f"Failed to write {name}: {msg}")
     logger.info("Wrote holding register %s (address %d) = %d", name, reg, raw_value)
     return {"name": name, "address": reg, "raw": raw_value, "written": True, "message": msg}
+
+
+@app.post("/api/holding/multi/{start_name}")
+def api_holding_multi_write(start_name: str, body: HoldingMultiUpdate):
+    """Write multiple contiguous holding registers using Modbus function 0x10.
+
+    Accepts a list of register names starting at `start_name`. All names must
+    map to contiguous addresses and be supported by the inverter model. This is
+    required by the 7-day scheduling block (500-723), which the inverter only
+    accepts via multi-register writes.
+    """
+    if start_name not in HOLDING_BY_NAME:
+        raise HTTPException(404, f"Unknown holding register: {start_name}")
+    start_reg = HOLDING_BY_NAME[start_name]
+
+    supported = _holding_registers_for_model()
+    if start_reg not in supported:
+        raise HTTPException(404, f"Register {start_name} not supported by this inverter model")
+
+    raw_values: List[int] = []
+    for i, raw in enumerate(body.values):
+        reg = start_reg + i
+        if reg not in HOLDING_REGISTERS:
+            raise HTTPException(404, f"Unknown holding register address: {reg}")
+        if reg not in supported:
+            raise HTTPException(404, f"Register address {reg} not supported by this inverter model")
+        info = HOLDING_REGISTERS[reg]
+        min_val = info.get("min")
+        max_val = info.get("max")
+        if min_val is not None and raw < min_val:
+            raise HTTPException(400, f"address {reg} raw {raw} below minimum {min_val}")
+        if max_val is not None and raw > max_val:
+            raise HTTPException(400, f"address {reg} raw {raw} above maximum {max_val}")
+        raw_values.append(raw)
+
+    dongle = _resolve_dongle()
+    if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
+        raise HTTPException(400, "datalog_serial / inverter_serial not configured")
+
+    ok, msg = _write_holding_registers(
+        dongle["dongle_host"],
+        dongle["dongle_port"],
+        dongle["datalog_serial"],
+        dongle["inverter_serial"],
+        start_reg,
+        raw_values,
+    )
+    if not ok:
+        raise HTTPException(502, f"Failed to write block starting at {start_name}: {msg}")
+    logger.info("Wrote %d holding registers starting at %s (%d)", len(raw_values), start_name, start_reg)
+    return {
+        "start_name": start_name,
+        "start_address": start_reg,
+        "count": len(raw_values),
+        "written": True,
+        "message": msg,
+    }
 
 
 @app.get("/api/quick-charge/status")

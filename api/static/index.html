@@ -373,6 +373,28 @@ select { -webkit-appearance: menulist; appearance: menulist; }
         </div>
       </div>
 
+      <!-- 7-Day Schedule (per-day scheduling, 18KPV/12kPV family only) -->
+      <div class="card" id="seven-day-schedule-card" style="margin-bottom:1em; display:none;">
+        <div class="card-section">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
+            <div>
+              <h3>7-Day Schedule</h3>
+              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Per-day charge / discharge / peak-shaving schedule. Untested on 6000XP family.</p>
+            </div>
+            <div style="display:flex; gap:0.5rem;">
+              <select id="seven-day-module">
+                <option value="ac_charge">AC Charge</option>
+                <option value="forced_charge">Forced Charge</option>
+                <option value="forced_discharge">Forced Discharge</option>
+                <option value="peak_shaving">Peak Shaving</option>
+              </select>
+              <button class="btn" id="btn-save-seven-day">Save Day</button>
+            </div>
+          </div>
+          <div id="seven-day-editor"></div>
+        </div>
+      </div>
+
       <div id="auto-msg" style="margin-top:0.75rem; font-size:0.9rem;"></div>
     </div>
 
@@ -939,6 +961,7 @@ async function loadAutomationSettings() {
 async function loadAutomation() {
   await Promise.all([loadAutomationRegisters(), loadAutomationSettings()]);
   renderSchedule();
+  renderSevenDaySchedule();
   await initAutomation();
 }
 
@@ -1038,6 +1061,127 @@ async function saveSchedule() {
   } catch (e) {
     msg.textContent = 'Error setting value: ' + e.message; msg.style.color = 'var(--red-color)';
   }
+}
+
+function modelSupportsSevenDay() {
+  return autoRegisters.some(r => r.name.includes('_schedule_') && r.name.match(/_(mon|tue|wed|thu|fri|sat|sun)_/));
+}
+
+function sevenDayBaseFor(module) {
+  return {
+    ac_charge: 500,
+    forced_charge: 556,
+    forced_discharge: 612,
+    peak_shaving: 668,
+  }[module];
+}
+
+const SEVEN_DAY_DAYS = ['mon','tue','wed','thu','fri','sat','sun'];
+
+function renderSevenDaySchedule() {
+  const card = document.getElementById('seven-day-schedule-card');
+  if (!card) return;
+  if (!modelSupportsSevenDay()) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  const el = document.getElementById('seven-day-editor');
+  const module = document.getElementById('seven-day-module')?.value || 'ac_charge';
+  if (!el) return;
+
+  const dayTabs = SEVEN_DAY_DAYS.map((d, i) =>
+    `<button class="btn btn-small ${i===0?'active':''}" type="button" data-sday="${d}" onclick="switchSevenDayDay(this)">${d.charAt(0).toUpperCase()+d.slice(1)}</button>`
+  ).join(' ');
+
+  let html = `<div style="margin-bottom:0.75rem;">${dayTabs}</div>`;
+  html += `<div id="seven-day-panels">`;
+  for (const day of SEVEN_DAY_DAYS) {
+    html += `<div data-sday-panel="${day}" style="display:${day==='mon'?'block':'none'};">`;
+    html += `<table class="striped border padded text-align-center" style="width:100%;">
+      <thead><tr class="font-bold"><td>Period</td><td>Power / SOC</td><td>Voltage (V)</td><td>Start</td><td>End</td></tr></thead>
+      <tbody>`;
+    for (const period of [1, 2]) {
+      const prefix = `${module}_schedule_${day}_p${period}`;
+      html += `<tr>
+        <td>Period ${period}</td>
+        <td><input type="number" data-sreg="${prefix}_power_soc" style="width:100%;"></td>
+        <td><input type="number" step="0.1" data-sreg="${prefix}_voltage" style="width:100%;"></td>
+        <td><input type="time" data-sreg="${prefix}_start" style="width:100%;"></td>
+        <td><input type="time" data-sreg="${prefix}_end" style="width:100%;"></td>
+      </tr>`;
+    }
+    html += `</tbody></table></div>`;
+  }
+  html += `</div>`;
+  el.innerHTML = html;
+
+  // Populate values from autoSettings
+  el.querySelectorAll('[data-sreg]').forEach(inp => {
+    const key = inp.dataset.sreg;
+    const reg = regByName(key);
+    if (!reg) return;
+    const raw = autoSettings[key];
+    if (raw === undefined || raw === null || raw === '') return;
+    if (reg.unit === 'time') inp.value = decodeTime(raw);
+    else inp.value = (raw * (reg.scale || 1)).toFixed(reg.scale < 1 ? 1 : 0);
+  });
+}
+
+function switchSevenDayDay(btn) {
+  const day = btn.dataset.sday;
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('[data-sday-panel]').forEach(p => p.style.display = p.dataset.sdayPanel === day ? 'block' : 'none');
+}
+
+async function saveSevenDaySchedule() {
+  const msg = document.getElementById('auto-msg');
+  const module = document.getElementById('seven-day-module')?.value || 'ac_charge';
+  const base = sevenDayBaseFor(module);
+  if (base === undefined) { msg.textContent = 'Unknown module.'; msg.style.color = 'var(--red-color)'; return; }
+
+  // Find the currently-visible day panel
+  const panel = document.querySelector('[data-sday-panel]:not([style*="none"])') || document.querySelector('[data-sday-panel]');
+  const day = panel?.dataset.sdayPanel;
+  if (!day) { msg.textContent = 'No day selected.'; return; }
+
+  const values = [];
+  let name;
+  for (const period of [1, 2]) {
+    const prefix = `${module}_schedule_${day}_p${period}`;
+    for (const suffix of ['power_soc', 'voltage', 'start', 'end']) {
+      const inp = document.querySelector(`[data-sreg="${prefix}_${suffix}"]`);
+      const reg = regByName(`${prefix}_${suffix}`);
+      if (!inp || !reg) { values.push(0); continue; }
+      let raw;
+      if (inp.value === '') raw = 0;
+      else if (reg.unit === 'time') raw = Number(encodeTime(inp.value)) || 0;
+      else raw = _engineeringToRaw(Number(inp.value), reg) || 0;
+      values.push(raw);
+      if (!name) name = `${prefix}_power_soc`;
+    }
+  }
+
+  msg.textContent = `Saving ${module} ${day}...`; msg.style.color = 'var(--light-text-color)';
+  try {
+    const r = await fetch(API + '/api/holding/multi/' + encodeURIComponent(name), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values })
+    });
+    if (!r.ok) {
+      let detail = r.statusText;
+      try { const j = await r.json(); if (j.detail) detail = j.detail; } catch (e) {}
+      throw new Error(detail);
+    }
+    const data = await r.json();
+    msg.textContent = `Value set — ${data.count} registers written.`; msg.style.color = 'var(--green-color)';
+  } catch (e) {
+    msg.textContent = 'Error setting value: ' + e.message; msg.style.color = 'var(--red-color)';
+  }
+}
+
+function _engineeringToRaw(value, reg) {
+  const scale = reg.scale || 1.0;
+  return Math.round(value / scale);
 }
 
 async function loadConfiguration() {
@@ -2326,7 +2470,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('btn-save-schedule').addEventListener('click', saveSchedule);
-  document.getElementById('btn-save-schedule').addEventListener('click', saveSchedule);
+  const sdayModule = document.getElementById('seven-day-module');
+  if (sdayModule) sdayModule.addEventListener('change', renderSevenDaySchedule);
+  const sdaySave = document.getElementById('btn-save-seven-day');
+  if (sdaySave) sdaySave.addEventListener('click', saveSevenDaySchedule);
 
   // Automation controls
   document.getElementById('btn-add-automation').addEventListener('click', openAddAutomation);

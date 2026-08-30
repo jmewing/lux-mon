@@ -99,11 +99,19 @@ def test_dangerous_registers_not_exposed():
         assert reg not in HOLDING_REGISTERS, f"Register {reg} should not be writable"
 
 
-def test_seven_day_schedule_not_exposed():
-    # 7-day scheduling (500-723) requires WriteMultipleRegisters, not yet
-    # implemented. It must not appear as writable.
+def test_seven_day_schedule_exposed_and_gated():
+    # 7-day scheduling (500-723) is now implemented via WriteMultipleRegisters.
+    # Registers exist and are tagged with the seven_day_schedule capability.
+    from collector.capabilities import capabilities_for
     for reg in range(500, 724):
-        assert reg not in HOLDING_REGISTERS, f"Register {reg} should not be writable yet"
+        assert reg in HOLDING_REGISTERS, f"Register {reg} should be writable"
+        info = HOLDING_REGISTERS[reg]
+        assert "seven_day_schedule" in info.get("capabilities", set()), \
+            f"Register {reg} should require seven_day_schedule capability"
+    # SNA/6000XP family does NOT have seven_day_schedule; 18KPV/12kPV do.
+    assert "seven_day_schedule" not in capabilities_for("eg4_6000xp")
+    assert "seven_day_schedule" in capabilities_for("eg4_18kpv")
+    assert "seven_day_schedule" in capabilities_for("eg4_12kpv")
 
 
 def test_no_duplicate_register_numbers():
