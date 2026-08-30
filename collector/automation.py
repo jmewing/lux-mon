@@ -61,6 +61,8 @@ from .protocol import (
     build_write_request,
     find_frames,
 )
+from .capabilities import filter_holding_registers
+from .drivers.registry import DEFAULT_MODEL
 
 logger = logging.getLogger("luxmon.automation")
 
@@ -669,6 +671,14 @@ class AutomationEngine:
         except Exception:
             logger.exception("Failed to write setting %s", name)
 
+    def _resolve_model(self) -> str:
+        """Resolve the active inverter model from the settings table."""
+        return self._get_setting("inverter_model", DEFAULT_MODEL)
+
+    def _register_supported(self, reg_addr: int) -> bool:
+        """Return True if the register is supported by the active model."""
+        return reg_addr in filter_holding_registers(HOLDING_REGISTERS, self._resolve_model())
+
     def load(self) -> List[Automation]:
         raw = self._get_setting(SETTING_AUTOMATIONS, "[]")
         try:
@@ -915,6 +925,11 @@ class AutomationEngine:
         if reg_addr is None:
             self._log(automation_id, automation_name, setting_name, None, value, dry_run, False,
                       f"Register '{reg_name}' not found in HOLDING_BY_NAME")
+            return
+
+        if not self._register_supported(reg_addr):
+            self._log(automation_id, automation_name, setting_name, None, value, dry_run, False,
+                      f"Register '{reg_name}' not supported by this inverter model")
             return
 
         meta = HOLDING_REGISTERS[reg_addr]

@@ -128,7 +128,7 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     169: {"name": "on_grid_eod_voltage",       "unit": "V",   "scale": 0.1,  "desc": "On-grid end-of-discharge voltage", "min": 40, "max": 58},
 
     # ── Generator 177 ──
-    177: {"name": "max_generator_input_power", "unit": "W",   "scale": 1.0,  "desc": "Max generator input power", "min": 0, "max": 65534},
+    177: {"name": "max_generator_input_power", "unit": "W",   "scale": 1.0,  "desc": "Max generator input power", "min": 0, "max": 65534, "capabilities": {"generator"}},
 
     # ── Quick charge toggle 233-234 (reverse-engineered from SolarAssistant) ──
     # 0x00E9 (233) = quick-charge on/off switch (0 = off, 1 = on)
@@ -143,6 +143,175 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     #   * To STOP:  write switch (233=0) AND clear duration (234=0).
     233: {"name": "quick_charge_enable", "unit": "",    "scale": 1.0,  "desc": "Quick charge on/off (0=off, 1=on)", "min": 0, "max": 1},
     234: {"name": "quick_charge_duration", "unit": "min", "scale": 1.0,  "desc": "Quick charge duration (minutes, 0=stop)", "min": 0, "max": 240},
+
+    # ── Firmware & device info (7-20) ──
+    # Registers 7-10 are read-only (firmware/model/version codes).
+    # Register 11 (reset) and 12-14 (time) are writable but DANGEROUS —
+    # resetting or changing the inverter clock can disrupt operation.
+    # They are intentionally NOT exposed as writable registers here.
+    15: {"name": "modbus_comm_address", "unit": "", "scale": 1.0, "desc": "Modbus communication address", "min": 0, "max": 150},
+    20: {"name": "pv_input_model", "unit": "", "scale": 1.0, "desc": "PV input configuration (0=no PV, 1=PV1, 2=PV2, 3=PV1&2 parallel, 4=PV1&2 separate)", "min": 0, "max": 7},
+
+    # ── Grid & power settings (22-28) ──
+    22: {"name": "pv_start_voltage", "unit": "V", "scale": 0.1, "desc": "PV working starting voltage", "min": 90, "max": 500},
+    23: {"name": "on_grid_wait_time", "unit": "s", "scale": 1.0, "desc": "On-grid wait time", "min": 30, "max": 600},
+    24: {"name": "reconnect_wait_time", "unit": "s", "scale": 1.0, "desc": "Reconnect on-grid wait time", "min": 0, "max": 900},
+    25: {"name": "grid_volt_connect_low", "unit": "V", "scale": 0.1, "desc": "Lower limit of allowed on-grid voltage", "min": 0, "max": 600},
+    26: {"name": "grid_volt_connect_high", "unit": "V", "scale": 0.1, "desc": "Upper limit of allowed on-grid voltage", "min": 0, "max": 600},
+    27: {"name": "grid_freq_connect_low", "unit": "Hz", "scale": 0.01, "desc": "Lower limit of allowed on-grid frequency", "min": 0, "max": 7000},
+    28: {"name": "grid_freq_connect_high", "unit": "Hz", "scale": 0.01, "desc": "Upper limit of allowed on-grid frequency", "min": 0, "max": 7000},
+
+    # ── Grid voltage protection limits (29-41) — hardware validation ──
+    29: {"name": "grid_volt_limit_1_low", "unit": "V", "scale": 0.1, "desc": "Grid voltage level 1 undervoltage protection point", "min": 0, "max": 600},
+    30: {"name": "grid_volt_limit_1_high", "unit": "V", "scale": 0.1, "desc": "Grid voltage level 1 overvoltage protection point", "min": 0, "max": 600},
+    31: {"name": "grid_volt_limit_1_low_time", "unit": "", "scale": 1.0, "desc": "Grid voltage level 1 undervoltage protection time", "min": 0, "max": 65535},
+    32: {"name": "grid_volt_limit_1_high_time", "unit": "", "scale": 1.0, "desc": "Grid voltage level 1 overvoltage protection time", "min": 0, "max": 65535},
+    33: {"name": "grid_volt_limit_2_low", "unit": "V", "scale": 0.1, "desc": "Grid voltage level 2 undervoltage protection point", "min": 0, "max": 600},
+    34: {"name": "grid_volt_limit_2_high", "unit": "V", "scale": 0.1, "desc": "Grid voltage level 2 overvoltage protection point", "min": 0, "max": 600},
+    35: {"name": "grid_volt_limit_2_low_time", "unit": "", "scale": 1.0, "desc": "Grid voltage level 2 undervoltage protection time", "min": 0, "max": 65535},
+    36: {"name": "grid_volt_limit_2_high_time", "unit": "", "scale": 1.0, "desc": "Grid voltage level 2 overvoltage protection time", "min": 0, "max": 65535},
+    37: {"name": "grid_volt_limit_3_low", "unit": "V", "scale": 0.1, "desc": "Grid voltage level 3 undervoltage protection point", "min": 0, "max": 600},
+    38: {"name": "grid_volt_limit_3_high", "unit": "V", "scale": 0.1, "desc": "Grid voltage level 3 overvoltage protection point", "min": 0, "max": 600},
+    39: {"name": "grid_volt_limit_3_low_time", "unit": "", "scale": 1.0, "desc": "Grid voltage level 3 undervoltage protection time", "min": 0, "max": 65535},
+    40: {"name": "grid_volt_limit_3_high_time", "unit": "", "scale": 1.0, "desc": "Grid voltage level 3 overvoltage protection time", "min": 0, "max": 65535},
+    41: {"name": "grid_volt_moving_avg_high", "unit": "V", "scale": 0.1, "desc": "Grid voltage sliding average overvoltage protection point", "min": 0, "max": 600},
+
+    # ── Grid frequency protection limits (42-53) — hardware validation ──
+    42: {"name": "grid_freq_limit_1_low", "unit": "Hz", "scale": 0.01, "desc": "Grid frequency level 1 underfrequency protection point", "min": 0, "max": 7000},
+    43: {"name": "grid_freq_limit_1_high", "unit": "Hz", "scale": 0.01, "desc": "Grid frequency level 1 overfrequency protection point", "min": 0, "max": 7000},
+    44: {"name": "grid_freq_limit_1_low_time", "unit": "", "scale": 1.0, "desc": "Grid frequency level 1 underfrequency protection time", "min": 0, "max": 65535},
+    45: {"name": "grid_freq_limit_1_high_time", "unit": "", "scale": 1.0, "desc": "Grid frequency level 1 overfrequency protection time", "min": 0, "max": 65535},
+    46: {"name": "grid_freq_limit_2_low", "unit": "Hz", "scale": 0.01, "desc": "Grid frequency level 2 underfrequency protection point", "min": 0, "max": 7000},
+    47: {"name": "grid_freq_limit_2_high", "unit": "Hz", "scale": 0.01, "desc": "Grid frequency level 2 overfrequency protection point", "min": 0, "max": 7000},
+    48: {"name": "grid_freq_limit_2_low_time", "unit": "", "scale": 1.0, "desc": "Grid frequency level 2 underfrequency protection time", "min": 0, "max": 65535},
+    49: {"name": "grid_freq_limit_2_high_time", "unit": "", "scale": 1.0, "desc": "Grid frequency level 2 overfrequency protection time", "min": 0, "max": 65535},
+    50: {"name": "grid_freq_limit_3_low", "unit": "Hz", "scale": 0.01, "desc": "Grid frequency level 3 underfrequency protection point", "min": 0, "max": 7000},
+    51: {"name": "grid_freq_limit_3_high", "unit": "Hz", "scale": 0.01, "desc": "Grid frequency level 3 overfrequency protection point", "min": 0, "max": 7000},
+    52: {"name": "grid_freq_limit_3_low_time", "unit": "", "scale": 1.0, "desc": "Grid frequency level 3 underfrequency protection time", "min": 0, "max": 65535},
+    53: {"name": "grid_freq_limit_3_high_time", "unit": "", "scale": 1.0, "desc": "Grid frequency level 3 overfrequency protection time", "min": 0, "max": 65535},
+
+    # ── Q(V) curve (54-58) — QV_CURVE capability ──
+    54: {"name": "qv_max_q_percent", "unit": "%", "scale": 1.0, "desc": "Max Q% for Q(V) curve", "min": 0, "max": 100, "capabilities": {"qv_curve"}},
+    55: {"name": "qv_curve_v2l", "unit": "V", "scale": 0.1, "desc": "Q(V) curve V2L", "min": 0, "max": 600, "capabilities": {"qv_curve"}},
+    56: {"name": "qv_curve_v1l", "unit": "V", "scale": 0.1, "desc": "Q(V) curve V1L", "min": 0, "max": 600, "capabilities": {"qv_curve"}},
+    57: {"name": "qv_curve_v1h", "unit": "V", "scale": 0.1, "desc": "Q(V) curve V1H", "min": 0, "max": 600, "capabilities": {"qv_curve"}},
+    58: {"name": "qv_curve_v2h", "unit": "V", "scale": 0.1, "desc": "Q(V) curve V2H", "min": 0, "max": 600, "capabilities": {"qv_curve"}},
+
+    # ── Reactive power command type (59) ──
+    59: {"name": "reactive_power_command_type", "unit": "", "scale": 1.0, "desc": "Reactive power command type (0-7)", "min": 0, "max": 7},
+
+    # ── EPS & Q(V)/P(V) (92-97) — QV_CURVE / QP_CURVE ──
+    92: {"name": "cosphi_p_lock_in_voltage", "unit": "V", "scale": 0.1, "desc": "cosphi(P) lock-in voltage", "min": 230, "max": 300, "capabilities": {"qp_curve"}},
+    93: {"name": "cosphi_p_lock_out_voltage", "unit": "V", "scale": 0.1, "desc": "cosphi(P) lock-out voltage", "min": 150, "max": 300, "capabilities": {"qp_curve"}},
+    94: {"name": "qv_lock_in_power", "unit": "%", "scale": 1.0, "desc": "Q(V) lock-in power", "min": 0, "max": 100, "capabilities": {"qv_curve"}},
+    95: {"name": "qv_lock_out_power", "unit": "%", "scale": 1.0, "desc": "Q(V) lock-out power", "min": 0, "max": 100, "capabilities": {"qv_curve"}},
+    96: {"name": "qv_delay", "unit": "", "scale": 1.0, "desc": "Q(V) delay (main period)", "min": 0, "max": 2000, "capabilities": {"qv_curve"}},
+    97: {"name": "overfrequency_derate_delay", "unit": "", "scale": 1.0, "desc": "Overfrequency derate delay (main period)", "min": 0, "max": 1000},
+
+    # ── Lead-acid temperature limits (106-109) ──
+    106: {"name": "lead_acid_discharge_temp_low", "unit": "°C", "scale": 0.1, "desc": "Lead-acid discharge temperature low (signed)", "min": -200, "max": 600},
+    107: {"name": "lead_acid_discharge_temp_high", "unit": "°C", "scale": 0.1, "desc": "Lead-acid discharge temperature high", "min": 0, "max": 600},
+    108: {"name": "lead_acid_charge_temp_low", "unit": "°C", "scale": 0.1, "desc": "Lead-acid charge temperature low (signed)", "min": -200, "max": 600},
+    109: {"name": "lead_acid_charge_temp_high", "unit": "°C", "scale": 0.1, "desc": "Lead-acid charge temperature high", "min": 0, "max": 600},
+
+    # ── System config (112-120) ──
+    112: {"name": "system_type", "unit": "", "scale": 1.0, "desc": "System type (0=single, 1=parallel P, 2=parallel S, 3=3-phase M, 4=2x208 M)", "min": 0, "max": 4},
+    115: {"name": "overfrequency_derate_start", "unit": "Hz", "scale": 0.01, "desc": "Overfrequency derate start", "min": 5000, "max": 5200},
+    116: {"name": "start_discharge_threshold", "unit": "W", "scale": 1.0, "desc": "Start discharge threshold", "min": 0, "max": 65535},
+    117: {"name": "start_charge_threshold", "unit": "W", "scale": 1.0, "desc": "Start charge threshold (signed)", "min": -65535, "max": 65535},
+    118: {"name": "battery_voltage_derate_start", "unit": "V", "scale": 0.1, "desc": "Battery voltage derate start", "min": 0, "max": 600},
+    119: {"name": "external_ct_power_offset", "unit": "W", "scale": 1.0, "desc": "External CT power offset (signed)", "min": -65535, "max": 65535},
+
+    # ── Derate / scheduling (124-143) ──
+    124: {"name": "overfrequency_derate_end", "unit": "Hz", "scale": 0.01, "desc": "Overfrequency derate end", "min": 5000, "max": 5200},
+    132: {"name": "battery_cell_voltage_limit", "unit": "V", "scale": 0.1, "desc": "Battery cell voltage limit", "min": 0, "max": 600},
+    133: {"name": "battery_cell_count", "unit": "", "scale": 1.0, "desc": "Battery cell count (series/parallel)", "min": 0, "max": 65535},
+    134: {"name": "underfrequency_derate_start", "unit": "Hz", "scale": 0.01, "desc": "Underfrequency derate start", "min": 4500, "max": 5000},
+    135: {"name": "underfrequency_derate_end", "unit": "Hz", "scale": 0.01, "desc": "Underfrequency derate end", "min": 4500, "max": 5000},
+    136: {"name": "underfrequency_derate_ratio", "unit": "%Pm/Hz", "scale": 1.0, "desc": "Underfrequency derate ratio", "min": 1, "max": 100},
+    137: {"name": "specific_load_compensation", "unit": "W", "scale": 1.0, "desc": "Specific load compensation", "min": 0, "max": 65535},
+    138: {"name": "charge_power_percent_precise", "unit": "%", "scale": 0.1, "desc": "Charge power % (precise)", "min": 0, "max": 100},
+    139: {"name": "discharge_power_percent_precise", "unit": "%", "scale": 0.1, "desc": "Discharge power % (precise)", "min": 0, "max": 100},
+    140: {"name": "ac_charge_percent_precise", "unit": "%", "scale": 0.1, "desc": "AC charge % (precise)", "min": 0, "max": 100},
+    141: {"name": "charge_priority_percent_precise", "unit": "%", "scale": 0.1, "desc": "Charge priority % (precise)", "min": 0, "max": 100},
+    142: {"name": "forced_discharge_percent_precise", "unit": "%", "scale": 0.1, "desc": "Forced discharge % (precise)", "min": 0, "max": 100},
+    143: {"name": "active_power_percent_precise", "unit": "%", "scale": 0.1, "desc": "Active power % (precise)", "min": 0, "max": 100},
+
+    # ── Battery config (145) ──
+    145: {"name": "output_priority", "unit": "", "scale": 1.0, "desc": "Output priority (0=battery, 1=PV, 2=AC)", "min": 0, "max": 2},
+
+    # ── SOC curve (171-175) ──
+    171: {"name": "soc_curve_battery_volt_1", "unit": "V", "scale": 0.1, "desc": "SOC curve battery voltage 1", "min": 40, "max": 60},
+    172: {"name": "soc_curve_battery_volt_2", "unit": "V", "scale": 0.1, "desc": "SOC curve battery voltage 2", "min": 40, "max": 60},
+    173: {"name": "soc_curve_soc_1", "unit": "%", "scale": 1.0, "desc": "SOC curve SOC 1", "min": 0, "max": 100},
+    174: {"name": "soc_curve_soc_2", "unit": "%", "scale": 1.0, "desc": "SOC curve SOC 2", "min": 0, "max": 100},
+    175: {"name": "battery_inner_resistance", "unit": "µΩ", "scale": 1.0, "desc": "Battery inner resistance", "min": 0, "max": 100},
+
+    # ── Generator (176) — GENERATOR capability ──
+    176: {"name": "max_grid_import_power", "unit": "kW", "scale": 0.1, "desc": "Max grid import power", "min": 0, "max": 6553},
+
+    # ── AFCI / VoltWatt / QV (180-193) — AFCI / VOLT_WATT / QV_CURVE ──
+    180: {"name": "afci_arc_threshold", "unit": "A", "scale": 1.0, "desc": "AFCI arc threshold", "min": 0, "max": 65535, "capabilities": {"afci"}},
+    181: {"name": "voltwatt_v1", "unit": "V", "scale": 0.1, "desc": "VoltWatt V1", "min": 0, "max": 600, "capabilities": {"volt_watt"}},
+    182: {"name": "voltwatt_v2", "unit": "V", "scale": 0.1, "desc": "VoltWatt V2", "min": 0, "max": 600, "capabilities": {"volt_watt"}},
+    183: {"name": "voltwatt_delay", "unit": "ms", "scale": 1.0, "desc": "VoltWatt delay", "min": 500, "max": 60000, "capabilities": {"volt_watt"}},
+    184: {"name": "voltwatt_p2", "unit": "%", "scale": 1.0, "desc": "VoltWatt P2", "min": 0, "max": 100, "capabilities": {"volt_watt"}},
+    185: {"name": "vref_qv", "unit": "V", "scale": 0.1, "desc": "Vref QV", "min": 0, "max": 600, "capabilities": {"qv_curve"}},
+    186: {"name": "vref_filter_time", "unit": "s", "scale": 1.0, "desc": "Vref filter time", "min": 0, "max": 65535, "capabilities": {"qv_curve"}},
+    187: {"name": "q3_qv", "unit": "%", "scale": 1.0, "desc": "Q3 QV", "min": 0, "max": 100, "capabilities": {"qv_curve"}},
+    188: {"name": "q4_qv", "unit": "%", "scale": 1.0, "desc": "Q4 QV", "min": 0, "max": 100, "capabilities": {"qv_curve"}},
+    189: {"name": "qp_curve_p1", "unit": "%", "scale": 1.0, "desc": "QP curve P1", "min": 0, "max": 100, "capabilities": {"qp_curve"}},
+    190: {"name": "qp_curve_p2", "unit": "%", "scale": 1.0, "desc": "QP curve P2", "min": 0, "max": 100, "capabilities": {"qp_curve"}},
+    191: {"name": "qp_curve_p3", "unit": "%", "scale": 1.0, "desc": "QP curve P3", "min": 0, "max": 100, "capabilities": {"qp_curve"}},
+    192: {"name": "qp_curve_p4", "unit": "%", "scale": 1.0, "desc": "QP curve P4", "min": 0, "max": 100, "capabilities": {"qp_curve"}},
+    193: {"name": "underfrequency_ramp_rate", "unit": "%Pm/Hz", "scale": 1.0, "desc": "Underfrequency ramp rate", "min": 1, "max": 100},
+
+    # ── Generator charge (194-198) — GENERATOR capability ──
+    194: {"name": "generator_charge_start_voltage", "unit": "V", "scale": 0.1, "desc": "Generator charge start voltage", "min": 384, "max": 520, "capabilities": {"generator"}},
+    195: {"name": "generator_charge_end_voltage", "unit": "V", "scale": 0.1, "desc": "Generator charge end voltage", "min": 480, "max": 590, "capabilities": {"generator"}},
+    196: {"name": "generator_charge_start_soc", "unit": "%", "scale": 1.0, "desc": "Generator charge start SOC", "min": 0, "max": 90, "capabilities": {"generator"}},
+    197: {"name": "generator_charge_end_soc", "unit": "%", "scale": 1.0, "desc": "Generator charge end SOC", "min": 20, "max": 100, "capabilities": {"generator"}},
+    198: {"name": "max_generator_charge_current", "unit": "A", "scale": 1.0, "desc": "Max generator charge current", "min": 0, "max": 4000, "capabilities": {"generator"}},
+
+    # ── Advanced (199-261) ──
+    199: {"name": "overtemperature_derate_point", "unit": "°C", "scale": 0.1, "desc": "Overtemperature derate point", "min": 60, "max": 90},
+    201: {"name": "charge_priority_end_voltage", "unit": "V", "scale": 0.1, "desc": "Charge priority end voltage", "min": 480, "max": 595},
+    202: {"name": "forced_discharge_end_voltage", "unit": "V", "scale": 0.1, "desc": "Forced discharge end voltage", "min": 400, "max": 560},
+    204: {"name": "lead_acid_capacity", "unit": "Ah", "scale": 1.0, "desc": "Lead-acid capacity", "min": 50, "max": 5000},
+    205: {"name": "grid_type", "unit": "", "scale": 1.0, "desc": "Grid type (split/3-phase)", "min": 0, "max": 1},
+    206: {"name": "grid_peak_shaving_power", "unit": "W", "scale": 1.0, "desc": "Grid peak shaving power", "min": 0, "max": 65535, "capabilities": {"grid_peak_shaving"}},
+    207: {"name": "grid_peak_shaving_soc", "unit": "%", "scale": 1.0, "desc": "Grid peak shaving SOC", "min": 0, "max": 100, "capabilities": {"grid_peak_shaving"}},
+    208: {"name": "grid_peak_shaving_voltage", "unit": "V", "scale": 0.1, "desc": "Grid peak shaving voltage", "min": 480, "max": 590, "capabilities": {"grid_peak_shaving"}},
+    209: {"name": "peak_shaving_period_1_start", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 1 start", "min": 0, "max": 2359, "capabilities": {"grid_peak_shaving"}},
+    210: {"name": "peak_shaving_period_1_end", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 1 end", "min": 0, "max": 2359, "capabilities": {"grid_peak_shaving"}},
+    211: {"name": "peak_shaving_period_2_start", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 2 start", "min": 0, "max": 2359, "capabilities": {"grid_peak_shaving"}},
+    212: {"name": "peak_shaving_period_2_end", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 2 end", "min": 0, "max": 2359, "capabilities": {"grid_peak_shaving"}},
+    213: {"name": "smart_load_on_voltage", "unit": "V", "scale": 0.1, "desc": "Smart load on voltage", "min": 480, "max": 590, "capabilities": {"smart_load"}},
+    214: {"name": "smart_load_off_voltage", "unit": "V", "scale": 0.1, "desc": "Smart load off voltage", "min": 400, "max": 520, "capabilities": {"smart_load"}},
+    215: {"name": "smart_load_on_soc", "unit": "%", "scale": 1.0, "desc": "Smart load on SOC", "min": 0, "max": 100, "capabilities": {"smart_load"}},
+    216: {"name": "smart_load_off_soc", "unit": "%", "scale": 1.0, "desc": "Smart load off SOC", "min": 0, "max": 100, "capabilities": {"smart_load"}},
+    217: {"name": "start_pv_power", "unit": "kW", "scale": 0.1, "desc": "Start PV power", "min": 0, "max": 12},
+    218: {"name": "grid_peak_shaving_soc_1", "unit": "%", "scale": 1.0, "desc": "Grid peak shaving SOC 1", "min": 0, "max": 100, "capabilities": {"grid_peak_shaving"}},
+    219: {"name": "grid_peak_shaving_volt_1", "unit": "V", "scale": 0.1, "desc": "Grid peak shaving voltage 1", "min": 480, "max": 590, "capabilities": {"grid_peak_shaving"}},
+    220: {"name": "ac_couple_start_soc", "unit": "%", "scale": 1.0, "desc": "AC couple start SOC", "min": 0, "max": 100, "capabilities": {"ac_couple"}},
+    221: {"name": "ac_couple_end_soc", "unit": "%", "scale": 1.0, "desc": "AC couple end SOC", "min": 0, "max": 255, "capabilities": {"ac_couple"}},
+    222: {"name": "ac_couple_start_volt", "unit": "V", "scale": 0.1, "desc": "AC couple start voltage", "min": 400, "max": 595, "capabilities": {"ac_couple"}},
+    223: {"name": "ac_couple_end_volt", "unit": "V", "scale": 0.1, "desc": "AC couple end voltage", "min": 420, "max": 800, "capabilities": {"ac_couple"}},
+    227: {"name": "battery_stop_charge_soc", "unit": "%", "scale": 1.0, "desc": "Battery stop charge SOC", "min": 10, "max": 101},
+    228: {"name": "battery_stop_charge_voltage", "unit": "V", "scale": 0.1, "desc": "Battery stop charge voltage", "min": 400, "max": 595},
+    232: {"name": "grid_peak_shaving_power_1", "unit": "W", "scale": 1.0, "desc": "Grid peak shaving power 1", "min": 0, "max": 65535, "capabilities": {"grid_peak_shaving"}},
+    235: {"name": "no_full_charge_day_config", "unit": "", "scale": 1.0, "desc": "No-full-charge day config", "min": 0, "max": 65535},
+    236: {"name": "float_charge_threshold", "unit": "C", "scale": 0.01, "desc": "Float charge threshold", "min": 1, "max": 255},
+    237: {"name": "generator_cooldown_time", "unit": "min", "scale": 0.1, "desc": "Generator cool-down time", "min": 1, "max": 255, "capabilities": {"generator"}},
+    242: {"name": "npe_threshold", "unit": "V", "scale": 0.1, "desc": "NPE threshold", "min": 0, "max": 65535},
+    248: {"name": "wattnode_ct_amps_phase_1", "unit": "A", "scale": 1.0, "desc": "WattNode CT amps phase 1", "min": 0, "max": 65535, "capabilities": {"wattnode"}},
+    249: {"name": "wattnode_ct_amps_phase_2", "unit": "A", "scale": 1.0, "desc": "WattNode CT amps phase 2", "min": 0, "max": 65535, "capabilities": {"wattnode"}},
+    250: {"name": "wattnode_ct_amps_phase_3", "unit": "A", "scale": 1.0, "desc": "WattNode CT amps phase 3", "min": 0, "max": 65535, "capabilities": {"wattnode"}},
+    252: {"name": "nec_120_bus_bar_limit", "unit": "W", "scale": 1.0, "desc": "NEC 120% bus bar limit", "min": 0, "max": 65535},
+    253: {"name": "soc_delta_hysteresis", "unit": "%", "scale": 1.0, "desc": "SOC delta/hysteresis", "min": 0, "max": 100},
+    254: {"name": "voltage_delta_hysteresis", "unit": "V", "scale": 0.1, "desc": "Voltage delta/hysteresis", "min": 0, "max": 100},
+    260: {"name": "bus_voltage_high_limit", "unit": "V", "scale": 0.1, "desc": "Bus voltage high limit", "min": 0, "max": 800},
+    261: {"name": "discharge_recovery", "unit": "%", "scale": 1.0, "desc": "Discharge recovery", "min": 0, "max": 100},
 }
 
 # Friendly display labels matching the reference portal's terminology.

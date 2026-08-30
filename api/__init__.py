@@ -1038,12 +1038,15 @@ from collector.protocol import (
     find_frames,
     MODBUS_READ_HOLD,
 )
+from collector.capabilities import filter_holding_registers
+from collector.drivers.registry import DEFAULT_MODEL
 from collector.automation import _engineering_to_raw, _write_holding_register, AutomationEngine, AUTOMATION_TYPES, ALL_CONDITION_KINDS, SETTING_NAME_TO_REGISTER
 
 
 @app.get("/api/automation/registers")
 def api_automation_registers():
     """Return the list of writable holding registers (used by the schedule editor)."""
+    regs = _holding_registers_for_model()
     return {
         "registers": [
             {
@@ -1056,7 +1059,7 @@ def api_automation_registers():
                 "max": info.get("max"),
                 "desc": info["desc"],
             }
-            for reg, info in sorted(HOLDING_REGISTERS.items())
+            for reg, info in sorted(regs.items())
         ]
     }
 
@@ -1098,22 +1101,24 @@ def api_automation_conditions():
 @app.get("/api/automation/settings")
 def api_automation_settings():
     """Return the 50 SolarAssistant-style setting names with lux-mon register mapping."""
-    from collector.protocol import HOLDING_REGISTERS, HOLDING_BY_NAME
+    from collector.protocol import HOLDING_BY_NAME
+    regs = _holding_registers_for_model()
     settings = []
     for sa_name, reg_name in SETTING_NAME_TO_REGISTER.items():
         mapped = None
         if reg_name and reg_name in HOLDING_BY_NAME:
             reg_addr = HOLDING_BY_NAME[reg_name]
-            info = HOLDING_REGISTERS[reg_addr]
-            mapped = {
-                "name": reg_name,
-                "address": reg_addr,
-                "unit": info.get("unit"),
-                "scale": info.get("scale"),
-                "min": info.get("min"),
-                "max": info.get("max"),
-                "desc": info.get("desc"),
-            }
+            if reg_addr in regs:
+                info = regs[reg_addr]
+                mapped = {
+                    "name": reg_name,
+                    "address": reg_addr,
+                    "unit": info.get("unit"),
+                    "scale": info.get("scale"),
+                    "min": info.get("min"),
+                    "max": info.get("max"),
+                    "desc": info.get("desc"),
+                }
         settings.append({
             "name": sa_name,
             "label": sa_name.replace("_", " ").title(),
@@ -1300,6 +1305,16 @@ def _resolve_dongle() -> dict:
     }
 
 
+def _resolve_model() -> str:
+    """Resolve the active inverter model from env or DB settings."""
+    return os.getenv("LUX_INVERTER_MODEL") or _load_db_setting("inverter_model") or DEFAULT_MODEL
+
+
+def _holding_registers_for_model() -> Dict[int, dict]:
+    """Return the holding-register map filtered to the active model's capabilities."""
+    return filter_holding_registers(HOLDING_REGISTERS, _resolve_model())
+
+
 class QuickChargeBody(BaseModel):
     minutes: Optional[int] = None
     dry_run: bool = False
@@ -1360,9 +1375,9 @@ def _read_holding_block(
 
 
 def _read_all_holding_registers(dongle: dict) -> Dict[int, int]:
-    """Read holding registers 0-169 from the inverter in batches."""
+    """Read holding registers 0-261 from the inverter in batches."""
     raw: Dict[int, int] = {}
-    batches = [(0, 40), (40, 40), (80, 40), (120, 40), (160, 40)]
+    batches = [(0, 40), (40, 40), (80, 40), (120, 40), (160, 40), (200, 40), (240, 22)]
     for start, count in batches:
         ok, block, msg = _read_holding_block(
             dongle["dongle_host"],
@@ -1391,7 +1406,8 @@ def api_holding_list():
         raise HTTPException(400, "datalog_serial / inverter_serial not configured")
     raw = _read_all_holding_registers(dongle)
     result = {}
-    for reg, info in sorted(HOLDING_REGISTERS.items()):
+    regs = _holding_registers_for_model()
+    for reg, info in sorted(regs.items()):
         if reg in raw:
             result[info["name"]] = {
                 "address": reg,
@@ -1413,7 +1429,8 @@ def api_holding_controllable():
     entities without hardcoding a static list.
     """
     result = {}
-    for reg, info in sorted(HOLDING_REGISTERS.items()):
+    regs = _holding_registers_for_model()
+    for reg, info in sorted(regs.items()):
         name = info["name"]
         unit = info.get("unit", "")
         scale = info.get("scale", 1.0)
@@ -1449,10 +1466,12 @@ def api_holding_get(name: str):
     """Read a single named holding register from the inverter."""
     if name not in HOLDING_BY_NAME:
         raise HTTPException(404, f"Unknown holding register: {name}")
+    reg = HOLDING_BY_NAME[name]
+    if reg not in _holding_registers_for_model():
+        raise HTTPException(404, f"Register {name} not supported by this inverter model")
     dongle = _resolve_dongle()
     if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
         raise HTTPException(400, "datalog_serial / inverter_serial not configured")
-    reg = HOLDING_BY_NAME[name]
     info = HOLDING_REGISTERS[reg]
     ok, raw_map, msg = _read_holding_block(
         dongle["dongle_host"],
@@ -1487,6 +1506,8 @@ def api_holding_put(name: str, body: HoldingUpdate):
     if name not in HOLDING_BY_NAME:
         raise HTTPException(404, f"Unknown holding register: {name}")
     reg = HOLDING_BY_NAME[name]
+    if reg not in _holding_registers_for_model():
+        raise HTTPException(404, f"Register {name} not supported by this inverter model")
     info = HOLDING_REGISTERS[reg]
     min_val = info.get("min")
     max_val = info.get("max")
