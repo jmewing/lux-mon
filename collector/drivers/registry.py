@@ -12,6 +12,11 @@ from .eg4_12000xp import create_driver as _eg4_12000xp
 from .eg4_6500ex import create_driver as _eg4_6500ex
 from .eg4_3000ehv import create_driver as _eg4_3000ehv
 from .luxpower_sna import create_driver as _luxpower_sna
+from .lxp_6k import create_driver as _lxp_6k
+from .lxp_12k import create_driver as _lxp_12k
+from .lxp_18k import create_driver as _lxp_18k
+from .fortress_envy_12k import create_driver as _fortress_envy_12k
+from .bigbattery_sna_6k import create_driver as _bigbattery_sna_6k
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +44,18 @@ DRIVERS: Dict[str, Callable[[], ModelDriver]] = {
     # derived from the official EG4 Modbus protocol doc; the 12kPV shares it.
     "eg4_18kpv": _eg4_18kpv,
     "eg4_12kpv": _eg4_12kpv,
+
+    # ── LuxPower LXP family (OEM's own branding) ──
+    # LXP 6K = SNA-US 6000 (2-MPPT single-phase); LXP 12K/18K = 18KPV
+    # platform (3-MPPT split-phase). Same shared register map.
+    "lxp_6k": _lxp_6k,
+    "lxp_12k": _lxp_12k,
+    "lxp_18k": _lxp_18k,
+
+    # ── Other LuxPower rebrands ──
+    # Fortress Envy True 12K = LXP 12K; BigBattery SNA-US 6K = SNA-US 6000.
+    "fortress_envy_12k": _fortress_envy_12k,
+    "bigbattery_sna_6k": _bigbattery_sna_6k,
 
     # ── FlexBOSS / GridBOSS ──
     # NEW platform (not a Luxpower SNA rebadge). Register map unknown; do NOT

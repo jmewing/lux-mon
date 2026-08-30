@@ -15,6 +15,47 @@ def test_registry_has_sna_family():
     assert "eg4_3000ehv" in DRIVERS
 
 
+def test_registry_has_lxp_and_rebrands():
+    assert "lxp_6k" in DRIVERS
+    assert "lxp_12k" in DRIVERS
+    assert "lxp_18k" in DRIVERS
+    assert "fortress_envy_12k" in DRIVERS
+    assert "bigbattery_sna_6k" in DRIVERS
+
+
+def test_lxp_6k_is_sna_family():
+    base = get_driver("luxpower_sna")
+    d = get_driver("lxp_6k")
+    assert d.input_registers is base.input_registers
+    assert d.batches == base.batches
+    assert d.label == "LuxPower LXP 6K"
+
+
+def test_bigbattery_is_sna_family():
+    base = get_driver("luxpower_sna")
+    d = get_driver("bigbattery_sna_6k")
+    assert d.input_registers is base.input_registers
+    assert d.batches == base.batches
+    assert d.label == "BigBattery SNA-US 6K"
+
+
+def test_lxp_12k_18k_are_18kpv_family():
+    kpv = get_driver("eg4_18kpv")
+    for model, label in (("lxp_12k", "LuxPower LXP 12K"), ("lxp_18k", "LuxPower LXP 18K")):
+        d = get_driver(model)
+        assert d.input_registers is kpv.input_registers
+        assert d.batches == kpv.batches
+        assert d.label == label
+
+
+def test_fortress_envy_is_18kpv_family():
+    kpv = get_driver("eg4_18kpv")
+    d = get_driver("fortress_envy_12k")
+    assert d.input_registers is kpv.input_registers
+    assert d.batches == kpv.batches
+    assert d.label == "Fortress Envy True 12K"
+
+
 def test_sna_aliases_share_register_family():
     # 12000XP / 6500EX / 3000EHV are SNA rebadges → same map as 6000XP
     base = get_driver("eg4_6000xp")
