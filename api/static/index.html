@@ -392,7 +392,7 @@ select { -webkit-appearance: menulist; appearance: menulist; }
             <div class="field"><label>Dongle Port</label><input type="number" data-key="dongle_port" placeholder="8000"></div>
             <div class="field"><label>Datalog Serial</label><input type="text" data-key="datalog_serial" placeholder="BJxxxxxxxx"></div>
             <div class="field"><label>Inverter Serial</label><input type="text" data-key="inverter_serial" placeholder="5xxxxxxxx"></div>
-            <div class="field"><label>Inverter Model</label><input type="text" data-key="inverter_model" placeholder="eg4_6000xp"></div>
+            <div class="field"><label>Inverter Model</label><select data-key="inverter_model" id="inverter-model-select"></select></div>
           </div>
         </div></div>
         <div class="card" style="margin-top:1em;"><div class="card-section"><h3>Limits & Preferences</h3>
@@ -1030,6 +1030,9 @@ async function loadConfiguration() {
       else el.value = val;
     }
   });
+  // Populate the inverter model dropdown now that settings (and its options
+  // list) are loaded.
+  populateInverterModels();
 }
 
 // Populate the timezone dropdown with all IANA timezones.
@@ -1043,6 +1046,21 @@ function populateTimezones() {
   const cur = settings.timezone;
   const curVal = (cur !== null && typeof cur === 'object') ? cur.value : cur;
   if (curVal && list.includes(curVal)) sel.value = curVal;
+}
+
+// Populate the inverter model dropdown from the API's options list (derived
+// from the driver registry), so only real, supported models can be selected.
+function populateInverterModels() {
+  const sel = document.getElementById('inverter-model-select');
+  if (!sel) return;
+  const meta = settings.inverter_model;
+  const options = (meta && Array.isArray(meta.options)) ? meta.options : [];
+  // options is a list of [value, label] pairs from the API.
+  const list = options.map(o => (Array.isArray(o) ? o : [o.value, o.label]));
+  sel.innerHTML = list.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  // Preserve the currently-configured model if present.
+  const curVal = (meta !== null && typeof meta === 'object') ? meta.value : meta;
+  if (curVal && list.some(([v]) => v === curVal)) sel.value = curVal;
 }
 async function saveConfiguration() {
   const msg = document.getElementById('config-msg');

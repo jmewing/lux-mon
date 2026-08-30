@@ -220,13 +220,29 @@ DEFAULTS = {
 
 # ── Setting metadata for the UI ──
 
-# Each setting's display info for the settings page form
-SETTING_META = {
-    "inverter_model": {
-        "label": "Model",
-        "type": "select",
-        "section": "inverter",
-        "options": [
+
+def _inverter_model_options():
+    """Return the (value, label) pairs for the inverter_model dropdown.
+
+    Derived from the driver registry so the settings page can never drift out
+    of sync with the drivers that actually exist. Imported lazily to avoid a
+    circular import (registry -> registers, not settings).
+    """
+    try:
+        from .drivers.registry import DRIVERS
+        from .drivers import ModelDriver
+        options = []
+        for name in sorted(DRIVERS):
+            try:
+                drv = DRIVERS[name]()
+                label = drv.label if isinstance(drv, ModelDriver) else name
+            except Exception:
+                label = name
+            options.append((name, label))
+        return options
+    except Exception:
+        # Fall back to a static list if the registry can't be imported.
+        return [
             ("eg4_6000xp", "EG4 6000XP"),
             ("eg4_12000xp", "EG4 12000XP"),
             ("eg4_18kpv", "EG4 18KPV"),
@@ -234,7 +250,16 @@ SETTING_META = {
             ("luxpower_sna", "Luxpower SNA"),
             ("eg4_6500ex", "EG4 6500EX-48 (legacy)"),
             ("eg4_3000ehv", "EG4 3000EHV-48 (legacy)"),
-        ],
+        ]
+
+
+# Each setting's display info for the settings page form
+SETTING_META = {
+    "inverter_model": {
+        "label": "Model",
+        "type": "select",
+        "section": "inverter",
+        "options": _inverter_model_options(),
         "hint": "Inverter model (Luxpower SNA / 18KPV families only)",
     },
     "pv_max_power": {
