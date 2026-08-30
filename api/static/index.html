@@ -2260,14 +2260,41 @@ function showPage(page) {
   if (page === 'historical') loadHistorical();
   if (page === 'automations') initAutomation();
   if (page === 'configuration') { loadConfiguration(); populateTimezones(); }
+
+  // Persist the current page in the URL hash so a browser refresh (or
+  // back/forward) restores the same page instead of resetting to main.
+  if (location.hash !== '#' + page) {
+    history.replaceState(null, '', '#' + page);
+  }
 }
 function showConfigPanel(name) {
   document.querySelectorAll('.config-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('config-' + name).classList.add('active');
   document.querySelectorAll('.config-tab').forEach(b => b.classList.toggle('active', b.dataset.config === name));
+  // Persist the config sub-tab in the hash (e.g. #configuration/inverter).
+  if (location.hash.startsWith('#configuration')) {
+    history.replaceState(null, '', '#configuration/' + name);
+  }
 }
 
+// Restore the page (and optional config sub-tab) from the URL hash.
+function restoreFromHash() {
+  const hash = (location.hash || '').replace(/^#/, '');
+  if (!hash) return;
+  const [page, sub] = hash.split('/');
+  const validPages = ['main', 'detail', 'charts', 'historical', 'automations', 'configuration'];
+  if (validPages.includes(page)) {
+    showPage(page);
+    if (page === 'configuration' && sub) showConfigPanel(sub);
+  }
+}
+
+window.addEventListener('hashchange', restoreFromHash);
+
 document.addEventListener('DOMContentLoaded', async () => {
+  // Restore the page from the URL hash (survives refresh / back / forward).
+  restoreFromHash();
+
   document.querySelectorAll('#top-menu .menu-item').forEach(n => {
     n.addEventListener('click', e => { e.preventDefault(); showPage(n.dataset.page); });
   });
