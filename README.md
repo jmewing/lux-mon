@@ -48,23 +48,56 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 
 lux-mon speaks the **Luxpower SNA** and **18KPV** register families. EG4
 inverters are Luxpower rebadges, so the full EG4 lineup is supported via two
-families:
+families. Each model below maps to one of those two register maps.
 
-| Family | Models | Register map | Status |
-|--------|--------|--------------|--------|
-| **SNA** (2-MPPT, single-phase off-grid) | EG4 6000XP, 12000XP, 6500EX-48, 3000EHV-48, Luxpower SNA | `collector/registers.py` | ✅ Capture-validated on the 6000XP |
-| **18KPV** (3-MPPT, split-phase 120/240V, AFCI, generator) | EG4 18KPV, 12kPV | `collector/drivers/eg4_18kpv.py` | ⚠️ Document-derived, not yet capture-validated |
+> **Verified vs. unverified.** A model is **✅ Verified** only when its
+> register map has been confirmed against a live unit (real captures, not just
+> the vendor's protocol document). **⚠️ Unverified** models share a register
+> map with a verified sibling but have *not* been independently confirmed —
+> they may expose extra data fields or decode some registers differently.
+> Treat unverified models as best-effort and report any discrepancies.
+
+| Model | Setting value | Register family | Status |
+|-------|---------------|-----------------|--------|
+| EG4 6000XP | `eg4_6000xp` | SNA | ✅ Verified (reference) |
+| Luxpower SNA | `luxpower_sna` | SNA | ✅ Verified |
+| EG4 12000XP | `eg4_12000xp` | SNA | ⚠️ Unverified |
+| EG4 6500EX-48 | `eg4_6500ex` | SNA | ⚠️ Unverified |
+| EG4 3000EHV-48 | `eg4_3000ehv` | SNA | ⚠️ Unverified (legacy/discontinued) |
+| LuxPower LXP 6K | `lxp_6k` | SNA | ⚠️ Unverified |
+| BigBattery SNA-US 6K | `bigbattery_sna_6k` | SNA | ⚠️ Unverified |
+| EG4 18KPV | `eg4_18kpv` | 18KPV | ⚠️ Unverified (document-derived) |
+| EG4 12kPV | `eg4_12kpv` | 18KPV | ⚠️ Unverified |
+| LuxPower LXP 12K | `lxp_12k` | 18KPV | ⚠️ Unverified |
+| LuxPower LXP 18K | `lxp_18k` | 18KPV | ⚠️ Unverified |
+| Fortress Envy True 12K | `fortress_envy_12k` | 18KPV | ⚠️ Unverified |
 
 - **SNA family** is the validated reference — the 6000XP map was
   reverse-engineered from live captures. The 12000XP, 6500EX-48, and
   3000EHV-48 (legacy, discontinued) share the exact same register layout.
 - **18KPV family** is derived from the official EG4 Modbus protocol document
-  and has **not** been validated against a live unit. The 12kPV shares the
-  18KPV map. Community feedback will identify any gaps.
+  and has **not** been validated against a live unit. The 12kPV, LXP 12K/18K,
+  and Fortress Envy True 12K share the 18KPV map.
 - **FlexBOSS18/21 and GridBOSS** are a *new* platform (not a Luxpower SNA
   rebadge) with an unknown register map. They are intentionally **not**
   aliased to either family — doing so would silently decode garbage. A
   dedicated driver is needed once their protocol is documented.
+
+#### Help verify an unverified model
+
+Running an unverified model? We'd love to confirm it against your hardware.
+If your inverter is on the list above but marked ⚠️ Unverified, please:
+
+1. Set `LUX_INVERTER_MODEL` to your model's setting value and run lux-mon.
+2. Compare the decoded values against your inverter's own display / the
+   vendor's monitoring app.
+3. If anything looks off (wrong values, missing fields, extra registers),
+   **open a GitHub issue** (or email us the collector logs) with a redacted
+   log excerpt so we can validate and correct the register map.
+
+Confirmed-good reports let us flip a model from ⚠️ Unverified to ✅ Verified
+and document any model-specific differences (e.g. extra data fields the
+6000XP doesn't expose).
 
 ### In progress / near-term
 
