@@ -515,14 +515,13 @@ function setText(id, text) {
   if (el && text !== null && text !== undefined) el.textContent = text;
 }
 
-const STATE_MAP = {0:'Standby',1:'Self-test',2:'Normal',3:'Alarm',4:'Fault',5:'Bypass',6:'Battery',7:'ECO',8:'Shutdown'};
-
 function renderMain(r) {
   liveData = r;
   setText('last-updated', 'Updated ' + fmtTime(r.timestamp));
 
   const state = val(r,'state',0);
-  setText('sa-inv-state', STATE_MAP[state] || ('State '+state));
+  const stateLabel = val(r,'state_label', null);
+  setText('sa-inv-state', stateLabel || ('State '+state));
   const invTemp = val(r,'temp_inverter');
   setText('sa-inv-temp', invTemp !== undefined ? fmt(invTemp) + ' °C' : null);
 
@@ -631,7 +630,7 @@ function detailInverter(r) {
       ${prop('Total Power','eps_power',{suffix:' W', int:1})}
       ${prop('Apparent Power','eps_apparent_power',{suffix:' VA', int:1})}
       ${prop('Frequency','eps_frequency',{suffix:' Hz', digits:2})}
-      ${prop('State','state',{int:1})}
+      ${prop('State','state_label')}
       ${prop('Fault Code','fault_code',{int:1})}
       ${prop('Fault','fault_code_text')}
       ${prop('Warning Code','warning_code',{int:1})}
