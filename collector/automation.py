@@ -631,7 +631,6 @@ class AutomationEngine:
         self._notifiers = notifiers
         self._last_eval: Dict[str, bool] = {}
         self._last_notify: Dict[str, float] = {}
-        self._last_written_value: Dict[str, Any] = {}
 
     def _db(self):
         import pymysql
@@ -797,26 +796,20 @@ class AutomationEngine:
             _, rng = match
             if rng.action_value is not None:
                 value = float(rng.action_value)
-                last = self._last_written_value.get(auto.id)
-                if last != value:
-                    self._do_write(
-                        auto.id, auto.name, auto.setting, value,
-                        dongle_host, dongle_port, datalog_serial, inverter_serial,
-                        dry_run,
-                    )
-                    self._last_written_value[auto.id] = value
-                self._last_eval[auto.id] = True
-                return
-        if was_active and auto.restore_value is not None and auto.setting is not None:
-            value = float(auto.restore_value)
-            last = self._last_written_value.get(auto.id)
-            if last != value:
                 self._do_write(
                     auto.id, auto.name, auto.setting, value,
                     dongle_host, dongle_port, datalog_serial, inverter_serial,
                     dry_run,
                 )
-                self._last_written_value[auto.id] = value
+                self._last_eval[auto.id] = True
+                return
+        if was_active and auto.restore_value is not None and auto.setting is not None:
+            value = float(auto.restore_value)
+            self._do_write(
+                auto.id, auto.name, auto.setting, value,
+                dongle_host, dongle_port, datalog_serial, inverter_serial,
+                dry_run,
+            )
         self._last_eval[auto.id] = False
 
     def _evaluate_battery_protection(
@@ -840,24 +833,18 @@ class AutomationEngine:
         if matched:
             if auto.action_value is not None:
                 value = float(auto.action_value)
-                last = self._last_written_value.get(auto.id)
-                if last != value:
-                    self._do_write(
-                        auto.id, auto.name, "shutdown_battery_voltage", value,
-                        dongle_host, dongle_port, datalog_serial, inverter_serial, dry_run,
-                    )
-                    self._last_written_value[auto.id] = value
+                self._do_write(
+                    auto.id, auto.name, "shutdown_battery_voltage", value,
+                    dongle_host, dongle_port, datalog_serial, inverter_serial, dry_run,
+                )
             self._last_eval[auto.id] = True
         else:
             if was_active and auto.restore_value is not None:
                 value = float(auto.restore_value)
-                last = self._last_written_value.get(auto.id)
-                if last != value:
-                    self._do_write(
-                        auto.id, auto.name, "shutdown_battery_voltage", value,
-                        dongle_host, dongle_port, datalog_serial, inverter_serial, dry_run,
-                    )
-                    self._last_written_value[auto.id] = value
+                self._do_write(
+                    auto.id, auto.name, "shutdown_battery_voltage", value,
+                    dongle_host, dongle_port, datalog_serial, inverter_serial, dry_run,
+                )
             self._last_eval[auto.id] = False
 
     def _evaluate_battery_soc(
@@ -942,6 +929,18 @@ class AutomationEngine:
             self._log(automation_id, automation_name, setting_name, raw, clamped, True, True,
                       f"DRY-RUN would write {setting_name}={clamped} ({reg_name}@{reg_addr}={raw})")
             logger.info("[DRY-RUN] Automation %s: %s=%s", automation_id, setting_name, clamped)
+            return
+
+        # Read-compare-write: only send a Modbus write when the inverter's
+        # current value actually differs from the target. This avoids spamming
+        # the dongle (and the automation log) with redundant writes every
+        # snapshot when the value is already correct (e.g. writing 0 A every
+        # 10 s when it has been 0 A for hours). The steady-state "no change"
+        # case is silent — only actual writes (or failures) are logged.
+        read_ok, current_raw, _ = _read_holding_register(
+            dongle_host, dongle_port, datalog_serial, inverter_serial, reg_addr
+        )
+        if read_ok and current_raw == raw:
             return
 
         ok, msg = _write_holding_register(

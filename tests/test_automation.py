@@ -300,5 +300,56 @@ class TestRuleTableNested(unittest.TestCase):
         self.assertTrue(self.engine._last_eval[auto.id])
 
 
+class TestReadCompareWrite(unittest.TestCase):
+    """Read-compare-write: only write when the inverter value actually differs."""
+
+    def setUp(self):
+        self.engine = AutomationEngine(
+            db_host="localhost", db_port=3306, db_user="x",
+            db_password="x", db_name="x", table_prefix="lux_",
+        )
+
+    def _do_write(self, value, read_result, dry_run=False):
+        with patch("collector.automation._read_holding_register", return_value=read_result) as mock_read:
+            with patch("collector.automation._write_holding_register", return_value=(True, "ok")) as mock_write:
+                with patch("collector.automation.AutomationEngine._log"):
+                    self.engine._do_write(
+                        "a1", "Test", "grid_charge_current", value,
+                        "192.168.1.100", 8000, "BJ123", "INV123", dry_run,
+                    )
+                return mock_read, mock_write
+
+    def test_skips_write_when_value_matches(self):
+        # Inverter already at the target raw value -> no write.
+        # grid_charge_current maps to a register; use a value whose raw form
+        # we can predict. We patch the read to return the SAME raw the write
+        # would produce by reading the register map.
+        from collector.automation import SETTING_NAME_TO_REGISTER, HOLDING_BY_NAME, HOLDING_REGISTERS, _engineering_to_raw, _clamp_to_register
+        reg_name = SETTING_NAME_TO_REGISTER["grid_charge_current"]
+        reg_addr = HOLDING_BY_NAME[reg_name]
+        meta = HOLDING_REGISTERS[reg_addr]
+        target_raw = _engineering_to_raw(_clamp_to_register(10.0, meta), meta)
+
+        mock_read, mock_write = self._do_write(10.0, (True, target_raw, "read"))
+        mock_write.assert_not_called()
+
+    def test_writes_when_value_differs(self):
+        from collector.automation import SETTING_NAME_TO_REGISTER, HOLDING_BY_NAME, HOLDING_REGISTERS, _engineering_to_raw, _clamp_to_register
+        reg_name = SETTING_NAME_TO_REGISTER["grid_charge_current"]
+        reg_addr = HOLDING_BY_NAME[reg_name]
+        meta = HOLDING_REGISTERS[reg_addr]
+        target_raw = _engineering_to_raw(_clamp_to_register(10.0, meta), meta)
+        # Inverter currently at a DIFFERENT raw value.
+        different_raw = target_raw + 1
+
+        mock_read, mock_write = self._do_write(10.0, (True, different_raw, "read"))
+        mock_write.assert_called_once()
+
+    def test_writes_when_read_fails(self):
+        # If the read fails, fail-safe: still write (don't block the automation).
+        mock_read, mock_write = self._do_write(10.0, (False, None, "read failed"))
+        mock_write.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
