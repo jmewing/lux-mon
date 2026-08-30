@@ -51,7 +51,7 @@ logger = logging.getLogger("luxmon.api")
 # Single source of truth for the lux-mon version. The footer reads this via
 # /api/version, and FastAPI's version field derives from it. bump-version.sh
 # updates this one constant.
-LUXMON_VERSION = "2.5.12"
+LUXMON_VERSION = "2.5.13"
 
 app = FastAPI(title="lux-mon API", version=LUXMON_VERSION)
 
