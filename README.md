@@ -92,7 +92,8 @@ If your inverter is on the list above but marked ⚠️ Unverified, please:
 2. Compare the decoded values against your inverter's own display / the
    vendor's monitoring app.
 3. If anything looks off (wrong values, missing fields, extra registers),
-   **open a GitHub issue** (or email us the collector logs) with a redacted
+   **open a GitHub issue** or **email us at
+   [jaspertan219@gmail.com](mailto:jaspertan219@gmail.com)** with a redacted
    log excerpt so we can validate and correct the register map.
 
 Confirmed-good reports let us flip a model from ⚠️ Unverified to ✅ Verified
