@@ -120,6 +120,34 @@ def _state_label(value) -> str:
     return f"{label} ({code})"
 
 
+def _fault_label(value) -> str:
+    """Return a human-readable label for a raw fault code value."""
+    try:
+        from collector.fault_codes import fault_code_text
+    except Exception:
+        return ""
+    try:
+        code = int(value)
+    except (TypeError, ValueError):
+        return ""
+    text = fault_code_text(code)
+    return text if text else ""
+
+
+def _warning_label(value) -> str:
+    """Return a human-readable label for a raw warning code value."""
+    try:
+        from collector.fault_codes import warning_code_text
+    except Exception:
+        return ""
+    try:
+        code = int(value)
+    except (TypeError, ValueError):
+        return ""
+    text = warning_code_text(code)
+    return text if text else ""
+
+
 # ── endpoints ────────────────────────────────────────────────────────────────
 
 @app.get("/api/status")
@@ -155,6 +183,20 @@ def api_status():
                 "value": _state_label(registers["state"]["value"]),
                 "unit": "",
             }
+
+        # Human-readable fault/warning labels alongside the raw codes.
+        for raw_name, label_name, label_fn in (
+            ("fault_code", "fault_code_text", _fault_label),
+            ("warning_code", "warning_code_text", _warning_label),
+            ("internal_fault", "internal_fault_text", _fault_label),
+            ("bms_fault_code", "bms_fault_code_text", _fault_label),
+            ("bms_warning_code", "bms_warning_code_text", _warning_label),
+        ):
+            if raw_name in registers:
+                registers[label_name] = {
+                    "value": label_fn(registers[raw_name]["value"]),
+                    "unit": "",
+                }
 
         return {
             "snapshot_id": snap_id,
@@ -437,6 +479,20 @@ def api_summary():
                 "value": _state_label(registers["state"]["value"]),
                 "unit": "",
             }
+
+        # Human-readable fault/warning labels alongside the raw codes.
+        for raw_name, label_name, label_fn in (
+            ("fault_code", "fault_code_text", _fault_label),
+            ("warning_code", "warning_code_text", _warning_label),
+            ("internal_fault", "internal_fault_text", _fault_label),
+            ("bms_fault_code", "bms_fault_code_text", _fault_label),
+            ("bms_warning_code", "bms_warning_code_text", _warning_label),
+        ):
+            if raw_name in registers:
+                registers[label_name] = {
+                    "value": label_fn(registers[raw_name]["value"]),
+                    "unit": "",
+                }
 
         return {
             "snapshot_id": snap_id,

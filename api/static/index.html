@@ -633,7 +633,9 @@ function detailInverter(r) {
       ${prop('Frequency','eps_frequency',{suffix:' Hz', digits:2})}
       ${prop('State','state',{int:1})}
       ${prop('Fault Code','fault_code',{int:1})}
+      ${prop('Fault','fault_code_text')}
       ${prop('Warning Code','warning_code',{int:1})}
+      ${prop('Warning','warning_code_text')}
       ${prop('Runtime','runtime',{suffix:' s', int:1})}
     </div></div></div><div class="card"><div class="card-section"><h3>Temperatures</h3><div class="props">
       ${prop('Inverter','temp_inverter',{suffix:' °C'})}
@@ -719,11 +721,17 @@ function renderDetailHTML() {
     content.querySelectorAll('[data-reg]').forEach(el => {
       const v = val(liveData, el.dataset.reg, null);
       if (v !== null && v !== undefined) {
-        const fmtFn = el.dataset.int ? fmtInt : (el.dataset.digits ? (n=>fmt(n, Number(el.dataset.digits))) : fmt);
-        let text = fmtFn(v);
-        if (text === null || text === undefined) text = '--';
-        if (el.dataset.suffix) text += el.dataset.suffix;
-        el.textContent = text;
+        // String values (e.g. fault/warning text) are shown as-is; numeric
+        // values go through the formatter.
+        if (typeof v === 'string') {
+          el.textContent = v || '—';
+        } else {
+          const fmtFn = el.dataset.int ? fmtInt : (el.dataset.digits ? (n=>fmt(n, Number(el.dataset.digits))) : fmt);
+          let text = fmtFn(v);
+          if (text === null || text === undefined) text = '--';
+          if (el.dataset.suffix) text += el.dataset.suffix;
+          el.textContent = text;
+        }
       }
     });
   }
