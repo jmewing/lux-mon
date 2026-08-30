@@ -312,6 +312,51 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     254: {"name": "voltage_delta_hysteresis", "unit": "V", "scale": 0.1, "desc": "Voltage delta/hysteresis", "min": 0, "max": 100},
     260: {"name": "bus_voltage_high_limit", "unit": "V", "scale": 0.1, "desc": "Bus voltage high limit", "min": 0, "max": 800},
     261: {"name": "discharge_recovery", "unit": "%", "scale": 1.0, "desc": "Discharge recovery", "min": 0, "max": 100},
+
+    # ── Function-enable bitfields (21, 110, 120, 179) ──
+    # These pack many on/off toggles into a single 16-bit register. They are
+    # writable, but the UI should present them as bit toggles, not raw numbers.
+    21: {"name": "function_enable_1", "unit": "", "scale": 1.0, "desc": "Function enable 1 (bitfield: EPS, derate, DRMS, LVRT, anti-island, neutral detect, soft start, AC charge, seamless switch, standby, forced dischg/chg, ISO, GFCI, DCI, grid export)", "min": 0, "max": 65535},
+    110: {"name": "function_enable_3", "unit": "", "scale": 1.0, "desc": "Function enable 3 (bitfield: PV grid-off, fast zero-export, micro-grid, battery shared, charge-last, CT sample ratio, buzzer, PV CT type, take-load-together, on-grid mode, green/eco mode)", "min": 0, "max": 65535},
+    120: {"name": "system_enable_2", "unit": "", "scale": 1.0, "desc": "System enable 2 (bitfield of system-level toggles)", "min": 0, "max": 65535},
+    179: {"name": "function_enable_4", "unit": "", "scale": 1.0, "desc": "Function enable 4 (bitfield of function toggles)", "min": 0, "max": 65535},
+
+    # ── Optimal charge/discharge time marks (126-131) ──
+    # Each register packs 8 half-hour marks (00:00-03:30, etc.). Each mark is
+    # 2 bits: 0=no op, 1=AC charge, 2=PV charge, 3=discharge.
+    126: {"name": "optimal_chg_dischg_0_3", "unit": "", "scale": 1.0, "desc": "Optimal charge/discharge marks 00:00-03:30 (2 bits per half-hour: 0=off, 1=AC chg, 2=PV chg, 3=dischg)", "min": 0, "max": 65535},
+    127: {"name": "optimal_chg_dischg_4_7", "unit": "", "scale": 1.0, "desc": "Optimal charge/discharge marks 04:00-07:30", "min": 0, "max": 65535},
+    128: {"name": "optimal_chg_dischg_8_11", "unit": "", "scale": 1.0, "desc": "Optimal charge/discharge marks 08:00-11:30", "min": 0, "max": 65535},
+    129: {"name": "optimal_chg_dischg_12_15", "unit": "", "scale": 1.0, "desc": "Optimal charge/discharge marks 12:00-15:30", "min": 0, "max": 65535},
+    130: {"name": "optimal_chg_dischg_16_19", "unit": "", "scale": 1.0, "desc": "Optimal charge/discharge marks 16:00-19:30", "min": 0, "max": 65535},
+    131: {"name": "optimal_chg_dischg_20_23", "unit": "", "scale": 1.0, "desc": "Optimal charge/discharge marks 20:00-23:30", "min": 0, "max": 65535},
+
+    # ── Grid regulation / meter / LCD (203, 225, 230, 251) ──
+    203: {"name": "grid_regulation", "unit": "", "scale": 1.0, "desc": "Grid regulation settings (bitfield)", "min": 0, "max": 65535},
+    225: {"name": "lcd_password", "unit": "", "scale": 1.0, "desc": "LCD advanced-page password", "min": 0, "max": 65535},
+    230: {"name": "meter_config", "unit": "", "scale": 1.0, "desc": "Meter config (meter count, measure type, install phase)", "min": 0, "max": 65535, "capabilities": {"wattnode"}},
+    251: {"name": "wattnode_ct_directions", "unit": "", "scale": 1.0, "desc": "WattNode CT direction and frequency settings (bitfield)", "min": 0, "max": 65535, "capabilities": {"wattnode"}},
+
+    # ── Generator start/end times (256-259) — GENERATOR capability ──
+    256: {"name": "generator_start_time", "unit": "time", "scale": 1.0, "desc": "Generator start time (hour+minute)", "min": 0, "max": 2359, "capabilities": {"generator"}},
+    257: {"name": "generator_end_time", "unit": "time", "scale": 1.0, "desc": "Generator end time (hour+minute)", "min": 0, "max": 2359, "capabilities": {"generator"}},
+    258: {"name": "generator_start_time_1", "unit": "time", "scale": 1.0, "desc": "Generator period 1 start time (hour+minute)", "min": 0, "max": 2359, "capabilities": {"generator"}},
+    259: {"name": "generator_end_time_1", "unit": "time", "scale": 1.0, "desc": "Generator period 1 end time (hour+minute)", "min": 0, "max": 2359, "capabilities": {"generator"}},
+
+    # ── Intentionally NOT exposed as writable (read-only or dangerous) ──
+    #   7-10  firmware/version codes (read-only)
+    #   11    reset (dangerous — restarts inverter)
+    #   12-14 inverter clock (dangerous — changing time disrupts operation)
+    #   16    language + device type (read-only, used for model detection)
+    #   19    device type high-speed (read-only)
+    #   113   set composed phase (write-only)
+    #   114   clear parallel alarm (write-only)
+    #   224   LCD config (read-only)
+    #   231   reset G100 lockout (dangerous)
+    #   241   permit service (dangerous)
+    #   244-245 bootloader/flash (read-only)
+    #   500-723 7-day scheduling — requires WriteMultipleRegisters (0x10),
+    #           which lux-mon does not implement yet. Deferred.
 }
 
 # Friendly display labels matching the reference portal's terminology.

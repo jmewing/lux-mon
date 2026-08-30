@@ -77,6 +77,35 @@ def test_new_registers_present():
     assert 261 in HOLDING_REGISTERS  # discharge_recovery
 
 
+def test_function_enable_and_schedule_registers_present():
+    # Function-enable bitfields and optimal charge/discharge marks
+    assert 21 in HOLDING_REGISTERS  # function_enable_1
+    assert 110 in HOLDING_REGISTERS  # function_enable_3
+    assert 120 in HOLDING_REGISTERS  # system_enable_2
+    assert 179 in HOLDING_REGISTERS  # function_enable_4
+    assert 126 in HOLDING_REGISTERS  # optimal_chg_dischg_0_3
+    assert 131 in HOLDING_REGISTERS  # optimal_chg_dischg_20_23
+    assert 203 in HOLDING_REGISTERS  # grid_regulation
+    assert 225 in HOLDING_REGISTERS  # lcd_password
+    assert 230 in HOLDING_REGISTERS  # meter_config
+    assert 251 in HOLDING_REGISTERS  # wattnode_ct_directions
+    assert 256 in HOLDING_REGISTERS  # generator_start_time
+    assert 259 in HOLDING_REGISTERS  # generator_end_time_1
+
+
+def test_dangerous_registers_not_exposed():
+    # Reset, clock, and other dangerous/read-only registers must NOT be writable.
+    for reg in (7, 8, 9, 10, 11, 12, 13, 14, 16, 19, 113, 114, 224, 231, 241, 244, 245):
+        assert reg not in HOLDING_REGISTERS, f"Register {reg} should not be writable"
+
+
+def test_seven_day_schedule_not_exposed():
+    # 7-day scheduling (500-723) requires WriteMultipleRegisters, not yet
+    # implemented. It must not appear as writable.
+    for reg in range(500, 724):
+        assert reg not in HOLDING_REGISTERS, f"Register {reg} should not be writable yet"
+
+
 def test_no_duplicate_register_numbers():
     # Every register number must appear exactly once.
     from collections import Counter
