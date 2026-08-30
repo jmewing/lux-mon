@@ -545,17 +545,7 @@ def api_summary():
                     "unit": "V"
                 }
             # Convert temperatures for display if configured in Fahrenheit
-            cur.execute("SELECT value FROM lux_settings WHERE name = 'temperature_unit'")
-            row = cur.fetchone()
-            temp_unit = row[0] if row else "celsius"
-            if temp_unit == "fahrenheit":
-                for tkey in ("temp_inverter", "temp_battery", "temp_radiator_1", "temp_radiator_2"):
-                    if tkey in registers:
-                        c = registers[tkey]["value"]
-                        registers[tkey] = {
-                            "value": round(c * 9.0 / 5.0 + 32.0, 1),
-                            "unit": "°F",
-                        }
+            _convert_temperatures(registers, cur)
 
         # Human-readable working-mode label alongside the raw state code.
         if "state" in registers:
@@ -991,6 +981,27 @@ def api_storage():
 
 _active_ws_clients: set = set()
 
+_TEMP_KEYS = ("temp_inverter", "temp_battery", "temp_radiator_1", "temp_radiator_2")
+
+
+def _convert_temperatures(registers: dict, cur) -> None:
+    """Convert temperature registers to °F in-place when configured.
+
+    Reads the temperature_unit setting and rewrites the four temperature
+    registers' value + unit so every API/WS path returns consistent units.
+    """
+    cur.execute("SELECT value FROM lux_settings WHERE name = 'temperature_unit'")
+    row = cur.fetchone()
+    temp_unit = row[0] if row else "celsius"
+    if temp_unit == "fahrenheit":
+        for tkey in _TEMP_KEYS:
+            if tkey in registers:
+                c = registers[tkey]["value"]
+                registers[tkey] = {
+                    "value": round(c * 9.0 / 5.0 + 32.0, 1),
+                    "unit": "°F",
+                }
+
 
 def _fetch_latest_snapshot() -> Optional[dict]:
     """Read the most recent snapshot from MariaDB."""
@@ -1012,6 +1023,8 @@ def _fetch_latest_snapshot() -> Optional[dict]:
                 row[0]: {"value": float(row[1]), "unit": row[2]}
                 for row in cur.fetchall()
             }
+            # Convert temperatures for display if configured in Fahrenheit
+            _convert_temperatures(registers, cur)
             # Human-readable working-mode label alongside the raw state code.
             if "state" in registers:
                 registers["state_label"] = {
