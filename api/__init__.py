@@ -51,7 +51,7 @@ logger = logging.getLogger("luxmon.api")
 # Single source of truth for the lux-mon version. The footer reads this via
 # /api/version, and FastAPI's version field derives from it. bump-version.sh
 # updates this one constant.
-LUXMON_VERSION = "2.5.11"
+LUXMON_VERSION = "2.5.12"
 
 app = FastAPI(title="lux-mon API", version=LUXMON_VERSION)
 
@@ -1545,7 +1545,7 @@ def api_holding_put(name: str, body: HoldingUpdate):
     if not ok:
         raise HTTPException(502, f"Failed to write {name}: {msg}")
     logger.info("Wrote holding register %s (address %d) = %d", name, reg, raw_value)
-    return {"name": name, "address": reg, "raw": raw_value, "written": True}
+    return {"name": name, "address": reg, "raw": raw_value, "written": True, "message": msg}
 
 
 @app.get("/api/quick-charge/status")

@@ -56,8 +56,10 @@ from .protocol import (
     HOLDING_BY_NAME,
     HOLDING_REGISTERS,
     MODBUS_READ_HOLD,
+    MODBUS_WRITE_MULTI,
     MODBUS_WRITE_SINGLE,
     build_read_request,
+    build_write_multi_request,
     build_write_request,
     find_frames,
 )
@@ -128,6 +130,62 @@ def _write_holding_register(
                     if frame.values and frame.values[0] == value:
                         return True, f"Wrote register {register} = {value}"
                     return True, f"Write accepted (echo value {frame.values})"
+        return False, "No valid write response received"
+    except Exception as exc:
+        return False, f"Write failed: {exc}"
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+
+def _write_holding_registers(
+    host: str,
+    port: int,
+    datalog_serial: str,
+    inverter_serial: str,
+    start_register: int,
+    values: List[int],
+    timeout: float = 10.0,
+) -> Tuple[bool, str]:
+    """Send a WriteMultipleRegisters (0x10) request and verify the echo.
+
+    Used by the 7-day scheduling block (registers 500-723), which the inverter
+    only accepts via multi-register writes (no single-register writes).
+    """
+    req = build_write_multi_request(
+        datalog_serial, inverter_serial, start_register, values
+    )
+    sock: Optional[socket.socket] = None
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+        sock.settimeout(timeout)
+        sock.sendall(req)
+
+        deadline = time.time() + timeout
+        buffer = b""
+        while time.time() < deadline:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            sock.settimeout(remaining)
+            try:
+                chunk = sock.recv(4096)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            buffer += chunk
+            frames = find_frames(buffer)
+            for frame in frames:
+                if frame.is_error:
+                    return False, f"Modbus error response: code {frame.error_code}"
+                if frame.device_function == MODBUS_WRITE_MULTI and frame.register == start_register:
+                    if frame.write_count == len(values):
+                        return True, f"Wrote {len(values)} registers starting at {start_register}"
+                    return True, f"Write accepted (echo count {frame.write_count})"
         return False, "No valid write response received"
     except Exception as exc:
         return False, f"Write failed: {exc}"

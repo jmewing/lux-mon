@@ -439,6 +439,7 @@ class LuxFrame:
     inverter_serial: str = ""
     register: int = 0
     values: list[int] = field(default_factory=list)
+    write_count: int = 0
     is_error: bool = False
     error_code: int = 0
 
@@ -629,6 +630,66 @@ def build_write_request(
     return bytes(pkt)
 
 
+def build_write_multi_request(
+    datalog_serial: str,
+    inverter_serial: str,
+    start_register: int,
+    values: list[int],
+) -> bytes:
+    """
+    Build a WriteMultipleRegisters (0x10) request packet.
+
+    Modbus data frame layout:
+        addr(1) + func(1) + inv_serial(10) + start_reg(2) + count(2)
+        + byte_count(1) + values(N*2) + crc(2)
+
+    The outer LuxPower packet is variable-length: the data length prefix
+    (bytes 18-19) and the frame length (bytes 4-5) both grow with the number
+    of registers being written.
+
+    Used by the 7-day scheduling block (registers 500-723), which the
+    inverter only accepts via multi-register writes (no single writes).
+    """
+    if not values:
+        raise ValueError("WriteMultipleRegisters requires at least one value")
+    if len(values) > 123:
+        raise ValueError(f"Too many registers for one write: {len(values)} (max 123)")
+    for v in values:
+        if not (0 <= v <= 0xFFFF):
+            raise ValueError(f"Modbus register value out of range: {v}")
+
+    n = len(values)
+    # Modbus data frame: addr(1)+func(1)+serial(10)+reg(2)+count(2)+bytecount(1)+values(2n)+crc(2)
+    data_len = 1 + 1 + 10 + 2 + 2 + 1 + (2 * n) + 2
+    # Outer packet: header(18) + datalen(2) + data(data_len)
+    total = 18 + 2 + data_len
+    frame_len = total - 6
+
+    pkt = bytearray(total)
+    pkt[0:2] = PREFIX
+    struct.pack_into('<H', pkt, 2, 1)          # protocol
+    struct.pack_into('<H', pkt, 4, frame_len)  # frame length
+    pkt[6] = 0x01
+    pkt[7] = TCP_FUNC_TRANSLATED_DATA
+    pkt[8:18] = _serial_to_bytes(datalog_serial)
+    struct.pack_into('<H', pkt, 18, data_len)  # data length
+
+    pkt[20] = 0x00                              # address
+    pkt[21] = MODBUS_WRITE_MULTI                # function 0x10
+    pkt[22:32] = _serial_to_bytes(inverter_serial)
+    struct.pack_into('<H', pkt, 32, start_register)
+    struct.pack_into('<H', pkt, 34, n)          # register count
+    pkt[36] = 2 * n                              # byte count
+    for i, v in enumerate(values):
+        struct.pack_into('<H', pkt, 37 + i * 2, v)
+
+    crc_start = 20
+    crc_end = 37 + 2 * n
+    crc = crc16_modbus(bytes(pkt[crc_start:crc_end]))
+    struct.pack_into('<H', pkt, crc_end, crc)
+    return bytes(pkt)
+
+
 # ── Frame Parser ────────────────────────────────────────────────────
 
 def parse_frame(data: bytes) -> Optional[LuxFrame]:
@@ -712,6 +773,14 @@ def _parse_data_frame(data: bytes, frame: LuxFrame) -> None:
                 if offset + 2 <= len(data) - 2:  # -2 for CRC
                     val = struct.unpack_from('<H', data, offset)[0]
                     frame.values.append(val)
+    elif frame.device_function == MODBUS_WRITE_MULTI:
+        # Write-multiple (0x10) echo: addr + func + serial + start_reg(2)
+        # + count(2) + crc. It echoes the start register and count, NOT the
+        # values. We store the count in a dedicated field so the caller can
+        # confirm the write was accepted.
+        if len(data) >= reg_start + 4 + 2:  # reg + count + crc
+            frame.register = struct.unpack_from('<H', data, reg_start)[0]
+            frame.write_count = struct.unpack_from('<H', data, reg_start + 2)[0]
 
 
 def find_frames(data: bytes) -> list[LuxFrame]:
