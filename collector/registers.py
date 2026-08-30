@@ -162,6 +162,27 @@ INPUT_REGISTERS: dict[int, RegisterDef] = {
     132:RegisterDef("eps_apparent_l2",    "VA",   1.0,    "EPS L2 apparent power"),
     133:RegisterDef("eps_energy_l1_today","kWh",  0.1,    "EPS L1 energy today"),
     134:RegisterDef("eps_energy_l2_today","kWh",  0.1,    "EPS L2 energy today"),
+
+    # ── Load power / reactive / serial (114, 115-118, 139) ──
+    # NOTE: register 114 is on-grid load power on the 12k; register 170 is the
+    # general on-grid load power. Both are documented; 170 is the canonical one.
+    114:RegisterDef("load_power_12k",     "W",    1.0,    "On-grid load power (12k)"),
+    115:RegisterDef("serial_ascii_0_3",   "",     1.0,    "Serial number ASCII chars 0-3"),
+    116:RegisterDef("serial_ascii_4_5",   "",     1.0,    "Serial number ASCII chars 4-5"),
+    117:RegisterDef("serial_ascii_6_7",   "",     1.0,    "Serial number ASCII chars 6-7"),
+    118:RegisterDef("serial_ascii_8_9",   "",     1.0,    "Serial number ASCII chars 8-9"),
+    139:RegisterDef("reactive_power",     "Var",  1.0,    "Reactive power"),
+
+    # ── Load power / energy (170-173) ──
+    170:RegisterDef("load_power",         "W",    1.0,    "On-grid load power"),
+    171:RegisterDef("load_energy_today",  "kWh",  0.1,    "Load energy today"),
+    172:RegisterDef("load_energy_total",  "kWh",  0.1,    "Load total energy (low word)", pair_high=173),
+
+    # ── NTC temps / remaining charge time (210, 214-216) ──
+    210:RegisterDef("remaining_charge_time", "min", 1.0,  "Remaining charge time (one-click)"),
+    214:RegisterDef("ntc_temp_indc",      "°C",   1.0,    "NTC temperature INDC"),
+    215:RegisterDef("ntc_temp_dcdcl",     "°C",   1.0,    "NTC temperature DCDCL"),
+    216:RegisterDef("ntc_temp_dcdch",     "°C",   1.0,    "NTC temperature DCDCH"),
 }
 
 # SOH is packed in register 5 high byte

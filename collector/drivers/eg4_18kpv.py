@@ -44,13 +44,50 @@ _18KPV_EXTRA: Dict[int, RegisterDef] = {
     150: RegisterDef("afci_max_arc_ch2", "", 1.0, "AFCI max arc CH2"),
     151: RegisterDef("afci_max_arc_ch3", "", 1.0, "AFCI max arc CH3"),
     152: RegisterDef("afci_max_arc_ch4", "", 1.0, "AFCI max arc CH4"),
+
+    # ── Split-phase / hybrid additions (document-derived) ──
+    # EPS L1/L2 total energy (32-bit pairs)
+    135: RegisterDef("eps_energy_l1_total", "kWh", 0.1, "EPS L1 total energy (low word)", pair_high=136),
+    137: RegisterDef("eps_energy_l2_total", "kWh", 0.1, "EPS L2 total energy (low word)", pair_high=138),
+    # AC couple power
+    153: RegisterDef("ac_couple_power", "W", 1.0, "AC couple power"),
+    206: RegisterDef("ac_couple_power_s", "W", 1.0, "AC couple power S-phase"),
+    207: RegisterDef("ac_couple_power_t", "W", 1.0, "AC couple power T-phase"),
+    # Split-phase L1/L2 per-leg
+    193: RegisterDef("grid_voltage_l1n", "V", 0.1, "Grid L1-N voltage"),
+    194: RegisterDef("grid_voltage_l2n", "V", 0.1, "Grid L2-N voltage"),
+    195: RegisterDef("gen_voltage_l1n", "V", 0.1, "Generator L1-N voltage"),
+    196: RegisterDef("gen_voltage_l2n", "V", 0.1, "Generator L2-N voltage"),
+    197: RegisterDef("inv_power_l1n", "W", 1.0, "Inverting power L1-N"),
+    198: RegisterDef("inv_power_l2n", "W", 1.0, "Inverting power L2-N"),
+    199: RegisterDef("rec_power_l1n", "W", 1.0, "Rectifying power L1-N"),
+    200: RegisterDef("rec_power_l2n", "W", 1.0, "Rectifying power L2-N"),
+    201: RegisterDef("grid_export_l1n", "W", 1.0, "Grid export L1-N"),
+    202: RegisterDef("grid_export_l2n", "W", 1.0, "Grid export L2-N"),
+    203: RegisterDef("grid_import_l1n", "W", 1.0, "Grid import L1-N"),
+    204: RegisterDef("grid_import_l2n", "W", 1.0, "Grid import L2-N"),
+    # Additional PV strings (PV4-6)
+    217: RegisterDef("pv4_voltage", "V", 0.1, "PV4 voltage"),
+    218: RegisterDef("pv5_voltage", "V", 0.1, "PV5 voltage"),
+    219: RegisterDef("pv6_voltage", "V", 0.1, "PV6 voltage"),
+    220: RegisterDef("pv4_power", "W", 1.0, "PV4 power"),
+    221: RegisterDef("pv5_power", "W", 1.0, "PV5 power"),
+    222: RegisterDef("pv6_power", "W", 1.0, "PV6 power"),
+    223: RegisterDef("pv4_energy_today", "kWh", 0.1, "PV4 energy today"),
+    224: RegisterDef("pv4_energy_total", "kWh", 0.1, "PV4 total energy (low word)", pair_high=225),
+    226: RegisterDef("pv5_energy_today", "kWh", 0.1, "PV5 energy today"),
+    227: RegisterDef("pv5_energy_total", "kWh", 0.1, "PV5 total energy (low word)", pair_high=228),
+    229: RegisterDef("pv6_energy_today", "kWh", 0.1, "PV6 energy today"),
+    230: RegisterDef("pv6_energy_total", "kWh", 0.1, "PV6 total energy (low word)", pair_high=231),
+    # Smart load power
+    232: RegisterDef("smart_load_power", "W", 1.0, "Smart load power"),
 }
 
 INPUT_REGISTERS.update(_18KPV_EXTRA)
 
-# Active TCP batches. The 18KPV has 153+ input registers; poll in 40-register
-# groups (the protocol requires group-aligned reads).
-BATCHES = [(0, 40), (40, 40), (80, 40), (120, 40)]
+# Active TCP batches. The 18KPV has 233+ input registers; poll in 40-register
+# groups (the protocol requires group-aligned reads). Covers 0-232.
+BATCHES = [(0, 40), (40, 40), (80, 40), (120, 40), (160, 40), (200, 40)]
 
 
 def _decode(raw: Dict[int, int]) -> dict:

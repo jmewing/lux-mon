@@ -68,3 +68,47 @@ def test_18kpv_decodes_shared_sna_registers():
     dec = d.decode(raw)
     assert dec["pv1_voltage"]["value"] == 350.0
     assert dec["pv1_power"]["value"] == 1200.0
+
+
+def test_sna_has_shared_extended_registers():
+    # Serial, load power, reactive, NTC temps are shared across the family.
+    sna = get_driver("luxpower_sna")
+    assert 115 in sna.input_registers  # serial
+    assert 170 in sna.input_registers  # load power
+    assert 139 in sna.input_registers  # reactive power
+    assert 214 in sna.input_registers  # NTC temp
+
+
+def test_sna_does_not_claim_split_phase_or_three_phase():
+    # 2-MPPT single-phase SNA hardware has no PV4-6, split-phase, or 3-phase regs.
+    sna = get_driver("luxpower_sna")
+    assert 217 not in sna.input_registers  # PV4
+    assert 193 not in sna.input_registers  # split-phase L1-N
+    assert 180 not in sna.input_registers  # three-phase S
+
+
+def test_18kpv_has_split_phase_and_pv4_6():
+    kpv = get_driver("eg4_18kpv")
+    assert 217 in kpv.input_registers  # PV4
+    assert 193 in kpv.input_registers  # split-phase L1-N
+    assert 153 in kpv.input_registers  # AC couple
+    assert 232 in kpv.input_registers  # smart load
+
+
+def test_18kpv_decodes_pv4_and_split_phase():
+    d = get_driver("eg4_18kpv")
+    raw = {217: 3500, 220: 1200, 193: 2400, 232: 500}
+    dec = d.decode(raw)
+    assert dec["pv4_voltage"]["value"] == 350.0
+    assert dec["pv4_power"]["value"] == 1200.0
+    assert dec["grid_voltage_l1n"]["value"] == 240.0
+    assert dec["smart_load_power"]["value"] == 500.0
+
+
+def test_18kpv_decodes_32bit_pair():
+    d = get_driver("eg4_18kpv")
+    # PV4 total energy: low word 224, high word 225
+    raw = {224: 0x1234, 225: 0x0001}
+    dec = d.decode(raw)
+    # 0x00011234 = 70196, scale 0.1 -> 7019.6 kWh
+    assert dec["pv4_energy_total"]["value"] == 7019.6
