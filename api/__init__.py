@@ -930,6 +930,25 @@ def _fetch_latest_snapshot() -> Optional[dict]:
                 row[0]: {"value": float(row[1]), "unit": row[2]}
                 for row in cur.fetchall()
             }
+            # Human-readable working-mode label alongside the raw state code.
+            if "state" in registers:
+                registers["state_label"] = {
+                    "value": _state_label(registers["state"]["value"]),
+                    "unit": "",
+                }
+            # Human-readable fault/warning labels alongside the raw codes.
+            for raw_name, label_name, label_fn in (
+                ("fault_code", "fault_code_text", _fault_label),
+                ("warning_code", "warning_code_text", _warning_label),
+                ("internal_fault", "internal_fault_text", _fault_label),
+                ("bms_fault_code", "bms_fault_code_text", _fault_label),
+                ("bms_warning_code", "bms_warning_code_text", _warning_label),
+            ):
+                if raw_name in registers:
+                    registers[label_name] = {
+                        "value": label_fn(registers[raw_name]["value"]),
+                        "unit": "",
+                    }
             return {
                 "snapshot_id": snap_id,
                 "timestamp": ts_aware.isoformat(),
