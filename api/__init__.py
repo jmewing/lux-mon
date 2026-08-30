@@ -119,7 +119,7 @@ def _state_label(value) -> str:
     label = _STATE_LABELS.get(code)
     if label is None:
         return f"Unknown ({code})"
-    return f"{label} ({code})"
+    return label
 
 
 def _fault_label(value) -> str:

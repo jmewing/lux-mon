@@ -521,7 +521,7 @@ function renderMain(r) {
 
   const state = val(r,'state',0);
   const stateLabel = val(r,'state_label', null);
-  setText('sa-inv-state', stateLabel || ('State '+state));
+  setText('sa-inv-state', stateLabel !== null && stateLabel !== undefined ? stateLabel : state);
   const invTemp = val(r,'temp_inverter');
   setText('sa-inv-temp', invTemp !== undefined ? fmt(invTemp) + ' °C' : null);
 
