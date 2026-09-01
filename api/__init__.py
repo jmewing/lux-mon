@@ -1387,11 +1387,16 @@ def _load_quick_charge() -> QuickChargeManager:
 
 
 def _resolve_dongle() -> dict:
-    """Resolve dongle connection params from env or DB settings."""
-    host = os.getenv("LUX_DONGLE_HOST") or _load_db_setting("dongle_host") or "192.168.1.100"
-    port = int(os.getenv("LUX_DONGLE_PORT") or _load_db_setting("dongle_port") or "8000")
-    datalog = os.getenv("LUX_DATALOG_SERIAL") or _load_db_setting("datalog_serial") or ""
-    inverter = os.getenv("LUX_INVERTER_SERIAL") or _load_db_setting("inverter_serial") or ""
+    """Resolve dongle connection params, DB-authoritative (like the collector).
+
+    The database is the source of truth for runtime settings; a value stored
+    in the DB overrides the environment. This lets the dongle host be changed
+    live (e.g. after a DHCP reassignment) without recreating the container.
+    """
+    host = _load_db_setting("dongle_host") or os.getenv("LUX_DONGLE_HOST") or "192.168.1.100"
+    port = int(_load_db_setting("dongle_port") or os.getenv("LUX_DONGLE_PORT") or "8000")
+    datalog = _load_db_setting("datalog_serial") or os.getenv("LUX_DATALOG_SERIAL") or ""
+    inverter = _load_db_setting("inverter_serial") or os.getenv("LUX_INVERTER_SERIAL") or ""
     return {
         "dongle_host": host,
         "dongle_port": port,
@@ -1486,22 +1491,40 @@ def _read_holding_block(
 
 
 def _read_all_holding_registers(dongle: dict) -> Dict[int, int]:
-    """Read holding registers 0-261 from the inverter in batches."""
+    """Read holding registers 0-261 from the inverter in batches.
+
+    The dongle drops connections when read requests are fired back-to-back
+    with no gap (the same churn that made schedule *writes* need serializing).
+    Space the batch reads with a short delay so every batch succeeds; a batch
+    that still fails is retried a few times before being skipped, so a single
+    hiccup never blanks the schedule time-slot values (registers 68-73, 152-157).
+    """
     raw: Dict[int, int] = {}
     batches = [(0, 40), (40, 40), (80, 40), (120, 40), (160, 40), (200, 40), (240, 22)]
     for start, count in batches:
-        ok, block, msg = _read_holding_block(
-            dongle["dongle_host"],
-            dongle["dongle_port"],
-            dongle["datalog_serial"],
-            dongle["inverter_serial"],
-            start,
-            count,
-            timeout=10.0,
-        )
-        if not ok:
-            raise HTTPException(502, f"Failed to read holding registers {start}-{start + count - 1}: {msg}")
-        raw.update(block)
+        block: Dict[int, int] = {}
+        ok = False
+        last_msg = ""
+        for attempt in range(4):
+            ok, block, msg = _read_holding_block(
+                dongle["dongle_host"],
+                dongle["dongle_port"],
+                dongle["datalog_serial"],
+                dongle["inverter_serial"],
+                start,
+                count,
+                timeout=10.0,
+            )
+            if ok:
+                break
+            last_msg = msg
+            time.sleep(0.3 * (attempt + 1))
+        if ok:
+            raw.update(block)
+        else:
+            logger.warning("Holding read skipped %d-%d: %s", start, start + count - 1, last_msg)
+        # Gap between batches so the dongle does not drop the next read.
+        time.sleep(0.5)
     return raw
 
 

@@ -278,6 +278,42 @@ select { -webkit-appearance: menulist; appearance: menulist; }
         </div>
       </div>
 
+      <!-- Timer schedule (charge / discharge time slots) -->
+      <div class="card" style="margin-bottom:1em;">
+        <div class="card-section">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
+            <div>
+              <h3>Timer Schedule</h3>
+              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Configure when the inverter charges from grid and when it prioritises battery.</p>
+            </div>
+            <button class="btn" id="btn-save-schedule">Save Schedule</button>
+          </div>
+          <div id="schedule-editor"></div>
+        </div>
+      </div>
+
+      <!-- 7-Day Schedule (per-day scheduling, 18KPV/12kPV family only) -->
+      <div class="card" id="seven-day-schedule-card" style="margin-bottom:1em; display:none;">
+        <div class="card-section">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
+            <div>
+              <h3>7-Day Schedule</h3>
+              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Per-day charge / discharge / peak-shaving schedule. Untested on 6000XP family.</p>
+            </div>
+            <div style="display:flex; gap:0.5rem;">
+              <select id="seven-day-module">
+                <option value="ac_charge">AC Charge</option>
+                <option value="forced_charge">Forced Charge</option>
+                <option value="forced_discharge">Forced Discharge</option>
+                <option value="peak_shaving">Peak Shaving</option>
+              </select>
+              <button class="btn" id="btn-save-seven-day">Save Day</button>
+            </div>
+          </div>
+          <div id="seven-day-editor"></div>
+        </div>
+      </div>
+
       <!-- Automations (SolarAssistant-style) -->
       <div class="card" id="automations-card" style="margin-bottom:1em;">
         <div class="card-section">
@@ -356,42 +392,6 @@ select { -webkit-appearance: menulist; appearance: menulist; }
               <button class="btn" id="btn-edit-auto-save">Save Changes</button>
             </div>
           </div>
-        </div>
-      </div>
-
-      <!-- Timer schedule (charge / discharge time slots) -->
-      <div class="card" style="margin-bottom:1em;">
-        <div class="card-section">
-          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
-            <div>
-              <h3>Timer Schedule</h3>
-              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Configure when the inverter charges from grid and when it prioritises battery.</p>
-            </div>
-            <button class="btn" id="btn-save-schedule">Save Schedule</button>
-          </div>
-          <div id="schedule-editor"></div>
-        </div>
-      </div>
-
-      <!-- 7-Day Schedule (per-day scheduling, 18KPV/12kPV family only) -->
-      <div class="card" id="seven-day-schedule-card" style="margin-bottom:1em; display:none;">
-        <div class="card-section">
-          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:0.75rem;">
-            <div>
-              <h3>7-Day Schedule</h3>
-              <p class="text-light" style="margin-top:0.35rem; font-size:0.85rem;">Per-day charge / discharge / peak-shaving schedule. Untested on 6000XP family.</p>
-            </div>
-            <div style="display:flex; gap:0.5rem;">
-              <select id="seven-day-module">
-                <option value="ac_charge">AC Charge</option>
-                <option value="forced_charge">Forced Charge</option>
-                <option value="forced_discharge">Forced Discharge</option>
-                <option value="peak_shaving">Peak Shaving</option>
-              </select>
-              <button class="btn" id="btn-save-seven-day">Save Day</button>
-            </div>
-          </div>
-          <div id="seven-day-editor"></div>
         </div>
       </div>
 
@@ -1553,7 +1553,11 @@ async function initAutomation() {
     loadAutomationConditions(),
     loadAutomationSettingsList(),
     loadAutomationState(),
+    loadAutomationRegisters(),
+    loadAutomationSettings(),
   ]);
+  renderSchedule();
+  renderSevenDaySchedule();
   renderAutomations();
   loadAutomationLog();
   loadActiveAutomationValues();
