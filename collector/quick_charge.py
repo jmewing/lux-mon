@@ -222,7 +222,7 @@ class QuickChargeManager:
         minutes: Optional[int] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
-        """Start a quick charge for `minutes` (default 60, range 1..240).
+        """Start a quick charge for `minutes` (default 60, range 1..1440).
 
         Writes the duration register first, then enables the switch.  A
         positive duration is required — never enable with duration 0.

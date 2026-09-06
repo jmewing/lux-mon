@@ -1769,7 +1769,7 @@ def api_quick_charge_status():
 
 @app.post("/api/quick-charge/start")
 def api_quick_charge_start(body: QuickChargeBody):
-    """Start a quick charge for N minutes (default 60, range 1..240)."""
+    """Start a quick charge for N minutes (default 60, range 1..1440)."""
     dongle = _resolve_dongle()
     if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
         raise HTTPException(400, "datalog_serial / inverter_serial not configured")
