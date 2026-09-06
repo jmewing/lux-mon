@@ -130,19 +130,29 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     # ── Generator 177 ──
     177: {"name": "max_generator_input_power", "unit": "W",   "scale": 1.0,  "desc": "Max generator input power", "min": 0, "max": 65534, "capabilities": {"generator"}},
 
-    # ── Quick charge toggle 233-234 (reverse-engineered from SolarAssistant) ──
-    # 0x00E9 (233) = quick-charge on/off switch (0 = off, 1 = on)
-    # 0x00EA (234) = quick-charge duration in minutes (0 = no charge / stop)
+    # ── Function enable 5 (233) + quick charge duration (234) ──
+    # 233 (0x00E9) = "Function enable 5" — a BITFIELD, not a simple toggle.
+    #   bit 0 = quick charge start
+    #   bit 1 = battery backup
+    #   bit 2 = maintenance
+    #   bit 3 = 7-day work mode (prerequisite for the 500-723 schedule block)
+    #   bit 4 = dry contactor multiplex
+    #   bit 5 = external CT position
+    #   bit 6 = overfrequency f-stop
+    #   (bit layout per official LuxPower protocol PDF / HA integration)
+    # 234 (0x00EA) = quick-charge duration in minutes (0 = no charge / stop).
     #
-    # IMPORTANT semantics (confirmed via tcpdump of SolarAssistant):
+    # Quick-charge semantics (confirmed via tcpdump of SolarAssistant):
     #   * The DURATION register (234) is the actual charge controller. Setting
     #     it to 0 means "charge for 0 minutes" = no charge / stop.
-    #   * The SWITCH register (233) only toggles the mode; it does NOT start
-    #     charging on its own. Enabling the switch with duration=0 does nothing.
-    #   * To START: write duration (234) first, then enable switch (233=1).
-    #   * To STOP:  write switch (233=0) AND clear duration (234=0).
-    233: {"name": "quick_charge_enable", "unit": "",    "scale": 1.0,  "desc": "Quick charge on/off (0=off, 1=on)", "min": 0, "max": 1},
-    234: {"name": "quick_charge_duration", "unit": "min", "scale": 1.0,  "desc": "Quick charge duration (minutes, 0=stop)", "min": 0, "max": 240},
+    #   * Bit 0 of 233 only toggles the mode; it does NOT start charging on
+    #     its own. Enabling with duration=0 does nothing.
+    #   * To START: write duration (234) first, then set bit 0 of 233.
+    #   * To STOP:  clear bit 0 of 233 AND clear duration (234=0).
+    #   * Because 233 is a bitfield, quick-charge does READ-MODIFY-WRITE on
+    #     bit 0 so it never clobbers the other bits (7-day mode, etc.).
+    233: {"name": "function_enable_5", "unit": "", "scale": 1.0, "desc": "Function enable 5 (bitfield: bit0=quick charge start, bit1=battery backup, bit2=maintenance, bit3=7-day work mode, bit4=dry contactor multiplex, bit5=external CT position, bit6=overfrequency f-stop)", "min": 0, "max": 65535},
+    234: {"name": "quick_charge_duration", "unit": "min", "scale": 1.0, "desc": "Quick charge duration (minutes, 0=stop)", "min": 0, "max": 1440},
 
     # ── Firmware & device info (7-20) ──
     # Registers 7-10 are read-only (firmware/model/version codes).
@@ -271,7 +281,7 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     195: {"name": "generator_charge_end_voltage", "unit": "V", "scale": 0.1, "desc": "Generator charge end voltage", "min": 480, "max": 590, "capabilities": {"generator"}},
     196: {"name": "generator_charge_start_soc", "unit": "%", "scale": 1.0, "desc": "Generator charge start SOC", "min": 0, "max": 90, "capabilities": {"generator"}},
     197: {"name": "generator_charge_end_soc", "unit": "%", "scale": 1.0, "desc": "Generator charge end SOC", "min": 20, "max": 100, "capabilities": {"generator"}},
-    198: {"name": "max_generator_charge_current", "unit": "A", "scale": 1.0, "desc": "Max generator charge current", "min": 0, "max": 4000, "capabilities": {"generator"}},
+    198: {"name": "max_generator_charge_current", "unit": "A", "scale": 1.0, "desc": "Max generator charge current", "min": 0, "max": 60, "capabilities": {"generator"}},
 
     # ── Advanced (199-261) ──
     199: {"name": "overtemperature_derate_point", "unit": "°C", "scale": 0.1, "desc": "Overtemperature derate point", "min": 60, "max": 90},
@@ -444,7 +454,7 @@ HOLDING_LABELS: Dict[str, str] = {
     "battery_capacity": "Battery capacity",
     "nominal_battery_voltage": "Nominal battery voltage",
     "max_generator_input_power": "Generator power",
-    "quick_charge_enable": "Quick charge",
+    "function_enable_5": "Function enable 5 (quick charge, 7-day mode, …)",
     "quick_charge_duration": "Quick charge duration",
     "forced_charge_power": "Forced charge current",
     "forced_discharge_power": "Forced discharge current",

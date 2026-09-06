@@ -326,16 +326,17 @@ registers reverse-engineered from SolarAssistant's traffic:
 
 - **`quick_charge_duration`** (register 234 / `0x00EA`) — the actual charge
   controller. Setting it to N minutes starts charging for N minutes; `0` stops.
-- **`quick_charge_enable`** (register 233 / `0x00E9`) — the on/off switch.
+- **`function_enable_5`** (register 233 / `0x00E9`) — a bitfield; bit 0 is the
+  quick-charge start toggle (read-modify-write so other bits are preserved).
 
 Correct semantics (confirmed via tcpdump of SolarAssistant):
 
 - The **duration** register is the charge controller — `0` means "charge 0
   minutes" = no charge / stop.
-- The **switch** register only toggles the mode; it does NOT start charging on
-  its own. Enabling the switch with duration `0` does nothing.
-- **Start:** write duration first, then enable the switch.
-- **Stop:** disable the switch AND clear the duration (no zero-duration hack).
+- **Bit 0 of the enable bitfield** only toggles the mode; it does NOT start
+  charging on its own. Enabling with duration `0` does nothing.
+- **Start:** write duration first, then set bit 0 of the enable bitfield.
+- **Stop:** clear bit 0 of the enable bitfield AND clear the duration.
 
 This differs from the earlier implementation, which drove
 `ac_charge_battery_current` (register 168) — that is the *grid charge current*,

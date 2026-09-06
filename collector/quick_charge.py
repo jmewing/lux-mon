@@ -7,16 +7,18 @@ registers reverse-engineered from SolarAssistant's traffic:
   * `quick_charge_duration` (register 234 / 0x00EA) — the actual charge
     controller.  Setting it to N minutes starts charging for N minutes;
     setting it to 0 stops charging.
-  * `quick_charge_enable` (register 233 / 0x00E9) — the on/off switch.
+  * `function_enable_5` (register 233 / 0x00E9) — a bitfield; bit 0 is the
+    quick-charge start toggle.  We read-modify-write bit 0 so the other bits
+    (7-day work mode, battery backup, etc.) are preserved.
 
 Correct semantics (confirmed via tcpdump of SolarAssistant):
 
   * The DURATION register is the charge controller.  `0` = "charge 0 minutes"
     = no charge / stop.
-  * The SWITCH register only toggles the mode; it does NOT start charging on
-    its own.  Enabling the switch with duration=0 does nothing.
-  * To START: write duration (234) first, then enable switch (233=1).
-  * To STOP:  write switch (233=0) AND clear duration (234=0).
+  * Bit 0 of the enable bitfield only toggles the mode; it does NOT start
+    charging on its own.  Enabling with duration=0 does nothing.
+  * To START: write duration (234) first, then set bit 0 of 233.
+  * To STOP:  clear bit 0 of 233 AND clear duration (234=0).
 
 This differs from the old implementation, which drove `ac_charge_battery_current`
 (register 168) — that is the *grid charge current*, not the quick-charge toggle.
@@ -27,9 +29,9 @@ safe write helpers (fresh socket, echo verification, clamping).
 
 Safety design:
   * Only registers in protocol.HOLDING_REGISTERS are written.
-  * Duration is clamped to 1..240 minutes (EG4 documented max).
+  * Duration is clamped to 1..1440 minutes (official LuxPower protocol max).
   * A positive duration is REQUIRED before enabling — never enable with 0.
-  * Stop clears BOTH the switch and the duration (no zero-duration hack).
+  * Stop clears BOTH bit 0 of the enable bitfield and the duration.
   * All actions are logged to the automation log table.
 """
 
@@ -40,13 +42,13 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import pymysql
 
 from .protocol import HOLDING_REGISTERS, HOLDING_BY_NAME
-from .automation import _write_holding_register, _engineering_to_raw
+from .automation import _write_holding_register, _read_holding_register, _engineering_to_raw
 
 logger = logging.getLogger("luxmon.quick_charge")
 
@@ -55,14 +57,41 @@ QC_STATE_KEY = "quick_charge_state"          # JSON: {"active": bool, "minutes":
 QC_MINUTES_KEY = "quick_charge_minutes"      # default duration (min)
 
 # The registers we drive for quick charge.
-QC_ENABLE_NAME = "quick_charge_enable"
+QC_ENABLE_NAME = "function_enable_5"
 QC_ENABLE_REG = HOLDING_BY_NAME[QC_ENABLE_NAME]
 QC_DURATION_NAME = "quick_charge_duration"
 QC_DURATION_REG = HOLDING_BY_NAME[QC_DURATION_NAME]
 
-# Duration bounds (EG4 documented max is 240 minutes).
+# Duration bounds (official LuxPower protocol: 0-1440 minutes).
 QC_MIN_MINUTES = 1
-QC_MAX_MINUTES = 240
+QC_MAX_MINUTES = 1440
+
+
+def _set_enable_bit(
+    host: str,
+    port: int,
+    datalog_serial: str,
+    inverter_serial: str,
+    enable: bool,
+) -> Tuple[bool, str, Optional[int]]:
+    """Read-modify-write bit 0 of register 233 (function_enable_5).
+
+    Register 233 is a bitfield; bit 0 is the quick-charge start toggle. We
+    must preserve the other bits (7-day work mode, battery backup, etc.), so
+    we read the current value, set/clear bit 0, and write it back.
+    """
+    ok, cur, msg = _read_holding_register(
+        host, port, datalog_serial, inverter_serial, QC_ENABLE_REG
+    )
+    if not ok:
+        return False, f"Failed to read enable register: {msg}", None
+    new = (cur | 0x0001) if enable else (cur & ~0x0001)
+    ok, msg = _write_holding_register(
+        host, port, datalog_serial, inverter_serial, QC_ENABLE_REG, new
+    )
+    if not ok:
+        return False, msg, None
+    return True, f"bit 0 {'set' if enable else 'cleared'} (was {cur}, now {new})", new
 
 
 @dataclass
@@ -224,16 +253,15 @@ class QuickChargeManager:
             return {"ok": False, "error": f"Failed to set duration: {msg}"}
         self._log(QC_DURATION_NAME, dur_raw, minutes, True, f"Quick charge duration set to {minutes}min")
 
-        # 2) Enable the switch.
-        en_meta = HOLDING_REGISTERS[QC_ENABLE_REG]
-        en_raw = _engineering_to_raw(1, en_meta)
-        ok, msg = _write_holding_register(
-            dongle_host, dongle_port, datalog_serial, inverter_serial, QC_ENABLE_REG, en_raw
+        # 2) Enable quick charge: read-modify-write bit 0 of the enable
+        #    bitfield (register 233) so we don't clobber the other bits.
+        ok, msg, new_raw = _set_enable_bit(
+            dongle_host, dongle_port, datalog_serial, inverter_serial, enable=True
         )
         if not ok:
-            self._log(QC_ENABLE_NAME, en_raw, 1, False, msg)
+            self._log(QC_ENABLE_NAME, None, 1, False, msg)
             return {"ok": False, "error": f"Failed to enable quick charge: {msg}"}
-        self._log(QC_ENABLE_NAME, en_raw, 1, True, "Quick charge enabled")
+        self._log(QC_ENABLE_NAME, new_raw, 1, True, "Quick charge enabled (bit 0 set)")
 
         deadline = time.time() + minutes * 60
         state = QuickChargeState(
@@ -270,16 +298,15 @@ class QuickChargeManager:
             self._log(QC_ENABLE_NAME, 0, 0, True, "DRY-RUN would disable quick charge and clear duration")
             return {"ok": True, "dry_run": True, "stopped": state.active}
 
-        # 1) Disable the switch.
-        en_meta = HOLDING_REGISTERS[QC_ENABLE_REG]
-        en_raw = _engineering_to_raw(0, en_meta)
-        ok, msg = _write_holding_register(
-            dongle_host, dongle_port, datalog_serial, inverter_serial, QC_ENABLE_REG, en_raw
+        # 1) Disable quick charge: read-modify-write bit 0 of the enable
+        #    bitfield (register 233) so we don't clobber the other bits.
+        ok, msg, new_raw = _set_enable_bit(
+            dongle_host, dongle_port, datalog_serial, inverter_serial, enable=False
         )
         if not ok:
-            self._log(QC_ENABLE_NAME, en_raw, 0, False, msg)
+            self._log(QC_ENABLE_NAME, None, 0, False, msg)
             return {"ok": False, "error": f"Failed to disable quick charge: {msg}"}
-        self._log(QC_ENABLE_NAME, en_raw, 0, True, "Quick charge disabled")
+        self._log(QC_ENABLE_NAME, new_raw, 0, True, "Quick charge disabled (bit 0 cleared)")
 
         # 2) Clear the duration (this is what actually stops charging).
         dur_meta = HOLDING_REGISTERS[QC_DURATION_REG]
