@@ -1,18 +1,20 @@
-"""Active TCP transport: send ReadInput/ReadHold requests via Modbus TCP gateway."""
+"""Active TCP transport: send ReadInput/ReadHold requests via Modbus TCP gateway.
+
+Uses the process-wide persistent dongle connection (LuxPower-standard
+lifecycle: one long-lived socket with heartbeats) instead of opening a fresh
+connection per poll, which the dongle drops intermittently.
+"""
 
 import logging
-import socket
 import time
-from threading import Thread, Event
-from typing import Callable, Optional, Tuple, List, Union
+from threading import Event, Thread
+from typing import Callable, List, Optional, Tuple
 
 from . import BaseTransport
-from .tcp_base import tcp_connect, safe_close
+from .persistent import get_shared_connection
 from ..protocol import (
-    LuxFrame,
     MODBUS_READ_INPUT,
     build_read_request,
-    find_frames,
 )
 
 logger = logging.getLogger("luxmon.comm.tcp_active")
@@ -26,17 +28,13 @@ class TcpActiveTransport(BaseTransport):
     any Modbus TCP gateway. Each request covers one batch of registers.
     Responses are parsed and delivered as frames.
 
-    This mode is future-proof: it works even when dongles disable the plain
-    port-8000 broadcast stream.
-
-    Note: some dongles respond with mismatched function codes or broadcast
-    cached frames instead of direct responses. We accept any valid frames
-    and let the collector merge registers by absolute register number.
+    All requests are serialized over the shared persistent connection, so the
+    dongle never sees connection churn or concurrent sockets.
     """
 
     def __init__(
         self,
-        on_frame: Callable[[LuxFrame], None],
+        on_frame: Callable[[object], None],
         host: str,
         port: int,
         datalog_serial: str,
@@ -56,12 +54,11 @@ class TcpActiveTransport(BaseTransport):
         self.poll_interval = poll_interval
         # Default batches cover the full 111-register input map used by EG4 6000XP
         self.batches = batches or [(0, 40), (40, 40), (80, 40)]
-        self._sock: Optional[socket.socket] = None
+        self._conn = None
         self._thread: Optional[Thread] = None
         self._stop = Event()
         self._frames_received = 0
         self._poll_requests = 0
-        self._connect_time = 0.0
 
     def start(self) -> None:
         logger.info(
@@ -70,6 +67,10 @@ class TcpActiveTransport(BaseTransport):
         )
         self._running = True
         self._stop.clear()
+        self._conn = get_shared_connection(
+            self.host, self.port, self.datalog_serial, self.inverter_serial,
+            timeout=self.read_timeout,
+        )
         self._thread = Thread(target=self._run, name="lux-tcp-active", daemon=True)
         self._thread.start()
 
@@ -77,18 +78,18 @@ class TcpActiveTransport(BaseTransport):
         logger.info("Stopping active TCP transport")
         self._running = False
         self._stop.set()
-        safe_close(self._sock)
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=5.0)
 
     def stats(self) -> dict:
+        base = self._conn.stats() if self._conn else {}
         return {
             "type": "tcp_active",
             "host": f"{self.host}:{self.port}",
-            "connected": self._sock is not None,
+            "connected": base.get("connected", False),
             "frames_received": self._frames_received,
             "poll_requests": self._poll_requests,
-            "uptime": time.time() - self._connect_time if self._connect_time else 0,
+            "connects": base.get("connects", 0),
         }
 
     def _build_requests(self) -> List[bytes]:
@@ -105,19 +106,10 @@ class TcpActiveTransport(BaseTransport):
 
     def _run(self) -> None:
         requests = self._build_requests()
-        buffer = b""
         batch_idx = 0
         next_send_time = time.time()
 
         while not self._stop.is_set():
-            if self._sock is None:
-                self._sock = tcp_connect(self.host, self.port, self.read_timeout)
-                if self._sock is None:
-                    self._stop.wait(self.reconnect_delay)
-                    continue
-                self._connect_time = time.time()
-                buffer = b""
-
             # Throttle: one batch every poll_interval seconds
             wait_time = next_send_time - time.time()
             if wait_time > 0:
@@ -127,60 +119,23 @@ class TcpActiveTransport(BaseTransport):
             next_send_time = time.time() + self.poll_interval
 
             request = requests[batch_idx]
+            start, count = self.batches[batch_idx]
 
-            try:
-                self._sock.sendall(request)
+            def match(frame) -> bool:
+                if frame.is_error:
+                    return True
+                return frame.is_read_input and frame.register == start
+
+            frame = self._conn.transact(request, match, timeout=self.read_timeout)
+            if frame is not None:
                 self._poll_requests += 1
-                logger.debug("Sent poll request for batch %d", batch_idx)
+                if frame.is_error:
+                    logger.warning(
+                        "Poll batch %d-%d: Modbus error code %s",
+                        start, start + count - 1, frame.error_code,
+                    )
+                else:
+                    self._frames_received += 1
+                    self._emit(frame)
 
-                # Read any frames that arrive within the per-request window.
-                # The dongle may respond directly, broadcast cached frames, or
-                # stay silent. We accept whatever valid frames we get.
-                deadline = time.time() + max(1.0, min(self.read_timeout, self.poll_interval * 0.8))
-
-                while time.time() < deadline and not self._stop.is_set():
-                    try:
-                        remaining = deadline - time.time()
-                        if remaining <= 0:
-                            break
-                        self._sock.settimeout(remaining)
-                        chunk = self._sock.recv(4096)
-                        if not chunk:
-                            logger.warning("Dongle closed connection during poll")
-                            safe_close(self._sock)
-                            self._sock = None
-                            break
-
-                        buffer += chunk
-                        frames, buffer = self._consume_frames(buffer)
-                        if frames:
-                            self._frames_received += len(frames)
-                            for frame in frames:
-                                self._emit(frame)
-                            # Stop after first group of frames; next batch soon
-                            break
-                    except socket.timeout:
-                        break
-                    except OSError as exc:
-                        logger.error("Socket error during poll: %s", exc)
-                        safe_close(self._sock)
-                        self._sock = None
-                        break
-
-                batch_idx = (batch_idx + 1) % len(self.batches)
-
-            except OSError as exc:
-                logger.error("Socket error during poll: %s", exc)
-                safe_close(self._sock)
-                self._sock = None
-
-    def _consume_frames(self, buffer: bytes) -> Tuple[List[LuxFrame], bytes]:
-        """Parse all complete frames from buffer and return leftover bytes."""
-        frames = find_frames(buffer)
-        if not frames:
-            return [], buffer
-
-        last_frame = frames[-1]
-        last_pos = buffer.find(last_frame.raw) + len(last_frame.raw)
-        leftover = buffer[last_pos:]
-        return frames, leftover
+            batch_idx = (batch_idx + 1) % len(self.batches)

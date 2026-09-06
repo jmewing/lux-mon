@@ -6,6 +6,7 @@ import glob
 import json
 import logging
 import os
+import time
 import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -1450,44 +1451,30 @@ def _read_holding_block(
     count: int,
     timeout: float = 10.0,
 ) -> Tuple[bool, Dict[int, int], str]:
-    """Read a contiguous block of holding registers directly from the inverter."""
+    """Read a contiguous block of holding registers directly from the inverter.
+
+    Uses the process-wide persistent dongle connection (LuxPower-standard
+    lifecycle) instead of a fresh connection per read.
+    """
+    from collector.comm.persistent import get_shared_connection
+
     req = build_read_request(datalog_serial, inverter_serial, MODBUS_READ_HOLD, start, count)
-    sock: Optional[socket.socket] = None
-    try:
-        sock = socket.create_connection((host, port), timeout=timeout)
-        sock.settimeout(timeout)
-        sock.sendall(req)
-        deadline = time.time() + timeout
-        buffer = b""
-        result: Dict[int, int] = {}
-        while time.time() < deadline:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                break
-            sock.settimeout(remaining)
-            try:
-                chunk = sock.recv(4096)
-            except socket.timeout:
-                break
-            if not chunk:
-                break
-            buffer += chunk
-            for frame in find_frames(buffer):
-                if frame.is_error:
-                    return False, {}, f"Modbus error response: code {frame.error_code}"
-                if frame.is_read_hold and frame.register == start:
-                    for i, raw_val in enumerate(frame.values):
-                        result[start + i] = raw_val
-                    return True, result, "ok"
+    conn = get_shared_connection(host, port, datalog_serial, inverter_serial, timeout=timeout)
+
+    def match(frame) -> bool:
+        if frame.is_error:
+            return True
+        return frame.is_read_hold and frame.register == start
+
+    frame = conn.transact(req, match, timeout=timeout)
+    if frame is None:
         return False, {}, f"No valid holding-register response for {start}/{count}"
-    except Exception as exc:
-        return False, {}, f"Holding read failed: {exc}"
-    finally:
-        if sock is not None:
-            try:
-                sock.close()
-            except Exception:
-                pass
+    if frame.is_error:
+        return False, {}, f"Modbus error response: code {frame.error_code}"
+    result: Dict[int, int] = {}
+    for i, raw_val in enumerate(frame.values):
+        result[start + i] = raw_val
+    return True, result, "ok"
 
 
 def _read_all_holding_registers(dongle: dict) -> Dict[int, int]:
@@ -1668,14 +1655,23 @@ def api_holding_put(name: str, body: HoldingUpdate):
     if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
         raise HTTPException(400, "datalog_serial / inverter_serial not configured")
 
-    ok, msg = _write_holding_register(
-        dongle["dongle_host"],
-        dongle["dongle_port"],
-        dongle["datalog_serial"],
-        dongle["inverter_serial"],
-        reg,
-        raw_value,
-    )
+    # The dongle intermittently drops individual write transactions (returns
+    # no valid response). Retry a few times before surfacing a 502 — a retry
+    # usually lands the write (observed needing 1-2 attempts per register).
+    ok = False
+    msg = ""
+    for attempt in range(4):
+        ok, msg = _write_holding_register(
+            dongle["dongle_host"],
+            dongle["dongle_port"],
+            dongle["datalog_serial"],
+            dongle["inverter_serial"],
+            reg,
+            raw_value,
+        )
+        if ok:
+            break
+        time.sleep(0.7)
     if not ok:
         raise HTTPException(502, f"Failed to write {name}: {msg}")
     logger.info("Wrote holding register %s (address %d) = %d", name, reg, raw_value)

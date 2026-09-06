@@ -1056,19 +1056,38 @@ async function saveSchedule() {
   try {
     // Write sequentially (not in parallel) — the dongle rejects bursts of
     // simultaneous write connections, which surfaced as intermittent 502s.
+    // Do NOT abort the whole batch on one failure: the dongle is flaky and
+    // drops individual registers, so we record failures and continue, then
+    // report exactly which registers did and did not write.
     let written = 0;
+    const failed = [];
     for (const [name, value] of Object.entries(values)) {
-      const r = await fetch(API + '/api/holding/' + encodeURIComponent(name), {
-        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value: Number(value)})
-      });
-      if (!r.ok) {
-        let detail = r.statusText;
-        try { const j = await r.json(); if (j.detail) detail = j.detail; } catch (e) {}
-        throw new Error(name + ': ' + detail);
+      let ok = false;
+      // Retry a few times (the dongle intermittently drops a write; a retry
+      // usually lands it — observed needing 1-2 attempts per register).
+      for (let attempt = 0; attempt < 4 && !ok; attempt++) {
+        try {
+          const r = await fetch(API + '/api/holding/' + encodeURIComponent(name), {
+            method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value: Number(value)})
+          });
+          if (r.ok) { ok = true; break; }
+          let detail = r.statusText;
+          try { const j = await r.json(); if (j.detail) detail = j.detail; } catch (e) {}
+          if (attempt === 3) failed.push(name + ': ' + detail);
+        } catch (e) {
+          if (attempt === 3) failed.push(name + ': ' + e.message);
+        }
+        await new Promise(res => setTimeout(res, 700));
       }
-      written++;
+      if (ok) written++;
     }
-    msg.textContent = `Value set — ${written} register${written === 1 ? '' : 's'} written.`; msg.style.color = 'var(--green-color)';
+    if (failed.length) {
+      msg.textContent = `Value set — ${written} written, ${failed.length} FAILED (${failed.join('; ')})`;
+      msg.style.color = 'var(--red-color)';
+    } else {
+      msg.textContent = `Value set — ${written} register${written === 1 ? '' : 's'} written.`;
+      msg.style.color = 'var(--green-color)';
+    }
   } catch (e) {
     msg.textContent = 'Error setting value: ' + e.message; msg.style.color = 'var(--red-color)';
   }

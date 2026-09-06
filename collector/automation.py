@@ -100,45 +100,30 @@ def _write_holding_register(
     value: int,
     timeout: float = 10.0,
 ) -> Tuple[bool, str]:
-    """Send a WriteSingleRegister request and verify the echo."""
-    req = build_write_request(datalog_serial, inverter_serial, register, value)
-    sock: Optional[socket.socket] = None
-    try:
-        sock = socket.create_connection((host, port), timeout=timeout)
-        sock.settimeout(timeout)
-        sock.sendall(req)
+    """Send a WriteSingleRegister request and verify the echo.
 
-        deadline = time.time() + timeout
-        buffer = b""
-        while time.time() < deadline:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                break
-            sock.settimeout(remaining)
-            try:
-                chunk = sock.recv(4096)
-            except socket.timeout:
-                break
-            if not chunk:
-                break
-            buffer += chunk
-            frames = find_frames(buffer)
-            for frame in frames:
-                if frame.is_error:
-                    return False, f"Modbus error response: code {frame.error_code}"
-                if frame.device_function == MODBUS_WRITE_SINGLE and frame.register == register:
-                    if frame.values and frame.values[0] == value:
-                        return True, f"Wrote register {register} = {value}"
-                    return True, f"Write accepted (echo value {frame.values})"
+    Uses the process-wide persistent dongle connection (LuxPower-standard
+    lifecycle: one long-lived socket with heartbeats) instead of opening a
+    fresh connection per write, which the dongle drops intermittently.
+    """
+    from .comm.persistent import get_shared_connection
+
+    req = build_write_request(datalog_serial, inverter_serial, register, value)
+    conn = get_shared_connection(host, port, datalog_serial, inverter_serial, timeout=timeout)
+
+    def match(frame) -> bool:
+        if frame.is_error:
+            return True
+        return frame.device_function == MODBUS_WRITE_SINGLE and frame.register == register
+
+    frame = conn.transact(req, match, timeout=timeout)
+    if frame is None:
         return False, "No valid write response received"
-    except Exception as exc:
-        return False, f"Write failed: {exc}"
-    finally:
-        if sock is not None:
-            try:
-                sock.close()
-            except Exception:
-                pass
+    if frame.is_error:
+        return False, f"Modbus error response: code {frame.error_code}"
+    if frame.values and frame.values[0] == value:
+        return True, f"Wrote register {register} = {value}"
+    return True, f"Write accepted (echo value {frame.values})"
 
 
 def _write_holding_registers(
@@ -154,47 +139,28 @@ def _write_holding_registers(
 
     Used by the 7-day scheduling block (registers 500-723), which the inverter
     only accepts via multi-register writes (no single-register writes).
+    Uses the process-wide persistent dongle connection.
     """
+    from .comm.persistent import get_shared_connection
+
     req = build_write_multi_request(
         datalog_serial, inverter_serial, start_register, values
     )
-    sock: Optional[socket.socket] = None
-    try:
-        sock = socket.create_connection((host, port), timeout=timeout)
-        sock.settimeout(timeout)
-        sock.sendall(req)
+    conn = get_shared_connection(host, port, datalog_serial, inverter_serial, timeout=timeout)
 
-        deadline = time.time() + timeout
-        buffer = b""
-        while time.time() < deadline:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                break
-            sock.settimeout(remaining)
-            try:
-                chunk = sock.recv(4096)
-            except socket.timeout:
-                break
-            if not chunk:
-                break
-            buffer += chunk
-            frames = find_frames(buffer)
-            for frame in frames:
-                if frame.is_error:
-                    return False, f"Modbus error response: code {frame.error_code}"
-                if frame.device_function == MODBUS_WRITE_MULTI and frame.register == start_register:
-                    if frame.write_count == len(values):
-                        return True, f"Wrote {len(values)} registers starting at {start_register}"
-                    return True, f"Write accepted (echo count {frame.write_count})"
+    def match(frame) -> bool:
+        if frame.is_error:
+            return True
+        return frame.device_function == MODBUS_WRITE_MULTI and frame.register == start_register
+
+    frame = conn.transact(req, match, timeout=timeout)
+    if frame is None:
         return False, "No valid write response received"
-    except Exception as exc:
-        return False, f"Write failed: {exc}"
-    finally:
-        if sock is not None:
-            try:
-                sock.close()
-            except Exception:
-                pass
+    if frame.is_error:
+        return False, f"Modbus error response: code {frame.error_code}"
+    if frame.write_count == len(values):
+        return True, f"Wrote {len(values)} registers starting at {start_register}"
+    return True, f"Write accepted (echo count {frame.write_count})"
 
 
 def _read_holding_register(
@@ -209,41 +175,21 @@ def _read_holding_register(
     req = build_read_request(
         datalog_serial, inverter_serial, MODBUS_READ_HOLD, register, 1
     )
-    sock: Optional[socket.socket] = None
-    try:
-        sock = socket.create_connection((host, port), timeout=timeout)
-        sock.settimeout(timeout)
-        sock.sendall(req)
+    from .comm.persistent import get_shared_connection
 
-        deadline = time.time() + timeout
-        buffer = b""
-        while time.time() < deadline:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                break
-            sock.settimeout(remaining)
-            try:
-                chunk = sock.recv(4096)
-            except socket.timeout:
-                break
-            if not chunk:
-                break
-            buffer += chunk
-            frames = find_frames(buffer)
-            for frame in frames:
-                if frame.is_error:
-                    return False, None, f"Modbus error response: code {frame.error_code}"
-                if frame.is_read_hold and frame.register == register and frame.values:
-                    return True, frame.values[0], f"Read back {register} = {frame.values[0]}"
+    conn = get_shared_connection(host, port, datalog_serial, inverter_serial, timeout=timeout)
+
+    def match(frame) -> bool:
+        if frame.is_error:
+            return True
+        return frame.is_read_hold and frame.register == register and bool(frame.values)
+
+    frame = conn.transact(req, match, timeout=timeout)
+    if frame is None:
         return False, None, "No valid read response received"
-    except Exception as exc:
-        return False, None, f"Read failed: {exc}"
-    finally:
-        if sock is not None:
-            try:
-                sock.close()
-            except Exception:
-                pass
+    if frame.is_error:
+        return False, None, f"Modbus error response: code {frame.error_code}"
+    return True, frame.values[0], f"Read back {register} = {frame.values[0]}"
 
 
 # ── SolarAssistant setting name → lux-mon holding-register name ─────────────
