@@ -1168,6 +1168,7 @@ from collector.automation import (
     AUTOMATION_TYPES,
     ALL_CONDITION_KINDS,
     SETTING_NAME_TO_REGISTER,
+    _read_holding_register,
 )
 
 
@@ -1674,7 +1675,31 @@ def api_holding_put(name: str, body: HoldingUpdate):
         time.sleep(0.7)
     if not ok:
         raise HTTPException(502, f"Failed to write {name}: {msg}")
-    logger.info("Wrote holding register %s (address %d) = %d", name, reg, raw_value)
+
+    # VERIFY: the dongle can echo a write without actually forwarding it to
+    # the inverter. Read the register back and confirm it stuck before
+    # reporting success. This is the difference between "the dongle ACKed"
+    # and "the inverter actually applied it".
+    verified = False
+    for attempt in range(4):
+        rok, rval, rmsg = _read_holding_register(
+            dongle["dongle_host"],
+            dongle["dongle_port"],
+            dongle["datalog_serial"],
+            dongle["inverter_serial"],
+            reg,
+        )
+        if rok and rval == raw_value:
+            verified = True
+            break
+        time.sleep(0.5)
+    if not verified:
+        raise HTTPException(
+            502,
+            f"Write to {name} not confirmed on inverter (echoed but read-back mismatch)",
+        )
+
+    logger.info("Wrote holding register %s (address %d) = %d (verified)", name, reg, raw_value)
     return {"name": name, "address": reg, "raw": raw_value, "written": True, "message": msg}
 
 

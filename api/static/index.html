@@ -289,6 +289,7 @@ select { -webkit-appearance: menulist; appearance: menulist; }
             <button class="btn" id="btn-save-schedule">Save Schedule</button>
           </div>
           <div id="schedule-editor"></div>
+          <div id="schedule-msg" style="margin-top:0.75rem; font-size:0.9rem; font-weight:600;"></div>
         </div>
       </div>
 
@@ -1035,7 +1036,7 @@ function renderSchedule() {
   });
 }
 async function saveSchedule() {
-  const msg = document.getElementById('auto-msg');
+  const msg = document.getElementById('schedule-msg') || document.getElementById('auto-msg');
   const el = document.getElementById('schedule-editor');
   if (!el) return;
   const values = {};
@@ -1088,6 +1089,9 @@ async function saveSchedule() {
       msg.textContent = `Value set — ${written} register${written === 1 ? '' : 's'} written.`;
       msg.style.color = 'var(--green-color)';
     }
+    // Reload the authoritative inverter values so the inputs reflect what
+    // actually stuck (the dongle can echo a write without applying it).
+    try { await loadAutomationSettings(); renderSchedule(); } catch (e) {}
   } catch (e) {
     msg.textContent = 'Error setting value: ' + e.message; msg.style.color = 'var(--red-color)';
   }
