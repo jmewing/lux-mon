@@ -1,3 +1,15 @@
-•í‚Ç¶ÛDwLÈÏ÷#xÊ?8ºò«QT¾çÈ3²nûâ©=Ní©ÑÚÿBûq§ø‰Ñâ+Ååu?¼(>[œ¤¢;|VÚˆğTö—0ùâ@ªİ½[Ùîİ±ğ)(ü)ÔÂ#í¾
-:µğEÜ+|!c«ÚT?˜(fÿL˜6¤ì7{øí‡_Á@#ğğÛĞ'jÛMøtñx»	zÑ£ëE›Zşvô¨oDx€2n2m—Û
-Vª×x´[„çQ‰äGÕÏ‚öŒ>*ï‰ÉayïÈô¼Ëà©Éã^—|oB!ë†Wqî
+# frozen_string_literal: true
+
+class Inverter
+  def initialize
+    @socket = TCPSocket.new('localhost', 8000)
+  end
+
+  def recv
+    @socket.recv(4096).unpack('C*')
+  end
+
+  def write(bytes)
+    @socket.write(bytes.pack('C*'))
+  end
+end
