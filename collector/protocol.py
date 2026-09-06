@@ -47,32 +47,32 @@ HOLDING_REGISTERS: Dict[int, dict] = {
 
     # ── AC charge time-of-day slots 68-73 (MM*256+HH: hour in LOW byte, minute in HIGH byte) ──
     # NOTE: encoding is hour in LSB, minute in MSB. 22:00 = 22 (0x0016), NOT 5632.
-    68: {"name": "ac_charge_period_1_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 1 start (min<<8)|hour", "min": 0, "max": 2359},
-    69: {"name": "ac_charge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 1 end (min<<8)|hour", "min": 0, "max": 2359},
-    70: {"name": "ac_charge_period_2_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 2 start (min<<8)|hour", "min": 0, "max": 2359},
-    71: {"name": "ac_charge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 2 end (min<<8)|hour", "min": 0, "max": 2359},
-    72: {"name": "ac_charge_period_3_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 3 start (min<<8)|hour", "min": 0, "max": 2359},
-    73: {"name": "ac_charge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 3 end (min<<8)|hour", "min": 0, "max": 2359},
+    68: {"name": "ac_charge_period_1_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 1 start (min<<8)|hour", "min": 0, "max": 15127},
+    69: {"name": "ac_charge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 1 end (min<<8)|hour", "min": 0, "max": 15127},
+    70: {"name": "ac_charge_period_2_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 2 start (min<<8)|hour", "min": 0, "max": 15127},
+    71: {"name": "ac_charge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 2 end (min<<8)|hour", "min": 0, "max": 15127},
+    72: {"name": "ac_charge_period_3_start", "unit": "time", "scale": 1.0, "desc": "AC charge period 3 start (min<<8)|hour", "min": 0, "max": 15127},
+    73: {"name": "ac_charge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "AC charge period 3 end (min<<8)|hour", "min": 0, "max": 15127},
 
     # ── Forced charge (charge priority) 74-81 ──
     74: {"name": "forced_charge_power",        "unit": "A",   "scale": 1.0, "desc": "Forced charge current", "min": 0, "max": 140},
     75: {"name": "forced_charge_soc_limit",   "unit": "%",   "scale": 1.0, "desc": "Forced charge SOC limit", "min": 0, "max": 100},
-    76: {"name": "forced_charge_period_1_start", "unit": "time", "scale": 1.0, "desc": "Forced charge period 1 start", "min": 0, "max": 2359},
-    77: {"name": "forced_charge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "Forced charge period 1 end", "min": 0, "max": 2359},
-    78: {"name": "forced_charge_period_2_start", "unit": "time", "scale": 1.0, "desc": "Forced charge period 2 start", "min": 0, "max": 2359},
-    79: {"name": "forced_charge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "Forced charge period 2 end", "min": 0, "max": 2359},
-    80: {"name": "forced_charge_period_3_start", "unit": "time", "scale": 1.0, "desc": "Forced charge period 3 start", "min": 0, "max": 2359},
-    81: {"name": "forced_charge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "Forced charge period 3 end", "min": 0, "max": 2359},
+    76: {"name": "forced_charge_period_1_start", "unit": "time", "scale": 1.0, "desc": "Forced charge period 1 start", "min": 0, "max": 15127},
+    77: {"name": "forced_charge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "Forced charge period 1 end", "min": 0, "max": 15127},
+    78: {"name": "forced_charge_period_2_start", "unit": "time", "scale": 1.0, "desc": "Forced charge period 2 start", "min": 0, "max": 15127},
+    79: {"name": "forced_charge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "Forced charge period 2 end", "min": 0, "max": 15127},
+    80: {"name": "forced_charge_period_3_start", "unit": "time", "scale": 1.0, "desc": "Forced charge period 3 start", "min": 0, "max": 15127},
+    81: {"name": "forced_charge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "Forced charge period 3 end", "min": 0, "max": 15127},
 
     # ── Forced discharge 82-89 ──
     82: {"name": "forced_discharge_power",     "unit": "A",   "scale": 1.0, "desc": "Forced discharge current", "min": 0, "max": 140},
     83: {"name": "forced_discharge_soc_limit", "unit": "%",   "scale": 1.0, "desc": "Forced discharge SOC limit", "min": 0, "max": 100},
-    84: {"name": "forced_discharge_period_1_start", "unit": "time", "scale": 1.0, "desc": "Forced discharge period 1 start", "min": 0, "max": 2359},
-    85: {"name": "forced_discharge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "Forced discharge period 1 end", "min": 0, "max": 2359},
-    86: {"name": "forced_discharge_period_2_start", "unit": "time", "scale": 1.0, "desc": "Forced discharge period 2 start", "min": 0, "max": 2359},
-    87: {"name": "forced_discharge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "Forced discharge period 2 end", "min": 0, "max": 2359},
-    88: {"name": "forced_discharge_period_3_start", "unit": "time", "scale": 1.0, "desc": "Forced discharge period 3 start", "min": 0, "max": 2359},
-    89: {"name": "forced_discharge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "Forced discharge period 3 end", "min": 0, "max": 2359},
+    84: {"name": "forced_discharge_period_1_start", "unit": "time", "scale": 1.0, "desc": "Forced discharge period 1 start", "min": 0, "max": 15127},
+    85: {"name": "forced_discharge_period_1_end",   "unit": "time", "scale": 1.0, "desc": "Forced discharge period 1 end", "min": 0, "max": 15127},
+    86: {"name": "forced_discharge_period_2_start", "unit": "time", "scale": 1.0, "desc": "Forced discharge period 2 start", "min": 0, "max": 15127},
+    87: {"name": "forced_discharge_period_2_end",   "unit": "time", "scale": 1.0, "desc": "Forced discharge period 2 end", "min": 0, "max": 15127},
+    88: {"name": "forced_discharge_period_3_start", "unit": "time", "scale": 1.0, "desc": "Forced discharge period 3 start", "min": 0, "max": 15127},
+    89: {"name": "forced_discharge_period_3_end",   "unit": "time", "scale": 1.0, "desc": "Forced discharge period 3 end", "min": 0, "max": 15127},
 
     # ── EPS output 90-91 ──
     90: {"name": "eps_voltage_set",           "unit": "V",   "scale": 0.1,  "desc": "EPS output voltage setpoint", "min": 0, "max": 3000},
@@ -99,12 +99,12 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     151: {"name": "equalization_time",       "unit": "h",   "scale": 1.0,  "desc": "Equalization time", "min": 0, "max": 24},
 
     # ── AC First mode time slots 152-157 ──
-    152: {"name": "ac_first_period_1_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 1 start (min<<8)|hour", "min": 0, "max": 2359},
-    153: {"name": "ac_first_period_1_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 1 end (min<<8)|hour", "min": 0, "max": 2359},
-    154: {"name": "ac_first_period_2_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 2 start (min<<8)|hour", "min": 0, "max": 2359},
-    155: {"name": "ac_first_period_2_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 2 end (min<<8)|hour", "min": 0, "max": 2359},
-    156: {"name": "ac_first_period_3_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 3 start (min<<8)|hour", "min": 0, "max": 2359},
-    157: {"name": "ac_first_period_3_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 3 end (min<<8)|hour", "min": 0, "max": 2359},
+    152: {"name": "ac_first_period_1_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 1 start (min<<8)|hour", "min": 0, "max": 15127},
+    153: {"name": "ac_first_period_1_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 1 end (min<<8)|hour", "min": 0, "max": 15127},
+    154: {"name": "ac_first_period_2_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 2 start (min<<8)|hour", "min": 0, "max": 15127},
+    155: {"name": "ac_first_period_2_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 2 end (min<<8)|hour", "min": 0, "max": 15127},
+    156: {"name": "ac_first_period_3_start",  "unit": "time", "scale": 1.0, "desc": "AC first period 3 start (min<<8)|hour", "min": 0, "max": 15127},
+    157: {"name": "ac_first_period_3_end",    "unit": "time", "scale": 1.0, "desc": "AC first period 3 end (min<<8)|hour", "min": 0, "max": 15127},
 
     # ── AC charge battery voltage/SOC thresholds 158-161 ──
     158: {"name": "ac_charge_start_battery_voltage", "unit": "V", "scale": 0.1, "desc": "AC charge start battery voltage", "min": 0, "max": 600},
@@ -282,10 +282,10 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     206: {"name": "grid_peak_shaving_power", "unit": "W", "scale": 1.0, "desc": "Grid peak shaving power", "min": 0, "max": 65535, "capabilities": {"grid_peak_shaving"}},
     207: {"name": "grid_peak_shaving_soc", "unit": "%", "scale": 1.0, "desc": "Grid peak shaving SOC", "min": 0, "max": 100, "capabilities": {"grid_peak_shaving"}},
     208: {"name": "grid_peak_shaving_voltage", "unit": "V", "scale": 0.1, "desc": "Grid peak shaving voltage", "min": 480, "max": 590, "capabilities": {"grid_peak_shaving"}},
-    209: {"name": "peak_shaving_period_1_start", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 1 start", "min": 0, "max": 2359, "capabilities": {"grid_peak_shaving"}},
-    210: {"name": "peak_shaving_period_1_end", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 1 end", "min": 0, "max": 2359, "capabilities": {"grid_peak_shaving"}},
-    211: {"name": "peak_shaving_period_2_start", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 2 start", "min": 0, "max": 2359, "capabilities": {"grid_peak_shaving"}},
-    212: {"name": "peak_shaving_period_2_end", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 2 end", "min": 0, "max": 2359, "capabilities": {"grid_peak_shaving"}},
+    209: {"name": "peak_shaving_period_1_start", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 1 start", "min": 0, "max": 15127, "capabilities": {"grid_peak_shaving"}},
+    210: {"name": "peak_shaving_period_1_end", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 1 end", "min": 0, "max": 15127, "capabilities": {"grid_peak_shaving"}},
+    211: {"name": "peak_shaving_period_2_start", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 2 start", "min": 0, "max": 15127, "capabilities": {"grid_peak_shaving"}},
+    212: {"name": "peak_shaving_period_2_end", "unit": "time", "scale": 1.0, "desc": "Peak shaving period 2 end", "min": 0, "max": 15127, "capabilities": {"grid_peak_shaving"}},
     213: {"name": "smart_load_on_voltage", "unit": "V", "scale": 0.1, "desc": "Smart load on voltage", "min": 480, "max": 590, "capabilities": {"smart_load"}},
     214: {"name": "smart_load_off_voltage", "unit": "V", "scale": 0.1, "desc": "Smart load off voltage", "min": 400, "max": 520, "capabilities": {"smart_load"}},
     215: {"name": "smart_load_on_soc", "unit": "%", "scale": 1.0, "desc": "Smart load on SOC", "min": 0, "max": 100, "capabilities": {"smart_load"}},
@@ -338,10 +338,10 @@ HOLDING_REGISTERS: Dict[int, dict] = {
     251: {"name": "wattnode_ct_directions", "unit": "", "scale": 1.0, "desc": "WattNode CT direction and frequency settings (bitfield)", "min": 0, "max": 65535, "capabilities": {"wattnode"}},
 
     # ── Generator start/end times (256-259) — GENERATOR capability ──
-    256: {"name": "generator_start_time", "unit": "time", "scale": 1.0, "desc": "Generator start time (hour+minute)", "min": 0, "max": 2359, "capabilities": {"generator"}},
-    257: {"name": "generator_end_time", "unit": "time", "scale": 1.0, "desc": "Generator end time (hour+minute)", "min": 0, "max": 2359, "capabilities": {"generator"}},
-    258: {"name": "generator_start_time_1", "unit": "time", "scale": 1.0, "desc": "Generator period 1 start time (hour+minute)", "min": 0, "max": 2359, "capabilities": {"generator"}},
-    259: {"name": "generator_end_time_1", "unit": "time", "scale": 1.0, "desc": "Generator period 1 end time (hour+minute)", "min": 0, "max": 2359, "capabilities": {"generator"}},
+    256: {"name": "generator_start_time", "unit": "time", "scale": 1.0, "desc": "Generator start time (hour+minute)", "min": 0, "max": 15127, "capabilities": {"generator"}},
+    257: {"name": "generator_end_time", "unit": "time", "scale": 1.0, "desc": "Generator end time (hour+minute)", "min": 0, "max": 15127, "capabilities": {"generator"}},
+    258: {"name": "generator_start_time_1", "unit": "time", "scale": 1.0, "desc": "Generator period 1 start time (hour+minute)", "min": 0, "max": 15127, "capabilities": {"generator"}},
+    259: {"name": "generator_end_time_1", "unit": "time", "scale": 1.0, "desc": "Generator period 1 end time (hour+minute)", "min": 0, "max": 15127, "capabilities": {"generator"}},
 
     # ── 7-day scheduling (500-723) — SEVEN_DAY_SCHEDULE capability ──
     # Four modules, each spanning 7 days × 8 registers/day (4 per period × 2).
@@ -399,7 +399,7 @@ for module, base, power_unit in _SCHEDULE_MODULES:
                 "scale": 1.0,
                 "desc": f"{module.replace('_', ' ').title()} {day.title()} period {period} start (min<<8)|hour",
                 "min": 0,
-                "max": 2359,
+                "max": 15127,
                 "capabilities": {"seven_day_schedule"},
             }
             _SEVEN_DAY_REGISTERS[period_base + 3] = {
@@ -408,7 +408,7 @@ for module, base, power_unit in _SCHEDULE_MODULES:
                 "scale": 1.0,
                 "desc": f"{module.replace('_', ' ').title()} {day.title()} period {period} end (min<<8)|hour",
                 "min": 0,
-                "max": 2359,
+                "max": 15127,
                 "capabilities": {"seven_day_schedule"},
             }
 
