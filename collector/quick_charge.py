@@ -91,6 +91,22 @@ def _set_enable_bit(
     )
     if not ok:
         return False, msg, None
+
+    # VERIFY: the dongle can echo a write without forwarding it to the
+    # inverter. Read the register back and confirm bit 0 actually flipped
+    # before reporting success.
+    verified = False
+    for _ in range(4):
+        rok, rval, _ = _read_holding_register(
+            host, port, datalog_serial, inverter_serial, QC_ENABLE_REG
+        )
+        if rok and rval == new:
+            verified = True
+            break
+        time.sleep(0.5)
+    if not verified:
+        return False, f"Enable register write not confirmed on inverter (echoed but read-back mismatch)", None
+
     return True, f"bit 0 {'set' if enable else 'cleared'} (was {cur}, now {new})", new
 
 

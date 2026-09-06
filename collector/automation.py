@@ -965,9 +965,32 @@ class AutomationEngine:
         ok, msg = _write_holding_register(
             dongle_host, dongle_port, datalog_serial, inverter_serial, reg_addr, raw
         )
-        self._log(automation_id, automation_name, setting_name, raw, clamped, False, ok, msg)
         if not ok:
+            self._log(automation_id, automation_name, setting_name, raw, clamped, False, False, msg)
             logger.warning("Automation %s write failed: %s", automation_id, msg)
+            return
+
+        # VERIFY: the dongle can echo a write without actually forwarding it to
+        # the inverter. Read the register back and confirm it stuck before
+        # reporting success — the same read-back verification the API PUT
+        # handler performs. This is the difference between "the dongle ACKed"
+        # and "the inverter actually applied it".
+        verified = False
+        for _ in range(4):
+            rok, rval, _ = _read_holding_register(
+                dongle_host, dongle_port, datalog_serial, inverter_serial, reg_addr
+            )
+            if rok and rval == raw:
+                verified = True
+                break
+            time.sleep(0.5)
+        if not verified:
+            self._log(automation_id, automation_name, setting_name, raw, clamped, False, False,
+                      f"Write to {reg_name} not confirmed on inverter (echoed but read-back mismatch)")
+            logger.warning("Automation %s write to %s not confirmed on inverter", automation_id, reg_name)
+            return
+
+        self._log(automation_id, automation_name, setting_name, raw, clamped, False, True, msg)
 
     def _send_notification(self, auto: Automation) -> None:
         if self._notifiers is None:
