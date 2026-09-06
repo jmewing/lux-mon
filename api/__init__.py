@@ -1111,6 +1111,7 @@ async def _start_ws_broadcaster() -> None:
 
 def _load_db_setting(name: str) -> Optional[str]:
     """Load a single setting value from MariaDB, or None if unavailable."""
+    conn = None
     try:
         conn = _get_conn()
         with conn.cursor() as cur:
@@ -1120,7 +1121,8 @@ def _load_db_setting(name: str) -> Optional[str]:
     except Exception:
         return None
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 # ── holding-register metadata (schedule editor) ─────────────────────────────
