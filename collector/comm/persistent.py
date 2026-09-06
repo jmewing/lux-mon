@@ -1,64 +1,47 @@
 """Persistent dongle connection (LuxPower-standard connection lifecycle).
 
 The EG4/LuxPower WiFi dongle is designed for a SINGLE long-lived TCP
-connection per client, kept alive with periodic heartbeats (TcpFunction 0xC1).
-Opening a fresh connection per read/write (the old behaviour) makes the
-dongle drop transactions and close connections mid-poll, which surfaced as
-intermittent "No valid response" failures on local port 8000 — while the EG4
-cloud (which uses a persistent channel) stayed rock solid.
+connection per client. Opening a fresh connection per read/write (the old
+behaviour) makes the dongle drop transactions and close connections
+mid-poll, which surfaced as intermittent "No valid response" failures on
+local port 8000 — while the EG4 cloud (which uses a persistent channel)
+stayed rock solid.
 
 This module provides one persistent socket per process with:
 
-  * automatic (re)connect with TCP keepalive
-  * periodic heartbeat packets to keep the dongle's session alive
+  * automatic (re)connect with TCP keepalive (60s, matching lxp-bridge)
   * a thread-safe `transact()` that serializes all reads/writes over the
     single socket (the dongle rejects concurrent/burst connections)
   * automatic reconnect + retry when the dongle drops the connection
+
+IMPORTANT — matches lxp-bridge (LuxPower's own reference) exactly:
+
+  * lxp-bridge default is `heartbeats: false`; it relies on TCP keepalive
+    (60s) to hold the connection, NOT proactive heartbeat packets.
+  * When heartbeats ARE enabled, lxp-bridge is REACTIVE: it only echoes back
+    a heartbeat the dongle sends; it never initiates one.
+
+We deliberately do NOT send proactive heartbeats. Sending unsolicited
+protocol=2 heartbeat packets interleaved with protocol=1 read/write traffic
+causes the dongle to close the connection ("Broken pipe"), which is exactly
+the flakiness we are eliminating.
 
 Both the API (reads + writes) and the collector (polling) use this class.
 """
 
 import logging
 import socket
-import struct
 import threading
 import time
 from typing import Callable, Optional
 
-from ..protocol import (
-    PREFIX,
-    TCP_FUNC_HEARTBEAT,
-    TCP_FUNC_TRANSLATED_DATA,
-    _serial_to_bytes,
-    crc16_modbus,
-    find_frames,
-)
+from ..protocol import find_frames
 
 logger = logging.getLogger("luxmon.comm.persistent")
 
 
-def build_heartbeat_request(datalog_serial: str) -> bytes:
-    """Build a heartbeat packet (TcpFunction 0xC1, protocol 2, 1 data byte).
-
-    Matches the lxp-bridge reference: frame = A1 1A | proto(2) | flen-6 |
-    0x01 | 0xC1 | datalog(10) | 0x00.
-    """
-    data = bytes([0])  # heartbeat has a single zero data byte
-    data_length = len(data)
-    frame_length = 18 + data_length
-    pkt = bytearray(frame_length)
-    pkt[0:2] = PREFIX
-    struct.pack_into("<H", pkt, 2, 2)          # protocol = 2 (heartbeat)
-    struct.pack_into("<H", pkt, 4, frame_length - 6)
-    pkt[6] = 0x01
-    pkt[7] = TCP_FUNC_HEARTBEAT
-    pkt[8:18] = _serial_to_bytes(datalog_serial)
-    pkt[18:] = data
-    return bytes(pkt)
-
-
 class PersistentDongleConnection:
-    """One long-lived TCP connection to the dongle, with heartbeats.
+    """One long-lived TCP connection to the dongle (no proactive heartbeats).
 
     All transactions are serialized through an internal lock so reads and
     writes never collide on the socket (the dongle drops bursts). If the
@@ -72,7 +55,6 @@ class PersistentDongleConnection:
         datalog_serial: str,
         inverter_serial: str,
         timeout: float = 10.0,
-        heartbeat_interval: float = 30.0,
         max_retries: int = 3,
     ) -> None:
         self.host = host
@@ -80,33 +62,23 @@ class PersistentDongleConnection:
         self.datalog_serial = datalog_serial
         self.inverter_serial = inverter_serial
         self.timeout = timeout
-        self.heartbeat_interval = heartbeat_interval
         self.max_retries = max_retries
 
         self._lock = threading.RLock()
         self._sock: Optional[socket.socket] = None
-        self._last_heartbeat = 0.0
-        self._stop = threading.Event()
-        self._heartbeat_thread: Optional[threading.Thread] = None
         self._connect_count = 0
         self._tx_count = 0
 
     # ── lifecycle ────────────────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Open the connection and start the heartbeat thread."""
-        self._stop.clear()
+        """Open the connection."""
         self._connect()
-        self._heartbeat_thread = threading.Thread(
-            target=self._heartbeat_loop, name="lux-dongle-heartbeat", daemon=True
-        )
-        self._heartbeat_thread.start()
         logger.info(
             "Persistent dongle connection started (%s:%d)", self.host, self.port
         )
 
     def stop(self) -> None:
-        self._stop.set()
         with self._lock:
             if self._sock is not None:
                 try:
@@ -114,8 +86,6 @@ class PersistentDongleConnection:
                 except OSError:
                     pass
                 self._sock = None
-        if self._heartbeat_thread and self._heartbeat_thread.is_alive():
-            self._heartbeat_thread.join(timeout=5.0)
 
     def stats(self) -> dict:
         return {
@@ -138,14 +108,17 @@ class PersistentDongleConnection:
             self._sock = None
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
+        # TCP keepalive (60s), matching lxp-bridge's set_keepalive(60).
         try:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
         except OSError:
             pass
         sock.connect((self.host, self.port))
         self._sock = sock
         self._connect_count += 1
-        self._last_heartbeat = time.time()
         logger.info("Persistent dongle connected (%s:%d)", self.host, self.port)
 
     def _ensure_connected(self) -> None:
@@ -164,32 +137,6 @@ class PersistentDongleConnection:
             except OSError:
                 self._sock = None
         self._connect()
-
-    def _send_heartbeat(self) -> None:
-        """Send a heartbeat packet to keep the dongle session alive."""
-        try:
-            req = build_heartbeat_request(self.datalog_serial)
-            with self._lock:
-                if self._sock is None:
-                    return
-                self._sock.sendall(req)
-                self._last_heartbeat = time.time()
-        except OSError as exc:
-            logger.warning("Heartbeat send failed: %s", exc)
-            with self._lock:
-                if self._sock is not None:
-                    try:
-                        self._sock.close()
-                    except OSError:
-                        pass
-                    self._sock = None
-
-    def _heartbeat_loop(self) -> None:
-        while not self._stop.is_set():
-            self._stop.wait(self.heartbeat_interval)
-            if self._stop.is_set():
-                break
-            self._send_heartbeat()
 
     # ── transactions ────────────────────────────────────────────────────────
 
