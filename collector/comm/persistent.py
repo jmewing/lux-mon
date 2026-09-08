@@ -14,17 +14,18 @@ This module provides one persistent socket per process with:
     single socket (the dongle rejects concurrent/burst connections)
   * automatic reconnect + retry when the dongle drops the connection
 
-IMPORTANT — matches lxp-bridge (LuxPower's own reference) exactly:
+IMPORTANT — matches lxp-bridge (LuxPower's own reference):
 
-  * lxp-bridge default is `heartbeats: false`; it relies on TCP keepalive
-    (60s) to hold the connection, NOT proactive heartbeat packets.
-  * When heartbeats ARE enabled, lxp-bridge is REACTIVE: it only echoes back
-    a heartbeat the dongle sends; it never initiates one.
-
-We deliberately do NOT send proactive heartbeats. Sending unsolicited
-protocol=2 heartbeat packets interleaved with protocol=1 read/write traffic
-causes the dongle to close the connection ("Broken pipe"), which is exactly
-the flakiness we are eliminating.
+  * lxp-bridge sends a Heartbeat (0xC1, protocol=2) after 120s of silence
+    to keep the dongle session alive (inverter.rs: "If no messages received
+    for 120 seconds, send a heartbeat"). We do the same via a background
+    heartbeat thread.
+  * lxp-bridge waits RECONNECT_DELAY_SECS=5 between reconnection attempts;
+    we use the same delay to avoid wedging the dongle's session state with
+    rapid-fire reconnects.
+  * We also detect stale responses: if the dongle returns byte-identical
+    register data across consecutive reads, we force a full reconnect
+    instead of trusting the cached response.
 
 Both the API (reads + writes) and the collector (polling) use this class.
 """
@@ -35,7 +36,7 @@ import threading
 import time
 from typing import Callable, Optional
 
-from ..protocol import find_frames
+from ..protocol import find_frames, build_heartbeat
 
 logger = logging.getLogger("luxmon.comm.persistent")
 
@@ -69,16 +70,38 @@ class PersistentDongleConnection:
         self._connect_count = 0
         self._tx_count = 0
 
+        # Heartbeat thread: keeps the dongle session alive (lxp-bridge sends
+        # a heartbeat after 120s of silence). Started in start(), stopped in
+        # stop().
+        self._hb_thread: Optional[threading.Thread] = None
+        self._hb_stop = threading.Event()
+        self._hb_interval = 60.0  # check every 60s; send if 120s+ silence
+
+        # Staleness detection: remember the last response signature so we can
+        # detect the dongle serving frozen/cached data (the 9/7 wedge).
+        self._last_resp_sig: Optional[bytes] = None
+        self._stale_count = 0
+        self._stale_threshold = 5  # N identical responses => force reconnect
+
     # ── lifecycle ────────────────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Open the connection."""
+        """Open the connection and start the heartbeat thread."""
         self._connect()
+        self._hb_stop.clear()
+        self._hb_thread = threading.Thread(
+            target=self._heartbeat_loop, name="lux-dongle-heartbeat", daemon=True
+        )
+        self._hb_thread.start()
         logger.info(
             "Persistent dongle connection started (%s:%d)", self.host, self.port
         )
 
     def stop(self) -> None:
+        self._hb_stop.set()
+        if self._hb_thread is not None:
+            self._hb_thread.join(timeout=2.0)
+            self._hb_thread = None
         with self._lock:
             if self._sock is not None:
                 try:
@@ -138,6 +161,65 @@ class PersistentDongleConnection:
                 self._sock = None
         self._connect()
 
+    # ── heartbeat ───────────────────────────────────────────────────────────
+
+    def _heartbeat_loop(self) -> None:
+        """Send a heartbeat after 120s of silence (matches lxp-bridge).
+
+        The dongle expects periodic traffic to keep the session alive. If we
+        go silent too long, the session goes stale and the dongle starts
+        serving cached data (the 9/7 wedge). lxp-bridge sends a Heartbeat
+        (0xC1, protocol=2) after 120s of no received messages; we mirror that.
+        """
+        last_rx = time.time()
+        while not self._hb_stop.wait(self._hb_interval):
+            with self._lock:
+                if self._sock is None:
+                    continue
+                # Track last successful receive time via a lightweight probe.
+                try:
+                    self._sock.settimeout(0.2)
+                    self._sock.recv(1, socket.MSG_PEEK)
+                    self._sock.settimeout(self.timeout)
+                except socket.timeout:
+                    pass  # no pending data — connection alive
+                except OSError:
+                    self._sock = None
+                    continue
+                if time.time() - last_rx >= 120:
+                    try:
+                        hb = build_heartbeat(self.datalog_serial)
+                        self._sock.sendall(hb)
+                        self._tx_count += 1
+                        logger.debug("Sent heartbeat to dongle")
+                    except OSError as exc:
+                        logger.warning("Heartbeat send failed: %s", exc)
+                        self._sock = None
+                    last_rx = time.time()
+
+    # ── staleness detection ──────────────────────────────────────────────────
+
+    def _note_response(self, raw: bytes) -> None:
+        """Track response signatures to detect frozen/cached dongle data."""
+        if raw == self._last_resp_sig:
+            self._stale_count += 1
+            if self._stale_count >= self._stale_threshold:
+                logger.warning(
+                    "Dongle returned identical data %d times — forcing reconnect "
+                    "(possible stale/cached response)",
+                    self._stale_count,
+                )
+                self._stale_count = 0
+                if self._sock is not None:
+                    try:
+                        self._sock.close()
+                    except OSError:
+                        pass
+                    self._sock = None
+        else:
+            self._last_resp_sig = raw
+            self._stale_count = 0
+
     # ── transactions ────────────────────────────────────────────────────────
 
     def transact(
@@ -185,6 +267,10 @@ class PersistentDongleConnection:
                         buffer += chunk
                         for frame in find_frames(buffer):
                             if match(frame):
+                                # Staleness guard: identical responses across
+                                # consecutive reads => dongle serving cached
+                                # data; force a reconnect.
+                                self._note_response(frame.raw)
                                 return frame
                     # If we got here without a match and the socket is still
                     # alive, the dongle simply didn't answer this request.
@@ -202,7 +288,7 @@ class PersistentDongleConnection:
                         except OSError:
                             pass
                         self._sock = None
-                time.sleep(0.4 * (attempt + 1))
+                time.sleep(5.0)  # lxp-bridge RECONNECT_DELAY_SECS
             return None
 
 

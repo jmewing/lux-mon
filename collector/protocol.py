@@ -755,6 +755,48 @@ def build_write_multi_request(
     return bytes(pkt)
 
 
+def build_heartbeat(datalog_serial: str) -> bytes:
+    """
+    Build a Heartbeat (0xC1) packet, matching lxp-bridge's Heartbeat frame.
+
+    lxp-bridge sends this after 120s of silence to keep the dongle session
+    alive. Packet layout (from lxp-bridge packet.rs / TcpFrameFactory):
+        [0-1]   Header: 0xA1 0x1A
+        [2-3]   Protocol: 2 (LE u16)  -- heartbeat uses protocol 2
+        [4-5]   Frame length: 19 (LE u16)  -- 6 header + 13 payload
+        [6]     Unknown: 0x01
+        [7]     TCP function: 0xC1 (Heartbeat)
+        [8-17]  Datalog serial (10 bytes)
+        [18]    Data length: 0 (heartbeat has no data payload)
+    Total packet size: 19 bytes.
+    """
+    pkt = bytearray(19)
+
+    # Header
+    pkt[0:2] = PREFIX
+
+    # Protocol = 2 (heartbeat)
+    struct.pack_into('<H', pkt, 2, 2)
+
+    # Frame length = 13 (19 - 6)
+    struct.pack_into('<H', pkt, 4, 13)
+
+    # Unknown byte
+    pkt[6] = 0x01
+
+    # TCP function: Heartbeat
+    pkt[7] = TCP_FUNC_HEARTBEAT
+
+    # Datalog serial
+    pkt[8:18] = _serial_to_bytes(datalog_serial)
+
+    # Data length = 0 (no payload)
+    pkt[18] = 0
+
+    return bytes(pkt)
+
+
+
 # ── Frame Parser ────────────────────────────────────────────────────
 
 def parse_frame(data: bytes) -> Optional[LuxFrame]:
