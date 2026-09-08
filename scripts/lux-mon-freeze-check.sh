@@ -24,19 +24,21 @@ if [ "$AGE" -gt 120 ]; then
   exit 2
 fi
 
-# 2. Register stability: compare last 3 snapshots' key registers
-#    (pv1=7, discharge=11, soc=5). If identical across 3 consecutive
-#    snapshots spanning > 60s, data is frozen.
+# 2. Register stability: compare the last N snapshots' key registers
+#    (pv1=7, discharge=11, soc=5). If identical across a LONG span
+#    (>= 5 minutes), data is frozen. Short identical spans are normal
+#    at night (PV=0, discharge=0 while battery idles) — SOC still moves.
+#    The 9/7 wedge was identical for 9.5 HOURS including SOC.
 STABLE=$(docker exec lux-mariadb mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e "
 SELECT COUNT(DISTINCT CONCAT(JSON_EXTRACT(raw_registers,'$.7'),'|',JSON_EXTRACT(raw_registers,'$.11'),'|',(JSON_EXTRACT(raw_registers,'$.5') & 0xFF)))
-FROM (SELECT raw_registers FROM lux_snapshots ORDER BY id DESC LIMIT 3) t;" 2>/dev/null)
+FROM (SELECT raw_registers FROM lux_snapshots ORDER BY id DESC LIMIT 30) t;" 2>/dev/null)
 
 if [ "$STABLE" = "1" ]; then
-  # Check the time span of those 3 snapshots
+  # Check the time span of those 30 snapshots (should be ~3 min at 6s cadence)
   SPAN=$(docker exec lux-mariadb mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e "
-  SELECT TIMESTAMPDIFF(SECOND, MIN(ts), MAX(ts)) FROM (SELECT ts FROM lux_snapshots ORDER BY id DESC LIMIT 3) t;" 2>/dev/null)
-  if [ "$SPAN" -ge 60 ]; then
-    echo "ALERT: data frozen — last 3 snapshots identical over ${SPAN}s (pv1/discharge/soc unchanged)"
+  SELECT TIMESTAMPDIFF(SECOND, MIN(ts), MAX(ts)) FROM (SELECT ts FROM lux_snapshots ORDER BY id DESC LIMIT 30) t;" 2>/dev/null)
+  if [ "$SPAN" -ge 300 ]; then
+    echo "ALERT: data frozen — last 30 snapshots identical over ${SPAN}s (pv1/discharge/soc unchanged)"
     exit 2
   fi
 fi
