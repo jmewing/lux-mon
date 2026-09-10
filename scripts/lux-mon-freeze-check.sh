@@ -5,7 +5,7 @@
 # and verifies data resumes. Data over silence.
 #
 # Freeze rule (2026-09-10): load_power AND battery_power_net must be identical
-# for 30 minutes to count as frozen (not just battery, which sits static at night).
+# for 5 minutes to count as frozen (not just battery, which sits static at night).
 # False-positive guard: if grid is importing (positive) AND battery SOC >= 99%,
 # the static values are legitimate (battery full, grid carrying steady load) — ignore.
 #
@@ -38,15 +38,15 @@ latest_age() {
 
 registers_stable() {
   # 1 if load_power AND battery_power_net are each identical over the last
-  # 30 minutes (single distinct value each), else 0. Uses the named
+  # 5 minutes (single distinct value each), else 0. Uses the named
   # lux_registers table (computed values are written there by the collector).
   local load_distinct batt_distinct
   load_distinct=$(docker exec lux-mariadb mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e "
     SELECT COUNT(DISTINCT value) FROM lux_registers
-    WHERE name='load_power' AND ts >= NOW(3) - INTERVAL 30 MINUTE;" 2>/dev/null)
+    WHERE name='load_power' AND ts >= NOW(3) - INTERVAL 5 MINUTE;" 2>/dev/null)
   batt_distinct=$(docker exec lux-mariadb mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e "
     SELECT COUNT(DISTINCT value) FROM lux_registers
-    WHERE name='battery_power_net' AND ts >= NOW(3) - INTERVAL 30 MINUTE;" 2>/dev/null)
+    WHERE name='battery_power_net' AND ts >= NOW(3) - INTERVAL 5 MINUTE;" 2>/dev/null)
   if [ "$load_distinct" = "1" ] && [ "$batt_distinct" = "1" ]; then
     echo "1"
   else
@@ -115,7 +115,7 @@ if [ "$STABLE" = "1" ]; then
     echo "OK: values static but grid importing + battery full (false positive, ignoring)"
     exit 0
   fi
-  echo "ALERT: data frozen — load + battery identical for 30 min"
+  echo "ALERT: data frozen — load + battery identical for 5 min"
   if [ "$AUTO_RESTART" = "1" ]; then
     LAST=$(cat "$STATE_FILE" 2>/dev/null || echo 0)
     NOW=$(date +%s)
