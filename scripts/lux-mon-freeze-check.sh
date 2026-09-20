@@ -22,6 +22,11 @@ AUTO_RESTART=0
 STATE_DIR="/var/tmp/lux-mon"
 COOLDOWN=1800   # 30 min between auto-restarts
 STATE_FILE="$STATE_DIR/freeze-restart.state"
+# Episode dedup: once we've alerted+restarted for a frozen episode, suppress
+# repeat ALERTs for the same persistent wedge until data stops being frozen
+# for the full EPISODE_SUPPRESS window (chronic dongle fault -> 1 alert).
+EPISODE_SUPPRESS=86400  # 24h: re-alert at most daily for a continuously frozen episode
+EPISODE_FILE="$STATE_DIR/freeze-episode.state"
 
 # --- helpers ---
 latest_age() {
@@ -73,6 +78,21 @@ false_positive() {
   fi
 }
 
+# Episode-alert dedup: return 0 to SUPPRESS the alert (episode recently
+# alerted+restarted, still frozen), 1 to alert. Resets when data recovers
+# (registers_stable==0 -> caller clears the episode state).
+episode_suppressed() {
+  local ep_now ep_last
+  ep_now=$(date +%s)
+  ep_last=$(cat "$EPISODE_FILE" 2>/dev/null || echo 0)
+  [ "$ep_last" -ge 1 ] && [ $((ep_now - ep_last)) -lt "$EPISODE_SUPPRESS" ]
+}
+episode_pin() { # record that we just alerted+restarted for this episode
+  mkdir -p "$STATE_DIR"
+  echo "$(date +%s)" > "$EPISODE_FILE"
+}
+episode_clear() { rm -f "$EPISODE_FILE"; }
+
 restart_lux() {
   mkdir -p "$STATE_DIR"
   echo "$(date +%s)" > "$STATE_FILE"
@@ -96,13 +116,21 @@ if [ "$AGE" -gt 120 ]; then
       sleep 60
       AGE2=$(latest_age)
       if [ "$AGE2" != "no-snapshots" ] && [ "$AGE2" -le 120 ]; then
+        episode_clear
         echo "RECOVERED: lux-collector restarted, data flowing (age ${AGE2}s)"
         exit 0
       fi
+      episode_pin
       echo "ALERT: restart did not recover data (age ${AGE2}s)"
       exit 2
     fi
+    if episode_suppressed; then
+      echo "OK: known dongle fault, still stale, last restart ${LAST}s ago - suppressing duplicate alert"
+      exit 0
+    fi
+    episode_pin
     echo "ALERT: still stale (last restart ${LAST}s ago, cooldown ${COOLDOWN}s)"
+    exit 2
   fi
   exit 2
 fi
@@ -125,16 +153,25 @@ if [ "$STABLE" = "1" ]; then
       AGE2=$(latest_age)
       STABLE2=$(registers_stable)
       if [ "$AGE2" != "no-snapshots" ] && [ "$AGE2" -le 120 ] && [ "$STABLE2" != "1" ]; then
+        episode_clear
         echo "RECOVERED: lux-collector restarted, data flowing (age ${AGE2}s)"
         exit 0
       fi
+      episode_pin
       echo "ALERT: restart did not recover data (age ${AGE2}s, stable=${STABLE2})"
       exit 2
     fi
+    if episode_suppressed; then
+      echo "OK: known dongle fault, still frozen, last restart ${LAST}s ago - suppressing duplicate alert"
+      exit 0
+    fi
+    episode_pin
     echo "ALERT: still frozen (last restart ${LAST}s ago, cooldown ${COOLDOWN}s)"
+    exit 2
   fi
   exit 2
 fi
 
+episode_clear
 echo "OK: data fresh (last write ${AGE}s ago), values changing"
 exit 0

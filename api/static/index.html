@@ -160,7 +160,7 @@ select { -webkit-appearance: menulist; appearance: menulist; }
               <img src="/images/solar-forecast.svg" role="presentation" id="img-solar">
               <div>
                 <div class="label" id="solar-label">Solar PV</div>
-                <div class="property" id="sa-solar-total">--</div>
+                <div class="property"><span class="name">Today:</span><span id="sa-solar-total">--</span></div>
                 <div class="property small"><span class="name">Peak:</span><span id="sa-solar-peak">--</span></div>
               </div>
             </a></div>
@@ -561,7 +561,8 @@ function renderMain(r) {
   // Inject computed values so detail view can read them via data-reg
   if (!r.registers) r.registers = {};
   r.registers.pv_total_power = { value: pvTotal, unit: 'W' };
-  setText('sa-solar-total', fmtInt(pvTotal) + ' W');
+  const pvEnergyToday = (val(r,'pv1_energy_today') || 0) + (val(r,'pv2_energy_today') || 0) + (val(r,'pv3_energy_today') || 0);
+  setText('sa-solar-total', fmt(pvEnergyToday, 2) + ' kWh');
   setText('sa-solar-peak', fmtInt(todayPeakPv) + ' W');
 
   const gridV = val(r,'grid_voltage_r');
