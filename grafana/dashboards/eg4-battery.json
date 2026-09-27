@@ -1,0 +1,1383 @@
+{
+  "id": null,
+  "uid": "eg4-battery",
+  "title": "EG4 · Battery",
+  "description": "EG4 12000XP battery bank: state of charge, power, voltage, current, BMS limits and daily energy (EG4 cloud data).",
+  "tags": [
+    "eg4",
+    "12000xp"
+  ],
+  "timezone": "America/Los_Angeles",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "schemaVersion": 41,
+  "version": 1,
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "weekStart": "",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "Live power flow",
+      "type": "link",
+      "url": "/d/eg4-flow",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Live Power Flow",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Energy",
+      "type": "link",
+      "url": "/d/eg4-energy",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Energy — daily, monthly and lifetime energy",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Battery",
+      "type": "link",
+      "url": "/d/eg4-battery",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Battery",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Solar strings & inverter",
+      "type": "link",
+      "url": "/d/eg4-pv",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Solar Strings & Inverter",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "gauge",
+      "title": "State of charge",
+      "description": "Latest battery state of charge. The arc is green from 20 %, amber from 10 % to 20 % and red below 10 % (band edges labelled on the arc). Source: EG4 cloud; a new point only when EG4 publishes (~every 1-2 min, sometimes 5), nothing in between.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"soc\" and r._field == \"value\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, \"SOC\": r._value}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 0,
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d03b3b",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 10
+              },
+              {
+                "color": "#0ca30c",
+                "value": 20
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "showThresholdMarkers": true,
+        "showThresholdLabels": true,
+        "sizing": "auto",
+        "minVizWidth": 75,
+        "minVizHeight": 75
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Battery power (+ charge / − discharge)",
+      "description": "Latest net battery power = charge_power − discharge_power from the same reading. Positive = charging, negative = discharging. Source: EG4 cloud; a new point only when EG4 publishes (~every 1-2 min, sometimes 5), nothing in between.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"charge_power\" or r.name == \"discharge_power\") and r._field == \"value\")\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> filter(fn: (r) => exists r.charge_power and exists r.discharge_power)\n  |> sort(columns: [\"_time\"])\n  |> last(column: \"_time\")\n  |> map(fn: (r) => ({_time: r._time, \"Battery power\": r.charge_power - r.discharge_power}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Battery state",
+      "description": "Battery status text (batStatus) from EG4's battery endpoint, e.g. Charging / Discharging. That endpoint can lag the power readings by a poll. Source: EG4 cloud; a new point only when EG4 publishes (~every 1-2 min, sometimes 5), nothing in between.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_cloud\" and r._field == \"bat_status\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, \"Battery state\": r._value}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Battery state$/",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Battery voltage now",
+      "description": "Latest battery bank voltage (48 V-class bank). Source: EG4 cloud; a new point only when EG4 publishes (~every 1-2 min, sometimes 5), nothing in between.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"battery_voltage\" and r._field == \"value\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, \"Battery voltage\": r._value}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "EG4 data feed",
+      "description": "When the newest reading was written, and how fresh that is (latest SOC point, looked up over the last 30 days whatever the time picker says). EG4 publishes every ~1-2 min, sometimes 5: Fresh under 10 min, Delayed under 30 min, Stale beyond. When Delayed or Stale, every 'now' value on this page is old.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"soc\" and r._field == \"value\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, \"Last reading\": int(v: r._time) / 1000000, \"Feed\": float(v: int(v: now()) - int(v: r._time)) / 1000000000.0}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 0,
+          "noValue": "No data in 30 days"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last reading"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Feed"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -3600,
+                      "to": 600,
+                      "result": {
+                        "text": "Fresh",
+                        "color": "#0ca30c",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 600,
+                      "to": 1800,
+                      "result": {
+                        "text": "Delayed",
+                        "color": "#fab219",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 1800,
+                      "to": 1000000000000.0,
+                      "result": {
+                        "text": "Stale",
+                        "color": "#d03b3b",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#0ca30c",
+                      "value": null
+                    },
+                    {
+                      "color": "#fab219",
+                      "value": 600
+                    },
+                    {
+                      "color": "#d03b3b",
+                      "value": 1800
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Battery energy today",
+      "description": "Energy into (Charged) and out of (Discharged) the battery since local midnight (America/Los_Angeles), from the inverter's daily counters. EG4 refreshes these counters about every 5 min; no value until the first reading of the day.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 4,
+        "w": 7,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"timezone\"\nimport \"date\"\ntz = timezone.location(name: \"America/Los_Angeles\")\nfrom(bucket: \"luxmon\")\n  |> range(start: date.truncate(t: now(), unit: 1d, location: tz))\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"charge_energy_today\" or r.name == \"discharge_energy_today\") and r._field == \"value\")\n  |> group(columns: [\"name\"])\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, _field: if r.name == \"charge_energy_today\" then \"Charged\" else \"Discharged\", _value: r._value}))\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: kWh",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Lifetime battery throughput",
+      "description": "Inverter lifetime counters: total energy ever charged into / discharged from the battery. The EG4 cloud gives no cycle count or state of health for this system, so this is the only wear indicator. EG4 refreshes these counters about every 5 min.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 13,
+        "y": 4,
+        "w": 7,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"charge_energy_total\" or r.name == \"discharge_energy_total\") and r._field == \"value\")\n  |> group(columns: [\"name\"])\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, _field: if r.name == \"charge_energy_total\" then \"Charged\" else \"Discharged\", _value: r._value}))\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Battery modules",
+      "description": "Number of battery modules in parallel reported by the inverter (batParallelNum). Source: EG4 cloud.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"battery_count\" and r._field == \"value\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, \"Modules\": r._value}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "State of charge over time",
+      "description": "Battery SOC (mean per interval). Source: EG4 cloud; a new point only when EG4 publishes (~every 1-2 min, sometimes 5), nothing in between. A break in the line = no data for over 10 min, not zero.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "interval": "1m",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"soc\" and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: \"SOC\"}))\n  |> group(columns: [\"_field\"])\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#199e70"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "auto",
+            "pointSize": 4,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "decimals": 0,
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none",
+          "hideZeros": false
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Battery power (+ charging / − discharging)",
+      "description": "Net battery power = charge_power − discharge_power (mean per interval). Above zero the battery is charging, below zero discharging. Source: EG4 cloud; a new point only when EG4 publishes (~every 1-2 min, sometimes 5), nothing in between. A break in the line = no data for over 10 min, not zero.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "interval": "1m",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"charge_power\" or r.name == \"discharge_power\") and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, name: r.name}))\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({_time: r._time, _value: r.charge_power - r.discharge_power, _field: \"Battery power\"}))\n  |> group(columns: [\"_field\"])\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#199e70"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "auto",
+            "pointSize": 4,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none",
+          "hideZeros": false
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Battery voltage",
+      "description": "Battery bank voltage (mean per interval). The axis always spans at least 50-56 V so small ripples are not magnified. Source: EG4 cloud; a new point only when EG4 publishes (~every 1-2 min, sometimes 5), nothing in between. A break in the line = no data for over 10 min, not zero.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "interval": "1m",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"battery_voltage\" and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: \"Battery voltage\"}))\n  |> group(columns: [\"_field\"])\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#199e70"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "showPoints": "auto",
+            "pointSize": 4,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "axisSoftMin": 50,
+            "axisSoftMax": 56
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none",
+          "hideZeros": false
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Battery current (+ charging / − discharging)",
+      "description": "Battery bank current, signed: positive = charging, negative = discharging. It comes from EG4's separate battery endpoint (getBatteryInfo), so it can lag the power panel by a poll and will not exactly match power ÷ voltage. A break in the line = no data for over 10 min, not zero.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "interval": "1m",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"battery_current\" and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: \"Battery current\"}))\n  |> group(columns: [\"_field\"])\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "amp",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#199e70"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "auto",
+            "pointSize": 4,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none",
+          "hideZeros": false
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "BMS current limits",
+      "description": "Maximum charge (solid) and discharge (dashed) current the battery BMS allows, last value per interval. The BMS lowers these near full / empty or at temperature extremes; a flat line is normal, and equal limits draw on top of each other. Source: EG4 cloud; a new point only when EG4 publishes (~every 1-2 min, sometimes 5), nothing in between.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "interval": "1m",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"bms_max_charge_current\" or r.name == \"bms_max_discharge_current\") and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: true)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: if r.name == \"bms_max_charge_current\" then \"Max charge current\" else \"Max discharge current\"}))\n  |> group(columns: [\"_field\"])\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "amp",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#199e70"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "showPoints": "auto",
+            "pointSize": 4,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "axisSoftMin": 0
+          },
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Max charge current"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Max discharge current"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "barchart",
+      "title": "Daily battery energy: charged vs discharged",
+      "description": "Per local day (America/Los_Angeles), the day's highest value of the inverter's daily charge / discharge counters (a counter, so max, not sum). Today's bar is marked '(so far)'. Days with no data have no bar (not zero); history starts 2026-05-08 (install day; imported from the EG4 portal export).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"timezone\"\nimport \"date\"\ntz = timezone.location(name: \"America/Los_Angeles\")\nmonths = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"]\ntoday = date.truncate(t: now(), unit: 1d, location: tz)\nfrom(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"charge_energy_today\" or r.name == \"discharge_energy_today\") and r._field == \"value\")\n  |> aggregateWindow(every: 1d, fn: max, createEmpty: false, timeSrc: \"_start\", location: tz)\n  |> map(fn: (r) => {\n      d = date.truncate(t: r._time, unit: 1d, location: tz)\n      return {\n        _time: d,\n        _value: r._value,\n        series: if r.name == \"charge_energy_today\" then \"Charged\" else \"Discharged\",\n        Day: months[date.month(t: d, location: tz) - 1] + \" \" + string(v: date.monthDay(t: d, location: tz)) + (if d == today then \" (so far)\" else \"\"),\n      }\n    })\n  |> group()\n  |> pivot(rowKey: [\"_time\", \"Day\"], columnKey: [\"series\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"Day\", \"Charged\", \"Discharged\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: kWh",
+          "decimals": 1,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 90,
+            "gradientMode": "none",
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "axisSoftMin": 0,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Charged"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Discharged"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "Day",
+        "orientation": "vertical",
+        "barWidth": 0.9,
+        "groupWidth": 0.7,
+        "barRadius": 0,
+        "showValue": "never",
+        "stacking": "none",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100,
+        "fullHighlight": false,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "text",
+      "title": "Not available from EG4 cloud",
+      "description": "What battery data the EG4 cloud does not provide for the 12000XP, and why.",
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 12
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "The EG4 cloud feed for the **12000XP** only reports bank-level battery values. These are **not provided**, so this dashboard does not show them:\n\n| Not available | Why |\n|---|---|\n| Per-cell voltages (min / max cell V, cell spread) | the cloud's battery endpoint returns no per-module array for this inverter |\n| Cell / battery temperatures | same, and the 12000XP's battery-temperature field is always empty |\n| State of health (SOH) | only reported per module, and there are no modules in this feed |\n| Cycle count | only reported per module; use *Lifetime battery throughput* as the wear indicator |\n| Per-module SOC, voltage, current, serial and firmware | no per-module data in the cloud feed |\n| Installed capacity and remaining Ah | not reported, so **usable energy remaining (kWh)** cannot be worked out without guessing the pack size |\n\n**Other things to know**\n- *Battery current* comes from a separate, slower EG4 battery endpoint and can lag the power readings.\n- History starts **2026-05-08** (install day). Data before 2026-09-26 18:26 was imported from the EG4 portal export at ~4-min resolution; after that it is recorded live (~2 min).\n- All data comes from the EG4 cloud (a new point every ~1-2 min, sometimes 5). A break in a line means no data, not zero.",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        }
+      }
+    }
+  ]
+}

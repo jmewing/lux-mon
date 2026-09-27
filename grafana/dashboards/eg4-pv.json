@@ -1,0 +1,2160 @@
+{
+  "id": null,
+  "uid": "eg4-pv",
+  "title": "EG4 · Solar Strings & Inverter",
+  "description": "EG4 12000XP per-MPPT (PV1/PV2) detail and inverter health, from EG4's cloud via lux-mon (luxmon_register, Flux).",
+  "tags": [
+    "eg4",
+    "12000xp"
+  ],
+  "editable": true,
+  "graphTooltip": 1,
+  "timezone": "America/Los_Angeles",
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "fiscalYearStartMonth": 0,
+  "weekStart": "",
+  "liveNow": false,
+  "schemaVersion": 41,
+  "version": 1,
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Live power flow",
+      "type": "link",
+      "url": "/d/eg4-flow",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Live Power Flow",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Energy",
+      "type": "link",
+      "url": "/d/eg4-energy",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Energy — daily, monthly and lifetime energy",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Battery",
+      "type": "link",
+      "url": "/d/eg4-battery",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Battery",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Solar strings & inverter",
+      "type": "link",
+      "url": "/d/eg4-pv",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Solar Strings & Inverter",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    }
+  ],
+  "panels": [
+    {
+      "type": "row",
+      "title": "Solar strings (MPPT)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": [],
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "Data freshness",
+      "description": "Time since lux-mon last wrote an EG4 cloud snapshot (register 'soc', looks back 7 days, always relative to now, ignores the time picker). Live < 5 min, Delayed 5-15 min, Stale >= 15 min. EG4 publishes every ~1-2 min, sometimes up to 5 min, so short Delayed blips can be normal; Stale means every number on this dashboard is old. EG4's own upload lag (typically under a minute) is not included.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ca30c",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 300
+              },
+              {
+                "color": "#d03b3b",
+                "value": 900
+              }
+            ]
+          },
+          "decimals": 1,
+          "noValue": "No data in 7 days"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -1000000000000.0,
+                      "to": 299.999,
+                      "result": {
+                        "text": "Live",
+                        "color": "#0ca30c",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 300,
+                      "to": 899.999,
+                      "result": {
+                        "text": "Delayed",
+                        "color": "#fab219",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 900,
+                      "to": 1000000000000.0,
+                      "result": {
+                        "text": "Stale",
+                        "color": "#d03b3b",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"soc\" and r._field == \"value\")\n  |> last()\n  |> group()\n  |> map(fn: (r) => ({\n      _time: r._time,\n      \"Since last point\": float(v: int(v: now()) - int(v: r._time)) / 1000000000.0,\n      \"Status\": float(v: int(v: now()) - int(v: r._time)) / 1000000000.0,\n  }))"
+        }
+      ],
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "PV1 power",
+      "description": "Latest PV1 (MPPT 1) input power, with its trend over the selected range. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"pv1_power\" and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: \"PV1\"}))\n  |> group(columns: [\"_field\"])"
+        }
+      ],
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "PV2 power",
+      "description": "Latest PV2 (MPPT 2) input power, with its trend over the selected range. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#d95926"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d95926",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"pv2_power\" and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: \"PV2\"}))\n  |> group(columns: [\"_field\"])"
+        }
+      ],
+      "id": 4
+    },
+    {
+      "type": "stat",
+      "title": "PV1 voltage",
+      "description": "Latest PV1 (MPPT 1) string voltage, with its trend over the selected range. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"pv1_voltage\" and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: \"PV1\"}))\n  |> group(columns: [\"_field\"])"
+        }
+      ],
+      "id": 5
+    },
+    {
+      "type": "stat",
+      "title": "PV2 voltage",
+      "description": "Latest PV2 (MPPT 2) string voltage, with its trend over the selected range. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#d95926"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d95926",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"pv2_voltage\" and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: \"PV2\"}))\n  |> group(columns: [\"_field\"])"
+        }
+      ],
+      "id": 6
+    },
+    {
+      "type": "bargauge",
+      "title": "String share today",
+      "description": "Share of today's solar energy (since local midnight, America/Los_Angeles) produced by each MPPT. Estimated from 5-minute mean power because EG4's cloud reports no per-string kWh; always today, independent of the time picker. Covers only what lux-mon recorded today. Empty until the strings produce after midnight.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No solar yet today"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PV1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PV2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizWidth": 8,
+        "minVizHeight": 16,
+        "maxVizHeight": 300,
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"timezone\"\noption location = timezone.location(name: \"America/Los_Angeles\")\n\n// Energy share per MPPT since local midnight, from 5-min mean power.\n// (EG4's cloud has no per-string kWh counter.)\nfrom(bucket: \"luxmon\")\n  |> range(start: today())\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"pv1_power\" or r.name == \"pv2_power\") and r._field == \"value\")\n  |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)\n  |> group(columns: [\"name\"])\n  |> sum()\n  |> map(fn: (r) => ({k: \"today\", s: if r.name == \"pv1_power\" then \"PV1\" else \"PV2\", _value: r._value}))\n  |> group()\n  |> pivot(rowKey: [\"k\"], columnKey: [\"s\"], valueColumn: \"_value\")\n  |> filter(fn: (r) => exists r.PV1 and exists r.PV2 and r.PV1 + r.PV2 > 0.0)\n  |> map(fn: (r) => ({PV1: 100.0 * r.PV1 / (r.PV1 + r.PV2), PV2: 100.0 * r.PV2 / (r.PV1 + r.PV2)}))"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "indexByName": {
+              "PV1": 0,
+              "PV2": 1
+            }
+          }
+        }
+      ],
+      "id": 7
+    },
+    {
+      "type": "timeseries",
+      "title": "String power",
+      "description": "DC input power per MPPT: PV1 vs PV2. Mean per display interval; gaps longer than 10 min are real feed outages and are left blank. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "showValues": false,
+            "axisSoftMin": 0
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PV1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PV2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"pv1_power\" or r.name == \"pv2_power\") and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: if r.name == \"pv1_power\" then \"PV1\" else \"PV2\"}))\n  |> group(columns: [\"_field\"])\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "id": 8
+    },
+    {
+      "type": "timeseries",
+      "title": "String voltage",
+      "description": "DC voltage per MPPT: PV1 vs PV2. Voltage with ~0 W is normal at dawn, dusk and night (too little light to harvest); in full sun it means the string is being curtailed (battery full, low load). Gaps > 10 min are feed outages. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "showValues": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PV1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PV2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"pv1_voltage\" or r.name == \"pv2_voltage\") and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: if r.name == \"pv1_voltage\" then \"PV1\" else \"PV2\"}))\n  |> group(columns: [\"_field\"])\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "id": 9
+    },
+    {
+      "type": "timeseries",
+      "title": "String current",
+      "description": "Derived DC current per MPPT, I = P / V from the mean power and voltage in each interval (the cloud does not report string current). 0 A when the string voltage is ~0; blank where either input is missing. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "amp",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "showValues": false,
+            "axisSoftMin": 0
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PV1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PV2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"internal/debug\"\n\n// I = P / V per MPPT, per window. Null when either input is missing (gap);\n// 0 A when the string voltage is ~0 (string dark / disconnected).\nfrom(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"pv1_power\" or r.name == \"pv1_voltage\" or r.name == \"pv2_power\" or r.name == \"pv2_voltage\") and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> keep(columns: [\"_time\", \"_value\", \"name\"])\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({\n      _time: r._time,\n      PV1: if exists r.pv1_power and exists r.pv1_voltage then (if r.pv1_voltage > 1.0 then r.pv1_power / r.pv1_voltage else 0.0) else debug.null(type: \"float\"),\n      PV2: if exists r.pv2_power and exists r.pv2_voltage then (if r.pv2_voltage > 1.0 then r.pv2_power / r.pv2_voltage else 0.0) else debug.null(type: \"float\"),\n  }))\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "id": 10
+    },
+    {
+      "type": "bargauge",
+      "title": "Solar by hour of day",
+      "description": "Average solar output (PV1 + PV2) for each local clock hour, averaged over the days in the selected range; mean W over an hour equals Wh produced in that hour. Hours with no production are omitted. History starts 2026-05-08. Widen the range (e.g. 30 days) for a typical day. Brighter = more energy.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "min": 0,
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#256abf",
+                "value": null
+              },
+              {
+                "color": "#3987e5",
+                "value": 500
+              },
+              {
+                "color": "#6da7ec",
+                "value": 1500
+              },
+              {
+                "color": "#9ec5f4",
+                "value": 3000
+              },
+              {
+                "color": "#cde2fb",
+                "value": 5000
+              }
+            ]
+          },
+          "noValue": "No solar production in range"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "vertical",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "auto",
+        "showUnfilled": false,
+        "sizing": "auto",
+        "minVizWidth": 8,
+        "minVizHeight": 16,
+        "maxVizHeight": 300,
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"date\"\nimport \"timezone\"\noption location = timezone.location(name: \"America/Los_Angeles\")\n\n// Mean solar power (PV1 + PV2) in each local clock hour, then averaged per\n// hour-of-day over the days in range. Mean W over one hour = Wh in that hour.\nfrom(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"pv1_power\" or r.name == \"pv2_power\") and r._field == \"value\")\n  |> aggregateWindow(every: 1h, fn: mean, createEmpty: false, timeSrc: \"_start\")\n  |> group(columns: [\"_time\"])\n  |> sum()\n  |> group()\n  |> map(fn: (r) => ({hour: date.hour(t: r._time), _value: r._value}))\n  |> group(columns: [\"hour\"])\n  |> mean()\n  |> group()\n  |> filter(fn: (r) => r._value >= 1.0)\n  |> sort(columns: [\"hour\"])\n  |> map(fn: (r) => ({k: \"avg\", h: (if r.hour < 10 then \"0\" else \"\") + string(v: r.hour) + \":00\", _value: r._value}))\n  |> pivot(rowKey: [\"k\"], columnKey: [\"h\"], valueColumn: \"_value\")\n  |> drop(columns: [\"k\"])"
+        }
+      ],
+      "id": 11
+    },
+    {
+      "type": "row",
+      "title": "Inverter",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "panels": [],
+      "id": 12
+    },
+    {
+      "type": "stat",
+      "title": "Inverter mode",
+      "description": "Inverter working-mode register (state). 192 = normal off-grid operation (PV + battery). Other known off-grid modes are green; standby and AC-input (generator) modes amber; fault red. An unknown code is shown raw as 'code N' in orange. Labels follow lux-mon's working-mode table (collector/outputs.py). Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:code ",
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "192": {
+                  "text": "Normal (off-grid)",
+                  "color": "#0ca30c",
+                  "index": 0
+                },
+                "64": {
+                  "text": "Battery only (off-grid)",
+                  "color": "#0ca30c",
+                  "index": 1
+                },
+                "128": {
+                  "text": "PV only (off-grid)",
+                  "color": "#0ca30c",
+                  "index": 2
+                },
+                "136": {
+                  "text": "PV charging (off-grid)",
+                  "color": "#0ca30c",
+                  "index": 3
+                },
+                "8": {
+                  "text": "PV charging battery",
+                  "color": "#0ca30c",
+                  "index": 4
+                },
+                "0": {
+                  "text": "Standby",
+                  "color": "#fab219",
+                  "index": 5
+                },
+                "2": {
+                  "text": "Programming",
+                  "color": "#fab219",
+                  "index": 6
+                },
+                "4": {
+                  "text": "PV + AC input",
+                  "color": "#fab219",
+                  "index": 7
+                },
+                "12": {
+                  "text": "PV charging + AC input",
+                  "color": "#fab219",
+                  "index": 8
+                },
+                "16": {
+                  "text": "Battery + AC input",
+                  "color": "#fab219",
+                  "index": 9
+                },
+                "20": {
+                  "text": "PV + battery + AC input",
+                  "color": "#fab219",
+                  "index": 10
+                },
+                "32": {
+                  "text": "AC charging",
+                  "color": "#fab219",
+                  "index": 11
+                },
+                "40": {
+                  "text": "PV + AC charging",
+                  "color": "#fab219",
+                  "index": 12
+                },
+                "1": {
+                  "text": "Fault",
+                  "color": "#d03b3b",
+                  "index": 13
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#ec835a",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"state\" and r._field == \"value\")\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: \"Mode\"}))\n  |> group(columns: [\"_field\"])"
+        }
+      ],
+      "id": 13
+    },
+    {
+      "type": "stat",
+      "title": "Cloud status",
+      "description": "EG4 portal's own status text for the inverter (luxmon_cloud.status_text). 'normal' is green; fault/offline wording red; standby amber; anything else is shown as-is in orange.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "normal": {
+                  "text": "Normal",
+                  "color": "#0ca30c",
+                  "index": 0
+                }
+              }
+            },
+            {
+              "type": "regex",
+              "options": {
+                "pattern": "/fault|error|alarm|offline|lost/i",
+                "result": {
+                  "color": "#d03b3b",
+                  "index": 1
+                }
+              }
+            },
+            {
+              "type": "regex",
+              "options": {
+                "pattern": "/standby|wait|check/i",
+                "result": {
+                  "color": "#fab219",
+                  "index": 2
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#ec835a",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No status in range"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^status_text$/",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_cloud\" and r._field == \"status_text\")\n  |> last()\n  |> keep(columns: [\"_time\", \"_value\", \"_field\"])\n  |> group(columns: [\"_field\"])"
+        }
+      ],
+      "id": 14
+    },
+    {
+      "type": "stat",
+      "title": "EPS output voltage",
+      "description": "Latest inverter AC output voltage, L1-L2 (240 V split-phase nominal), with a text status: Normal 228-252 V (within 5 %), Low 216-228 / High 252-264 V, Too low / Too high beyond 10 %, Off under 50 V. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d03b3b",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 216
+              },
+              {
+                "color": "#0ca30c",
+                "value": 228
+              },
+              {
+                "color": "#fab219",
+                "value": 252
+              },
+              {
+                "color": "#d03b3b",
+                "value": 264
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -1000000.0,
+                      "to": 49.999,
+                      "result": {
+                        "text": "Off",
+                        "color": "#d03b3b",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 50,
+                      "to": 215.999,
+                      "result": {
+                        "text": "Too low",
+                        "color": "#d03b3b",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 216,
+                      "to": 227.999,
+                      "result": {
+                        "text": "Low",
+                        "color": "#fab219",
+                        "index": 2
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 228,
+                      "to": 251.999,
+                      "result": {
+                        "text": "Normal",
+                        "color": "#0ca30c",
+                        "index": 3
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 252,
+                      "to": 263.999,
+                      "result": {
+                        "text": "High",
+                        "color": "#fab219",
+                        "index": 4
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 264,
+                      "to": 1000000.0,
+                      "result": {
+                        "text": "Too high",
+                        "color": "#d03b3b",
+                        "index": 5
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"eps_voltage_r\" and r._field == \"value\")\n  |> last()\n  |> group()\n  |> map(fn: (r) => ({_time: r._time, \"L1-L2\": r._value, \"Status\": r._value}))"
+        }
+      ],
+      "id": 15
+    },
+    {
+      "type": "stat",
+      "title": "EPS frequency",
+      "description": "Latest inverter AC output frequency (60 Hz nominal), with a text status: Normal 59.8-60.2 Hz, Low 59.3-59.8 / High 60.2-60.5 Hz, Too low / Too high beyond, Off at ~0 Hz. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "hertz",
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d03b3b",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 59.3
+              },
+              {
+                "color": "#0ca30c",
+                "value": 59.8
+              },
+              {
+                "color": "#fab219",
+                "value": 60.2
+              },
+              {
+                "color": "#d03b3b",
+                "value": 60.5
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -1000000.0,
+                      "to": 0.999,
+                      "result": {
+                        "text": "Off",
+                        "color": "#d03b3b",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 1,
+                      "to": 59.2999,
+                      "result": {
+                        "text": "Too low",
+                        "color": "#d03b3b",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 59.3,
+                      "to": 59.7999,
+                      "result": {
+                        "text": "Low",
+                        "color": "#fab219",
+                        "index": 2
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 59.8,
+                      "to": 60.1999,
+                      "result": {
+                        "text": "Normal",
+                        "color": "#0ca30c",
+                        "index": 3
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 60.2,
+                      "to": 60.4999,
+                      "result": {
+                        "text": "High",
+                        "color": "#fab219",
+                        "index": 4
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 60.5,
+                      "to": 1000000.0,
+                      "result": {
+                        "text": "Too high",
+                        "color": "#d03b3b",
+                        "index": 5
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"eps_frequency\" and r._field == \"value\")\n  |> last()\n  |> group()\n  |> map(fn: (r) => ({_time: r._time, \"Frequency\": r._value, \"Status\": r._value}))"
+        }
+      ],
+      "id": 16
+    },
+    {
+      "type": "timeseries",
+      "title": "EPS power by leg",
+      "description": "Inverter AC output (house load on this off-grid system) per leg: L1-N vs L2-N. A persistent large difference means the 120 V loads are unbalanced across the legs. Gaps > 10 min are feed outages. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "showValues": false,
+            "axisSoftMin": 0
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "L1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "L2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"eps_power_l1\" or r.name == \"eps_power_l2\") and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: if r.name == \"eps_power_l1\" then \"L1\" else \"L2\"}))\n  |> group(columns: [\"_field\"])\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "id": 17
+    },
+    {
+      "type": "timeseries",
+      "title": "Radiator temperatures",
+      "description": "Inverter heat-sink (radiator) temperatures 1 and 2, in °F. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "fahrenheit",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "showValues": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Radiator 1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Radiator 2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"temp_radiator_1\" or r.name == \"temp_radiator_2\") and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: if r.name == \"temp_radiator_1\" then \"Radiator 1\" else \"Radiator 2\"}))\n  |> group(columns: [\"_field\"])\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "id": 18
+    },
+    {
+      "type": "timeseries",
+      "title": "DC bus voltages",
+      "description": "Inverter internal DC bus voltages (bus 1 and bus 2) as reported by EG4's cloud. Diagnostic only: EG4 documents no normal band for the 12000XP, so no status colours. Gaps > 10 min are feed outages. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "showValues": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bus 1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bus 2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and (r.name == \"bus1_voltage\" or r.name == \"bus2_voltage\") and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: if r.name == \"bus1_voltage\" then \"Bus 1\" else \"Bus 2\"}))\n  |> group(columns: [\"_field\"])\n  |> sort(columns: [\"_time\"])"
+        }
+      ],
+      "id": 19
+    },
+    {
+      "type": "timeseries",
+      "title": "EPS output voltage (L1-L2)",
+      "description": "Inverter AC output voltage L1-L2 over time (240 V nominal). The axis spans at least 228-252 V (±5 %) so normal ripple is not magnified; sags under load show here. Gaps > 10 min are feed outages. Source: EG4 cloud via lux-mon; a new point arrives only when EG4 publishes (about every 1-5 min), so values can lag the inverter by a few minutes.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 34
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": 600000,
+            "insertNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "showValues": false,
+            "axisSoftMin": 228,
+            "axisSoftMax": 252
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"eps_voltage_r\" and r._field == \"value\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: true)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, _field: \"L1-L2\"}))\n  |> group(columns: [\"_field\"])"
+        }
+      ],
+      "id": 20
+    }
+  ]
+}

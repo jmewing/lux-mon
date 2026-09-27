@@ -19,6 +19,11 @@ x-lux-env: &lux-env
   LUX_DATALOG_SERIAL: ${LUX_DATALOG_SERIAL}
   LUX_INVERTER_SERIAL: ${LUX_INVERTER_SERIAL}
   LUX_WRITE_INTERVAL: ${LUX_WRITE_INTERVAL:-5}
+  # EG4 cloud (transport=cloud_http). Credentials are passed to the collector
+  # service only (see below), never to the api / db-init containers.
+  LUX_CLOUD_BASE_URL: ${LUX_CLOUD_BASE_URL:-https://monitor.eg4electronics.com}
+  LUX_CLOUD_POLL_SEC: ${LUX_CLOUD_POLL_SEC:-60}
+  LUX_CLOUD_ENERGY_SEC: ${LUX_CLOUD_ENERGY_SEC:-300}
 
   # MariaDB
   LUX_MARIADB_HOST: mariadb
@@ -192,6 +197,9 @@ services:
     restart: unless-stopped
     environment:
       <<: *lux-env
+      # EG4 cloud login (transport=cloud_http): collector only, least privilege.
+      LUX_CLOUD_USERNAME: ${LUX_CLOUD_USERNAME:-}
+      LUX_CLOUD_PASSWORD: ${LUX_CLOUD_PASSWORD:-}
     networks:
       - lux-mon-net
     depends_on:
@@ -251,6 +259,7 @@ services:
     command: >
       sh -c "apk add --no-cache gettext &&
              mkdir -p /dst/provisioning/datasources /dst/provisioning/dashboards /dst/dashboards/lux-mon &&
+             rm -f /dst/dashboards/lux-mon/*.json &&
              cp /src/dashboards/* /dst/dashboards/lux-mon/ &&
              chown -R 472:472 /dst/provisioning /dst/dashboards &&
              chmod -R u+rw /dst/provisioning /dst/dashboards &&
@@ -273,6 +282,8 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_NAME: "Main Org."
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # Home page: the live power flow dashboard (copied in by grafana-init).
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/lux-mon/eg4-flow.json
     volumes:
       - lux-grafana-provisioning:/etc/grafana/provisioning
       - lux-grafana-dashboards:/var/lib/grafana/dashboards

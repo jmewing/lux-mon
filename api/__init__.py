@@ -260,7 +260,9 @@ def api_batteries():
             "voltage_v": _scale(reg_values.get(base + 8), 0.01),
             "current_a": _scale_signed(reg_values.get(base + 9), 0.1),
             "soc_pct": reg_values.get(base + 10, 0) & 0xFF,
-            "soh_pct": (reg_values.get(base + 10, 0) >> 8) & 0xFF,
+            # SOH shares base+10 with SOC; a 0 high byte means "not reported"
+            # (e.g. cloud_http modules without an SOH), never a real 0 %.
+            "soh_pct": ((reg_values.get(base + 10, 0) >> 8) & 0xFF) or None,
             "cycle_count": reg_values.get(base + 11),
             "max_cell_temp_c": _scale(reg_values.get(base + 12), 0.1),
             "min_cell_temp_c": _scale(reg_values.get(base + 13), 0.1),
@@ -832,11 +834,15 @@ def api_setting_get(name: str):
 @app.put("/api/settings/{name}")
 def api_setting_put(name: str, body: SettingUpdate):
     """Update a setting value (DB + .env mirror)."""
-    from collector.settings import set_, SETTING_ENV
+    from collector.settings import set_, SETTING_ENV, validate_setting
+
+    str_value = str(body.value) if body.value is not None else ""
+    err = validate_setting(name, str_value)
+    if err:
+        raise HTTPException(422, err)
 
     conn = _get_conn()
     try:
-        str_value = str(body.value) if body.value is not None else ""
         set_(conn, name, str_value)
         _sync_env_file(name, str_value)
         return {"name": name, "value": str_value, "updated": True}
@@ -1409,6 +1415,18 @@ def _resolve_dongle() -> dict:
     }
 
 
+def _require_dongle_transport() -> None:
+    """Refuse dongle I/O while the collector reads from the EG4 cloud.
+
+    With transport=cloud_http the dongle refuses local TCP, so holding-register
+    and quick-charge requests would only hang until their timeout. The
+    transport is resolved DB-authoritatively, like the collector.
+    """
+    transport = (_load_db_setting("transport") or os.getenv("LUX_TRANSPORT") or "tcp_active").strip().lower()
+    if transport == "cloud_http":
+        raise HTTPException(409, "requires tcp_active/tcp_passive; current transport is cloud_http")
+
+
 def _resolve_model() -> str:
     """Resolve the active inverter model from env or DB settings."""
     return os.getenv("LUX_INVERTER_MODEL") or _load_db_setting("inverter_model") or DEFAULT_MODEL
@@ -1525,6 +1543,7 @@ def api_holding_list():
     Returns the raw register values by name; the dashboard decodes time-of-day
     registers using the same (minute<<8)|hour convention as the inverter.
     """
+    _require_dongle_transport()
     dongle = _resolve_dongle()
     if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
         raise HTTPException(400, "datalog_serial / inverter_serial not configured")
@@ -1593,6 +1612,7 @@ def api_holding_get(name: str):
     reg = HOLDING_BY_NAME[name]
     if reg not in _holding_registers_for_model():
         raise HTTPException(404, f"Register {name} not supported by this inverter model")
+    _require_dongle_transport()
     dongle = _resolve_dongle()
     if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
         raise HTTPException(400, "datalog_serial / inverter_serial not configured")
@@ -1654,6 +1674,7 @@ def api_holding_put(name: str, body: HoldingUpdate):
     if max_val is not None and raw_value > max_val:
         raise HTTPException(400, f"{name} raw {raw_value} above maximum {max_val}")
 
+    _require_dongle_transport()
     dongle = _resolve_dongle()
     if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
         raise HTTPException(400, "datalog_serial / inverter_serial not configured")
@@ -1738,6 +1759,7 @@ def api_holding_multi_write(start_name: str, body: HoldingMultiUpdate):
             raise HTTPException(400, f"address {reg} raw {raw} above maximum {max_val}")
         raw_values.append(raw)
 
+    _require_dongle_transport()
     dongle = _resolve_dongle()
     if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
         raise HTTPException(400, "datalog_serial / inverter_serial not configured")
@@ -1772,6 +1794,7 @@ def api_quick_charge_status():
 @app.post("/api/quick-charge/start")
 def api_quick_charge_start(body: QuickChargeBody):
     """Start a quick charge for N minutes (default 60, range 1..1440)."""
+    _require_dongle_transport()
     dongle = _resolve_dongle()
     if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
         raise HTTPException(400, "datalog_serial / inverter_serial not configured")
@@ -1793,6 +1816,7 @@ def api_quick_charge_start(body: QuickChargeBody):
 @app.post("/api/quick-charge/stop")
 def api_quick_charge_stop(dry_run: bool = False):
     """Stop an active quick charge, restoring the prior value."""
+    _require_dongle_transport()
     dongle = _resolve_dongle()
     if not dongle["datalog_serial"] or not dongle["inverter_serial"]:
         raise HTTPException(400, "datalog_serial / inverter_serial not configured")

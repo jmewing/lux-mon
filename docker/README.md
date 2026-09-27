@@ -32,7 +32,17 @@ for every available variable.
 
 Key variables:
 
+- `LUX_TRANSPORT` — `tcp_active` (default), `tcp_passive`, `replay` or
+  `cloud_http` (read-only EG4 cloud polling for dongles that refuse local TCP).
+  Only seeds the DB on first start; afterwards change `transport` with
+  `PUT /api/settings/transport` (the Configuration page has no transport
+  field), keep `LUX_TRANSPORT` in `.env` in step, and recreate both services:
+  `docker compose up -d collector api` (see the main README, "EG4 cloud
+  transport").
 - `LUX_DONGLE_HOST` — IP of your WiFi dongle
+- `LUX_CLOUD_USERNAME` / `LUX_CLOUD_PASSWORD` — EG4 portal login for
+  `cloud_http`; passed to the collector container only and never stored in
+  the database. Apply changes with `docker compose up -d collector`.
 - `LUX_MARIADB_PASSWORD` — database password
 - `LUX_INFLUX_TOKEN` — long random admin token (≥32 chars)
 - `LUX_INFLUX_ADMIN_PASSWORD` — InfluxDB admin password

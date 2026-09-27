@@ -1,0 +1,2439 @@
+{
+  "id": null,
+  "uid": "eg4-flow",
+  "title": "EG4 · Live Power Flow",
+  "description": "EG4 12000XP (off-grid) live power flow: solar, battery, loads and generator input, from the EG4 cloud via lux-mon.",
+  "tags": [
+    "eg4",
+    "12000xp"
+  ],
+  "editable": true,
+  "timezone": "America/Los_Angeles",
+  "refresh": "1m",
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "version": 1,
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "weekStart": "",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h"
+    ]
+  },
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "Live power flow",
+      "type": "link",
+      "url": "/d/eg4-flow",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Live Power Flow",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Energy",
+      "type": "link",
+      "url": "/d/eg4-energy",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Energy — daily, monthly and lifetime energy",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Battery",
+      "type": "link",
+      "url": "/d/eg4-battery",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Battery",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Solar strings & inverter",
+      "type": "link",
+      "url": "/d/eg4-pv",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Solar Strings & Inverter",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "canvas",
+      "title": "Live power flow",
+      "description": "Latest reading of each flow in the selected range. Solar = PV1 + PV2 (per-MPPT power). Battery shows magnitude with direction (arrow toward the battery = charging, toward the inverter = discharging) and SOC. Loads = inverter backup (EPS) output, i.e. what the house draws on this off-grid system; L1-N / L2-N are the portal's per-leg readings and need not add up exactly to the total. Inverter mode is the working-mode code (192 = PV + battery off-grid, 64 = battery off-grid). Generator / AC input is drawn dashed in neutral grey (its orange is kept for its own panel); its arrowhead appears only while a source is connected (voltage > 0), and there is no generator power reading, only voltage and frequency. Arrowheads disappear when a flow is 0 W. Source: EG4 cloud (cloud_http): a new point arrives only when EG4 publishes, about every 1-2 min (sometimes up to 5 min); nothing is written in between. Check the 'Freshness' panel before trusting these as live.",
+      "gridPos": {
+        "h": 12,
+        "w": 14,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "pluginVersion": "13.2.2",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\")\n  |> filter(fn: (r) => r.name =~ /^(pv1_power|pv2_power|charge_power|discharge_power|soc|eps_power|eps_power_l1|eps_power_l2|gen_voltage|gen_frequency|state)$/)\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"name\", \"_value\"])\n  |> pivot(rowKey: [], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({\n      solar: r.pv1_power + r.pv2_power,\n      pv1: r.pv1_power,\n      pv2: r.pv2_power,\n      battery: r.charge_power - r.discharge_power,\n      battery_abs: if r.charge_power >= r.discharge_power then r.charge_power - r.discharge_power else r.discharge_power - r.charge_power,\n      soc: r.soc,\n      load: r.eps_power,\n      load_l1: r.eps_power_l1,\n      load_l2: r.eps_power_l2,\n      gen_v: r.gen_voltage,\n      gen_hz: r.gen_frequency,\n      state: r.state,\n  }))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "soc"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "battery"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 0.5,
+                      "to": null,
+                      "result": {
+                        "text": "Charging",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": null,
+                      "to": -0.5,
+                      "result": {
+                        "text": "Discharging",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -0.5,
+                      "to": 0.5,
+                      "result": {
+                        "text": "Idle",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "gen_v"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "volt"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": null,
+                      "to": 5,
+                      "result": {
+                        "text": "Not connected",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "gen_hz"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "hertz"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": null,
+                      "to": 1,
+                      "result": {
+                        "text": "—",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "state"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "prefix:code "
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "Standby",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "Fault",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "Programming",
+                        "index": 2
+                      },
+                      "4": {
+                        "text": "PV on-grid",
+                        "index": 3
+                      },
+                      "8": {
+                        "text": "PV charging battery",
+                        "index": 4
+                      },
+                      "12": {
+                        "text": "PV charging + on-grid",
+                        "index": 5
+                      },
+                      "16": {
+                        "text": "Battery on-grid",
+                        "index": 6
+                      },
+                      "20": {
+                        "text": "PV + battery on-grid",
+                        "index": 7
+                      },
+                      "32": {
+                        "text": "AC charge",
+                        "index": 8
+                      },
+                      "40": {
+                        "text": "PV + AC charge",
+                        "index": 9
+                      },
+                      "64": {
+                        "text": "Battery off-grid",
+                        "index": 10
+                      },
+                      "128": {
+                        "text": "PV off-grid",
+                        "index": 11
+                      },
+                      "136": {
+                        "text": "PV charge + off-grid",
+                        "index": 12
+                      },
+                      "192": {
+                        "text": "PV + battery off-grid",
+                        "index": 13
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "inlineEditing": false,
+        "showAdvancedTypes": true,
+        "panZoom": false,
+        "infinitePan": false,
+        "zoomToContent": false,
+        "tooltip": {
+          "mode": "none",
+          "disableForOneClick": false
+        },
+        "root": {
+          "type": "frame",
+          "name": "Root",
+          "elements": [
+            {
+              "type": "rectangle",
+              "name": "Solar",
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "color": {
+                  "fixed": "text"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": ""
+                }
+              },
+              "background": {
+                "color": {
+                  "fixed": "#c9850014"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#c98500"
+                },
+                "width": 2,
+                "radius": 8
+              },
+              "connections": [
+                {
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": 0.6667
+                  },
+                  "targetName": "Inverter",
+                  "path": "straight",
+                  "color": {
+                    "fixed": "#c98500"
+                  },
+                  "size": {
+                    "fixed": 3,
+                    "min": 1,
+                    "max": 10
+                  },
+                  "lineStyle": {
+                    "style": "solid",
+                    "animate": false
+                  },
+                  "vertices": [],
+                  "direction": {
+                    "mode": "field",
+                    "field": "solar",
+                    "fixed": "forward"
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 2,
+                "top": 6,
+                "right": 74,
+                "bottom": 54,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "rectangle",
+              "name": "Generator",
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "color": {
+                  "fixed": "text"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": ""
+                }
+              },
+              "background": {
+                "color": {
+                  "fixed": "#8a8f980f"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "width": 2,
+                "radius": 8
+              },
+              "connections": [
+                {
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": -0.6667
+                  },
+                  "targetName": "Inverter",
+                  "path": "straight",
+                  "color": {
+                    "fixed": "#8a8f98"
+                  },
+                  "size": {
+                    "fixed": 2,
+                    "min": 1,
+                    "max": 10
+                  },
+                  "lineStyle": {
+                    "style": "dashed",
+                    "animate": false
+                  },
+                  "vertices": [],
+                  "direction": {
+                    "mode": "field",
+                    "field": "gen_v",
+                    "fixed": "forward"
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 2,
+                "top": 58,
+                "right": 74,
+                "bottom": 10,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "rectangle",
+              "name": "Inverter",
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "color": {
+                  "fixed": "text"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": ""
+                }
+              },
+              "background": {
+                "color": {
+                  "fixed": "#8a8f980f"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "width": 2,
+                "radius": 8
+              },
+              "connections": [
+                {
+                  "source": {
+                    "x": 1,
+                    "y": 0.6667
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": 0
+                  },
+                  "targetName": "Loads",
+                  "path": "straight",
+                  "color": {
+                    "fixed": "#3987e5"
+                  },
+                  "size": {
+                    "fixed": 3,
+                    "min": 1,
+                    "max": 10
+                  },
+                  "lineStyle": {
+                    "style": "solid",
+                    "animate": false
+                  },
+                  "vertices": [],
+                  "direction": {
+                    "mode": "field",
+                    "field": "load",
+                    "fixed": "forward"
+                  }
+                },
+                {
+                  "source": {
+                    "x": 1,
+                    "y": -0.6667
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": 0
+                  },
+                  "targetName": "Battery",
+                  "path": "straight",
+                  "color": {
+                    "fixed": "#199e70"
+                  },
+                  "size": {
+                    "fixed": 3,
+                    "min": 1,
+                    "max": 10
+                  },
+                  "lineStyle": {
+                    "style": "solid",
+                    "animate": false
+                  },
+                  "vertices": [],
+                  "direction": {
+                    "mode": "field",
+                    "field": "battery",
+                    "fixed": "forward"
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 36,
+                "top": 14,
+                "right": 36,
+                "bottom": 14,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "rectangle",
+              "name": "Loads",
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "color": {
+                  "fixed": "text"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": ""
+                }
+              },
+              "background": {
+                "color": {
+                  "fixed": "#3987e514"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#3987e5"
+                },
+                "width": 2,
+                "radius": 8
+              },
+              "connections": [],
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 74,
+                "top": 6,
+                "right": 2,
+                "bottom": 54,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "rectangle",
+              "name": "Battery",
+              "config": {
+                "align": "center",
+                "valign": "middle",
+                "color": {
+                  "fixed": "text"
+                },
+                "text": {
+                  "mode": "fixed",
+                  "fixed": ""
+                }
+              },
+              "background": {
+                "color": {
+                  "fixed": "#199e7014"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "#199e70"
+                },
+                "width": 2,
+                "radius": 8
+              },
+              "connections": [],
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 74,
+                "top": 54,
+                "right": 2,
+                "bottom": 6,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Solar title",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "SOLAR"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 12,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 3,
+                "top": 7.5,
+                "right": 75,
+                "bottom": 87,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Solar value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "solar",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 22,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 3,
+                "top": 13,
+                "right": 75,
+                "bottom": 75,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Solar PV1 label",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "PV1"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 11,
+                "align": "left",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 4,
+                "top": 27,
+                "right": 90,
+                "bottom": 66.5,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Solar PV1 value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "pv1",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 13,
+                "align": "right",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 10,
+                "top": 27,
+                "right": 75.5,
+                "bottom": 66.5,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Solar PV2 label",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "PV2"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 11,
+                "align": "left",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 4,
+                "top": 33.5,
+                "right": 90,
+                "bottom": 60,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Solar PV2 value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "pv2",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 13,
+                "align": "right",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 10,
+                "top": 33.5,
+                "right": 75.5,
+                "bottom": 60,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Loads title",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "LOADS"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 12,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 75,
+                "top": 7.5,
+                "right": 3,
+                "bottom": 87,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Loads value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "load",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 22,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 75,
+                "top": 13,
+                "right": 3,
+                "bottom": 75,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Loads L1-N label",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "L1-N"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 11,
+                "align": "left",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 76,
+                "top": 27,
+                "right": 17,
+                "bottom": 66.5,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Loads L1-N value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "load_l1",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 13,
+                "align": "right",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 83,
+                "top": 27,
+                "right": 3.5,
+                "bottom": 66.5,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Loads L2-N label",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "L2-N"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 11,
+                "align": "left",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 76,
+                "top": 33.5,
+                "right": 17,
+                "bottom": 60,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Loads L2-N value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "load_l2",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 13,
+                "align": "right",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 83,
+                "top": 33.5,
+                "right": 3.5,
+                "bottom": 60,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Battery title",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "BATTERY"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 12,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 75,
+                "top": 55.5,
+                "right": 3,
+                "bottom": 39,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Battery value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "battery_abs",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 22,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 75,
+                "top": 61,
+                "right": 3,
+                "bottom": 27,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Battery Direction value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "battery",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 13,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 75,
+                "top": 73,
+                "right": 3,
+                "bottom": 19.5,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Battery SOC label",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "SOC"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 11,
+                "align": "left",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 76,
+                "top": 81.5,
+                "right": 17,
+                "bottom": 11.5,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Battery SOC value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "soc",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 13,
+                "align": "right",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 83,
+                "top": 81.5,
+                "right": 3.5,
+                "bottom": 11.5,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Generator title",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "GEN · AC IN"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 11,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 3,
+                "top": 59.5,
+                "right": 75,
+                "bottom": 35,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Generator value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "gen_v",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 12,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 3,
+                "top": 65,
+                "right": 75,
+                "bottom": 27,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Generator Frequency label",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "Freq"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 11,
+                "align": "left",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 4,
+                "top": 76,
+                "right": 89,
+                "bottom": 17,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Generator Frequency value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "gen_hz",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 12,
+                "align": "right",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 11,
+                "top": 76,
+                "right": 75.5,
+                "bottom": 17,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Inverter title",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "INVERTER"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 12,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 37,
+                "top": 16,
+                "right": 37,
+                "bottom": 78,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Inverter model",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "EG4 12000XP"
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 15,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 37,
+                "top": 33,
+                "right": 37,
+                "bottom": 59,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Inverter sub",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "off-grid · 120/240 V"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 11,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 37,
+                "top": 41,
+                "right": 37,
+                "bottom": 51,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "text",
+              "name": "Inverter mode label",
+              "config": {
+                "text": {
+                  "mode": "fixed",
+                  "fixed": "Mode"
+                },
+                "color": {
+                  "fixed": "#8a8f98"
+                },
+                "size": 11,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 37,
+                "top": 56,
+                "right": 37,
+                "bottom": 38,
+                "rotation": 0
+              }
+            },
+            {
+              "type": "metric-value",
+              "name": "Inverter mode value",
+              "config": {
+                "text": {
+                  "mode": "field",
+                  "field": "state",
+                  "fixed": ""
+                },
+                "color": {
+                  "fixed": "text"
+                },
+                "size": 12,
+                "align": "center",
+                "valign": "middle"
+              },
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "constraint": {
+                "horizontal": "scale",
+                "vertical": "scale"
+              },
+              "placement": {
+                "left": 37,
+                "top": 62,
+                "right": 37,
+                "bottom": 24,
+                "rotation": 0
+              }
+            }
+          ],
+          "background": {
+            "color": {
+              "fixed": "transparent"
+            }
+          },
+          "border": {
+            "color": {
+              "fixed": "transparent"
+            }
+          },
+          "constraint": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "placement": {
+            "left": 0,
+            "top": 0,
+            "width": 100,
+            "height": 100,
+            "rotation": 0
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "SOC",
+      "description": "Battery state of charge (%), latest reading in the selected range; sparkline = the range. Register 'soc'. Source: EG4 cloud (cloud_http). A new point arrives only when EG4 publishes, about every 1-2 min (sometimes up to 5 min); nothing is written in between.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 14,
+        "y": 0
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "pluginVersion": "13.2.2",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\")\n  |> filter(fn: (r) => r.name =~ /^(soc)$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> group()\n  |> keep(columns: [\"_time\", \"name\", \"_value\"])\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> map(fn: (r) => ({\n      _time: r._time,\n      \"State of charge\": r.soc,\n  }))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#199e70"
+          },
+          "noValue": "No data in range",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#199e70",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "text": {},
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Freshness",
+      "description": "Time since the newest point was written (register 'soc', looks back 30 days, always relative to now, not the time picker). Live < 5 min, Delayed 5-15 min, Stale ≥ 15 min. The EG4 cloud normally publishes every 1-2 min, occasionally up to 5 min, so short 'Delayed' blips can be normal; the cloud's own reading is typically another ~1 min older than its write time. Stale means the collector or the cloud has stopped updating and every other number on this dashboard is old.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 0
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "pluginVersion": "13.2.2",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r.name == \"soc\" and r._field == \"value\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({\n      \"Since last point\": float(v: int(v: now()) - int(v: r._time)) / 1000000000.0,\n      \"Status\": float(v: int(v: now()) - int(v: r._time)) / 1000000000.0,\n  }))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "No data in 30 days",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ca30c",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 300
+              },
+              {
+                "color": "#d03b3b",
+                "value": 900
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": null,
+                      "to": 300,
+                      "result": {
+                        "text": "Live",
+                        "index": 0,
+                        "color": "#0ca30c"
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 300,
+                      "to": 900,
+                      "result": {
+                        "text": "Delayed",
+                        "index": 1,
+                        "color": "#fab219"
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 900,
+                      "to": null,
+                      "result": {
+                        "text": "Stale",
+                        "index": 2,
+                        "color": "#d03b3b"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "text": {},
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Solar",
+      "description": "Total solar power (PV1 + PV2 MPPT inputs), latest reading; sparkline = selected range. Source: EG4 cloud (cloud_http). A new point arrives only when EG4 publishes, about every 1-2 min (sometimes up to 5 min); nothing is written in between.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 14,
+        "y": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "pluginVersion": "13.2.2",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\")\n  |> filter(fn: (r) => r.name =~ /^(pv1_power|pv2_power)$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> group()\n  |> keep(columns: [\"_time\", \"name\", \"_value\"])\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> map(fn: (r) => ({\n      _time: r._time,\n      \"Solar\": r.pv1_power + r.pv2_power,\n  }))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#c98500"
+          },
+          "noValue": "No data in range",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#c98500",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "text": {},
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Load",
+      "description": "House consumption = inverter backup (EPS) output power, register eps_power (off-grid, so this is everything the house draws). Latest reading; sparkline = selected range. Source: EG4 cloud (cloud_http). A new point arrives only when EG4 publishes, about every 1-2 min (sometimes up to 5 min); nothing is written in between.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "pluginVersion": "13.2.2",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\")\n  |> filter(fn: (r) => r.name =~ /^(eps_power)$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> group()\n  |> keep(columns: [\"_time\", \"name\", \"_value\"])\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> map(fn: (r) => ({\n      _time: r._time,\n      \"Load\": r.eps_power,\n  }))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "noValue": "No data in range",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "text": {},
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Battery",
+      "description": "Battery power, signed: positive = charging, negative = discharging (charge_power − discharge_power), with the direction spelled out. Latest reading; sparkline = selected range. Source: EG4 cloud (cloud_http). A new point arrives only when EG4 publishes, about every 1-2 min (sometimes up to 5 min); nothing is written in between.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 14,
+        "y": 8
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "pluginVersion": "13.2.2",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\")\n  |> filter(fn: (r) => r.name =~ /^(charge_power|discharge_power)$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> group()\n  |> keep(columns: [\"_time\", \"name\", \"_value\"])\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> map(fn: (r) => ({\n      _time: r._time,\n      \"Battery\": r.charge_power - r.discharge_power,\n  }))"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\")\n  |> filter(fn: (r) => r.name =~ /^(charge_power|discharge_power)$/)\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"name\", \"_value\"])\n  |> pivot(rowKey: [], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({\n      \"Direction\": r.charge_power - r.discharge_power,\n  }))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#199e70"
+          },
+          "noValue": "No data in range",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#199e70",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Direction"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 0.5,
+                      "to": null,
+                      "result": {
+                        "text": "Charging",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": null,
+                      "to": -0.5,
+                      "result": {
+                        "text": "Discharging",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": -0.5,
+                      "to": 0.5,
+                      "result": {
+                        "text": "Idle",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "text": {
+          "valueSize": 26
+        },
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "textMode": "value",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Generator",
+      "description": "Generator (AC input) voltage and frequency, latest reading; sparkline = selected range. 0 V means no generator connected. There is no generator power register, so only voltage and frequency are shown. Kept in its own panel so its colour never shares a chart with Solar / Battery / Load. Source: EG4 cloud (cloud_http). A new point arrives only when EG4 publishes, about every 1-2 min (sometimes up to 5 min); nothing is written in between.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 8
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "pluginVersion": "13.2.2",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\")\n  |> filter(fn: (r) => r.name =~ /^(gen_voltage|gen_frequency)$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> group()\n  |> keep(columns: [\"_time\", \"name\", \"_value\"])\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> map(fn: (r) => ({\n      _time: r._time,\n      \"Voltage\": r.gen_voltage,\n      \"Frequency\": r.gen_frequency,\n  }))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#d95926"
+          },
+          "noValue": "No data in range",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d95926",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Voltage"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": null,
+                      "to": 5,
+                      "result": {
+                        "text": "Not connected",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Frequency"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "hertz"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": null,
+                      "to": 1,
+                      "result": {
+                        "text": "—",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "text": {
+          "titleSize": 12,
+          "valueSize": 18
+        },
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard"
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Power — last 24 h",
+      "description": "Solar (PV1 + PV2), battery (signed: above 0 = charging, below 0 = discharging) and load (backup/EPS output = house consumption), in watts. Always the last 24 h, independent of the dashboard time picker. Points are averaged per display interval. Source: EG4 cloud (cloud_http). A new point arrives only when EG4 publishes, about every 1-2 min (sometimes up to 5 min); nothing is written in between. Lines are broken where no point arrived for more than 10 min, so outages show as gaps.",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "pluginVersion": "13.2.2",
+      "timeFrom": "24h",
+      "hideTimeOverride": false,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\")\n  |> filter(fn: (r) => r.name =~ /^(pv1_power|pv2_power|charge_power|discharge_power|eps_power)$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> group()\n  |> keep(columns: [\"_time\", \"name\", \"_value\"])\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> map(fn: (r) => ({\n      _time: r._time,\n      \"Solar\": r.pv1_power + r.pv2_power,\n      \"Battery (+ charge / − discharge)\": r.charge_power - r.discharge_power,\n      \"Load\": r.eps_power,\n  }))"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "renameByName": {},
+            "indexByName": {
+              "_time": 0,
+              "Solar": 1,
+              "Battery (+ charge / − discharge)": 2,
+              "Load": 3
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#8a8f98"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 4,
+            "spanNulls": 600000,
+            "insertNulls": 600000,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisSoftMin": 0,
+            "barAlignment": 0,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "#8a8f98",
+                "value": 0
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Solar"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Battery (+ charge / − discharge)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#199e70"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Load"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      }
+    }
+  ]
+}

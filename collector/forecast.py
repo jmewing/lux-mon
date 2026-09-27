@@ -565,7 +565,7 @@ def _store_influxdb(influx_url: str, influx_token: str, influx_org: str,
     Uses the InfluxDB v2 write API directly so data is flushed immediately,
     avoiding async-batch flush issues in short-lived contexts.
 
-    The existing Grafana panels in lux-mon-charts.json expect:
+    Grafana panels can query:
       - measurement "PV power predicted", field "combined"
       - measurement "Cloud cover", field "combined"
     """

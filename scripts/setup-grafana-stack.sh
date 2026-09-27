@@ -125,6 +125,7 @@ apiVersion: 1
 
 datasources:
   - name: lux-mon
+    uid: lux-mon
     type: influxdb
     access: proxy
     url: http://127.0.0.1:8086
@@ -135,6 +136,23 @@ datasources:
       version: InfluxQL
       organization: luxmon
       tlsSkipVerify: true
+      httpHeaderName1: Authorization
+    secureJsonData:
+      token: "$TOKEN"
+      httpHeaderValue1: "Token $TOKEN"
+
+  # Flux datasource used by the eg4-* dashboards.
+  - name: lux-mon-flux
+    uid: lux-mon-flux
+    type: influxdb
+    access: proxy
+    url: http://127.0.0.1:8086
+    editable: true
+    jsonData:
+      version: Flux
+      organization: luxmon
+      defaultBucket: luxmon
+      tlsSkipVerify: true
     secureJsonData:
       token: "$TOKEN"
 EOF
@@ -144,7 +162,8 @@ else
 fi
 
 sudo cp "$REPO_DIR/grafana/provisioning/dashboards/dashboards.yaml" /etc/grafana/provisioning/dashboards/lux-mon.yaml
-sudo cp "$REPO_DIR/grafana/dashboards/lux-mon-charts.json" /var/lib/grafana/dashboards/lux-mon/
+sudo rm -f /var/lib/grafana/dashboards/lux-mon/*.json
+sudo cp "$REPO_DIR"/grafana/dashboards/*.json /var/lib/grafana/dashboards/lux-mon/
 
 # Bind Grafana to localhost only
 sudo sed -i 's/^;\?http_addr =.*/http_addr = 127.0.0.1/' /etc/grafana/grafana.ini 2>/dev/null || true
@@ -154,7 +173,7 @@ sudo systemctl restart grafana-server
 echo "==> Done."
 echo "==> InfluxDB 2.x: http://127.0.0.1:8086 (org: luxmon, bucket: luxmon)"
 echo "==> MQTT: 127.0.0.1:1883"
-echo "==> Grafana: http://127.0.0.1:3000/grafana/d/lux-mon-charts/lux-mon-charts"
+echo "==> Grafana: http://127.0.0.1:3000/grafana/d/eg4-flow"
 if [[ -f /tmp/influx-luxmon.token ]]; then
   echo "==> API token saved to /tmp/influx-luxmon.token and printed above"
 fi

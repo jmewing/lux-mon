@@ -22,11 +22,15 @@ logger = logging.getLogger("luxmon.settings")
 
 # ── Environment variable mapping ────────────────────────────────────────────
 #
-# The collector reads configuration from environment variables (LUX_*) first,
-# and only falls back to the MariaDB `lux_settings` table when the env var is
-# unset/empty. This mapping lets the API compute the *effective* value (what is
-# actually running) using the same precedence, so the settings page reflects
-# reality instead of a stale DB row.
+# On startup the collector seeds missing/empty `lux_settings` rows from these
+# environment variables (seed_from_env). After that the database is
+# authoritative: a value stored in the DB overrides the environment, and the
+# .env file is only a bootstrap/fallback. Note that effective_value() below
+# still prefers a set env var when *displaying* a value, so the settings page
+# can differ from what the collector runs once a DB row has been changed.
+#
+# Credentials and connection details that must never be stored in the DB or
+# exposed through the settings API (e.g. LUX_CLOUD_*) are deliberately absent.
 #
 # Each entry: setting_key -> (env_var, cast)
 #   cast: None (string), "int", "float", or "bool"
@@ -117,6 +121,22 @@ def effective_value(name: str, db_value: Optional[str]):
         return db_value
     return DEFAULTS.get(name, "")
 
+
+# Valid values for the `transport` setting (see collector._create_transport).
+TRANSPORT_OPTIONS = ("tcp_active", "tcp_passive", "replay", "cloud_http")
+
+
+def validate_setting(name: str, value: str) -> Optional[str]:
+    """Return an error message if a setting value is invalid, else None.
+
+    Only settings with a closed set of values the collector depends on are
+    checked (currently `transport`); free-form values are accepted as-is.
+    """
+    if name == "transport" and value not in TRANSPORT_OPTIONS:
+        return f"transport must be one of: {', '.join(TRANSPORT_OPTIONS)}"
+    return None
+
+
 # Default settings with their initial values.
 # These are inserted on first run if the row doesn't exist.
 DEFAULTS = {
@@ -146,7 +166,7 @@ DEFAULTS = {
 
     # ── Collector ──
     "write_interval_sec": "5",          # Seconds between MariaDB writes
-    "transport": "tcp_active",           # tcp_active, tcp_passive, replay
+    "transport": "tcp_active",           # tcp_active, tcp_passive, replay, cloud_http
     "dongle_host": "192.168.1.100",    # WiFi dongle IP
     "dongle_port": "8000",              # WiFi dongle port
     "datalog_serial": "",               # WiFi dongle / datalog serial number
@@ -410,6 +430,7 @@ SETTING_META = {
             ("tcp_active", "Active polling (Modbus TCP)"),
             ("tcp_passive", "Passive broadcast stream"),
             ("replay", "Replay capture file"),
+            ("cloud_http", "EG4 cloud portal (HTTPS, read-only)"),
         ],
         "hint": "How the collector reads inverter data",
     },
@@ -436,7 +457,7 @@ SETTING_META = {
         "label": "Inverter Serial",
         "type": "text",
         "section": "collector",
-        "hint": "Inverter serial number (required for active polling)",
+        "hint": "Inverter serial number (required for tcp_active and cloud_http)",
     },
 
     # ── InfluxDB ──

@@ -298,6 +298,87 @@ def _build_computed(decoded: dict) -> Dict[str, float]:
     return computed
 
 
+# Temperatures shown in the configured unit by the display backends (InfluxDB,
+# MQTT). Other °C registers (cell temperatures, NTC sensors) stay in °C.
+_DISPLAY_TEMP_KEYS = (
+    "temp_inverter", "temp_battery", "temp_radiator_1", "temp_radiator_2",
+    "outside_temperature",
+)
+
+
+def convert_temperatures(decoded: dict, temperature_unit: str) -> dict:
+    """Return decoded with the display temperatures in temperature_unit.
+
+    Celsius returns decoded itself; fahrenheit returns a shallow copy with
+    the values converted (rounded to 0.1) and the unit set to "°F".
+    """
+    if temperature_unit != "fahrenheit":
+        return decoded
+    out = dict(decoded)
+    for key in _DISPLAY_TEMP_KEYS:
+        info = out.get(key)
+        if not isinstance(info, dict) or "value" not in info:
+            continue
+        try:
+            c = float(info["value"])
+            out[key] = {**info, "value": round(c * 9.0 / 5.0 + 32.0, 1), "unit": "°F"}
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def influx_lines(decoded: dict, ts_ns: int, source_meta: Optional[dict] = None) -> List[str]:
+    """Build the InfluxDB lines for one decoded snapshot at ts_ns (epoch ns).
+
+    One line per SolarAssistant-style measurement, one `luxmon_register`
+    line per decoded register (tags name, unit) and, when source_meta is set
+    (cloud_http), one `luxmon_cloud` line. decoded must already be in the
+    display temperature unit (convert_temperatures).
+    """
+    lines: List[str] = []
+
+    computed = _build_computed(decoded)
+    all_values: dict[str, float] = {}
+    for key, info in decoded.items():
+        if isinstance(info, dict) and "value" in info:
+            val = _sa_value(decoded, key)
+            if val is not None:
+                all_values[key] = val
+    all_values.update(computed)
+
+    # Emit SolarAssistant-compatible measurement points
+    measurements: Dict[str, Dict[str, Any]] = {}
+    for lux_name, val in all_values.items():
+        if lux_name not in _REGISTER_TO_SA:
+            continue
+        measurement, field = _REGISTER_TO_SA[lux_name]
+        measurements.setdefault(measurement, {})[field] = val
+
+    for measurement, fields in measurements.items():
+        line = _to_line(measurement, {}, fields, ts_ns)
+        if line:
+            lines.append(line)
+
+    # Also write a catch-all luxmon register point for every decoded register
+    for key, info in decoded.items():
+        val = _sa_value(decoded, key)
+        if val is not None:
+            line = _to_line("luxmon_register", {"name": key, "unit": info.get("unit", "")}, {"value": val}, ts_ns)
+            if line:
+                lines.append(line)
+
+    # Data-source marker for cloud-fed snapshots (cloud_http): a separate
+    # measurement, so existing series keep their tags and cardinality.
+    if source_meta:
+        tags = {"data_source": "cloud", "serial": str(source_meta.get("serial", ""))}
+        fields = {k: v for k, v in source_meta.items() if k not in ("data_source", "serial")}
+        line = _to_line("luxmon_cloud", tags, fields, ts_ns)
+        if line:
+            lines.append(line)
+
+    return lines
+
+
 class Outputs:
     """Container for all enabled output backends."""
 
@@ -471,39 +552,36 @@ class Outputs:
             self._mqtt_commands = None
 
     # ── Public write entrypoint ─────────────────────────────────────
-    def write(self, decoded: dict, raw_registers: dict[int, int]) -> None:
-        """Write a decoded snapshot to all enabled backends."""
+    def write(
+        self,
+        decoded: dict,
+        raw_registers: dict[int, int],
+        interval_sec: Optional[float] = None,
+        source_meta: Optional[dict] = None,
+    ) -> None:
+        """Write a decoded snapshot to all enabled backends.
+
+        interval_sec is the time this snapshot represents for the hourly
+        energy rollup (default: the configured write interval). source_meta,
+        when set (cloud_http), is written as one extra `luxmon_cloud` InfluxDB
+        point; MariaDB and MQTT ignore it.
+        """
         if self.cfg.mariadb_enabled:
-            self._write_mariadb(decoded, raw_registers)
+            self._write_mariadb(decoded, raw_registers, interval_sec=interval_sec)
         # Use temperature-unit-converted copy for display backends
         out_decoded = self._convert_temperatures(decoded)
         if self.cfg.influx_enabled:
-            self._write_influxdb(out_decoded)
+            self._write_influxdb(out_decoded, source_meta=source_meta)
         if self._mqtt_client:
             self._write_mqtt(out_decoded)
 
     def _convert_temperatures(self, decoded: dict) -> dict:
         """Return a shallow copy with temperature values converted if needed."""
-        if self.cfg.temperature_unit != "fahrenheit":
-            return decoded
-        out = dict(decoded)
-        temp_keys = (
-            "temp_inverter", "temp_battery", "temp_radiator_1", "temp_radiator_2",
-            "outside_temperature",
-        )
-        for key in temp_keys:
-            info = out.get(key)
-            if not isinstance(info, dict) or "value" not in info:
-                continue
-            try:
-                c = float(info["value"])
-                out[key] = {**info, "value": round(c * 9.0 / 5.0 + 32.0, 1), "unit": "°F"}
-            except (TypeError, ValueError):
-                continue
-        return out
+        return convert_temperatures(decoded, self.cfg.temperature_unit)
 
     # ── MariaDB writing ─────────────────────────────────────────────
-    def _write_mariadb(self, decoded: dict, raw_registers: dict[int, int]) -> None:
+    def _write_mariadb(self, decoded: dict, raw_registers: dict[int, int],
+                       interval_sec: Optional[float] = None) -> None:
         import pymysql
         if not self._ensure_mariadb():
             logger.warning("MariaDB unavailable, skipping snapshot write")
@@ -539,7 +617,7 @@ class Outputs:
                         f"INSERT INTO {prefix}registers (snapshot_id, name, value, unit) VALUES (%s, %s, %s, %s)",
                         rows,
                     )
-                self._update_hourly_energy(cur, decoded, prefix)
+                self._update_hourly_energy(cur, decoded, prefix, interval_sec=interval_sec)
         except Exception:
             logger.exception("MariaDB write failed, will reconnect on next attempt")
             try:
@@ -551,8 +629,14 @@ class Outputs:
 
         logger.info("Wrote MariaDB snapshot %d with %d registers", snapshot_id, len(rows))
 
-    def _update_hourly_energy(self, cur, decoded: dict, prefix: str) -> None:
-        """Accumulate per-hour energy-in/out counters for SolarAssistant-style rollups."""
+    def _update_hourly_energy(self, cur, decoded: dict, prefix: str,
+                              interval_sec: Optional[float] = None) -> None:
+        """Accumulate per-hour energy-in/out counters for SolarAssistant-style rollups.
+
+        interval_sec is how long this snapshot's power values are assumed to
+        have lasted. Callers with gated writes (cloud_http) pass the real time
+        since the previous write; otherwise the configured write interval is used.
+        """
         hour = time.strftime("%Y-%m-%d %H:00:00")
         energy_pairs = {
             "battery": ("charge_power", "discharge_power"),
@@ -561,8 +645,9 @@ class Outputs:
             "load": ("inv_power", None),
         }
         # Compute average power over the interval by integrating current snapshot values.
-        interval_sec = float(self.cfg._write_interval) if hasattr(self.cfg, "_write_interval") else 5.0
-        interval_hours = interval_sec / 3600.0
+        if interval_sec is None:
+            interval_sec = float(self.cfg._write_interval) if hasattr(self.cfg, "_write_interval") else 5.0
+        interval_hours = float(interval_sec) / 3600.0
 
         # Battery in/out energy for this interval (kWh)
         charge = _sa_value(decoded, "charge_power") or 0.0
@@ -605,39 +690,12 @@ class Outputs:
         )
 
     # ── InfluxDB writing ────────────────────────────────────────────
-    def _write_influxdb(self, decoded: dict) -> None:
-        ts_ns = int(time.time_ns())
-        lines: List[str] = []
-
-        computed = _build_computed(decoded)
-        all_values: dict[str, float] = {}
-        for key, info in decoded.items():
-            if isinstance(info, dict) and "value" in info:
-                val = _sa_value(decoded, key)
-                if val is not None:
-                    all_values[key] = val
-        all_values.update(computed)
-
-        # Emit SolarAssistant-compatible measurement points
-        measurements: Dict[str, Dict[str, Any]] = {}
-        for lux_name, val in all_values.items():
-            if lux_name not in _REGISTER_TO_SA:
-                continue
-            measurement, field = _REGISTER_TO_SA[lux_name]
-            measurements.setdefault(measurement, {})[field] = val
-
-        for measurement, fields in measurements.items():
-            line = _to_line(measurement, {}, fields, ts_ns)
-            if line:
-                lines.append(line)
-
-        # Also write a catch-all luxmon register point for every decoded register
-        for key, info in decoded.items():
-            val = _sa_value(decoded, key)
-            if val is not None:
-                line = _to_line("luxmon_register", {"name": key, "unit": info.get("unit", "")}, {"value": val}, ts_ns)
-                if line:
-                    lines.append(line)
+    def _write_influxdb(self, decoded: dict, source_meta: Optional[dict] = None,
+                        ts_ns: Optional[int] = None) -> None:
+        """Write one snapshot; ts_ns (epoch ns) defaults to now."""
+        if ts_ns is None:
+            ts_ns = int(time.time_ns())
+        lines = influx_lines(decoded, ts_ns, source_meta)
 
         if not lines:
             return
