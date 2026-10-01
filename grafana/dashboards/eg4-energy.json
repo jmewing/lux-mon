@@ -1407,6 +1407,405 @@
         },
         "content": "**Source.** EG4 12000XP counters read from the EG4 cloud. A new sample arrives only when EG4 publishes (about every 1–2 min, sometimes 5 min); check *Data freshness* first.\n\n**Solar** is the combined yield of both MPPT inputs. The cloud has no per-string energy (it is stored as `pv1_energy_*`).\n\n**Consumption** is the inverter's backup (EPS) output, i.e. what the house used.\n\n**History starts 8 May 2026** (install day). Everything before 26 Sep 2026 18:26 was imported from the EG4 portal's data export (~4-min rows); later data is recorded live. Days or months without samples are left out, not drawn as zero. Today and this month are marked *(so far)*; the first month is marked with the day it starts on.\n\n**Self-sufficiency** cannot subtract generator energy because the cloud has no generator-energy counter; *Generator today* flags a day on which the generator was seen running (the percentage is then overstated)."
       }
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Accumulated solar",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      }
+    },
+    {
+      "id": 21,
+      "type": "barchart",
+      "title": "Solar accumulated · lifetime total at each month end",
+      "description": "Total solar energy produced since install (8 May 2026), as the inverter's lifetime counter (both MPPTs; pv1_energy_total) at the end of each calendar month, America/Los_Angeles — the bars grow by one step per month. Consumption (load_energy_total) alongside for comparison; the gap is solar that went into the battery or was never needed. The current month is the latest reading, marked '(so far)'. Last 12 months, whatever the time picker says. For a continuous curve, use 'Running total · selected range' below with a range that starts before install.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 16,
+        "x": 0,
+        "y": 36
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"timezone\"\nimport \"date\"\n\nloc = timezone.location(name: \"America/Los_Angeles\")\nmonths = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"]\nthisMonth = date.truncate(t: now(), unit: 1mo, location: loc)\n\nfrom(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"pv1_energy_total\" or r.name == \"load_energy_total\"))\n  |> group(columns: [\"name\"])\n  |> aggregateWindow(every: 1mo, fn: max, createEmpty: false, timeSrc: \"_start\", location: loc)\n  |> map(fn: (r) => {\n      m = date.truncate(t: r._time, unit: 1mo, location: loc)\n      label = months[date.month(t: m, location: loc) - 1] + \" \" + string(v: date.year(t: m, location: loc))\n      return {_time: m, _value: r._value, series: if r.name == \"pv1_energy_total\" then \"Solar\" else \"Consumption\", Month: if m == thisMonth then label + \" (so far)\" else label}\n    })\n  |> group()\n  |> pivot(rowKey: [\"_time\", \"Month\"], columnKey: [\"series\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"Month\", \"Solar\", \"Consumption\"])\n"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Month": 0,
+              "Solar": 1,
+              "Consumption": 2
+            },
+            "excludeByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 90,
+            "gradientMode": "none",
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Solar"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumption"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "xField": "Month",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "showValue": "never",
+        "stacking": "none",
+        "groupWidth": 0.7,
+        "barWidth": 0.92,
+        "barRadius": 0,
+        "fullHighlight": false,
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "timeFrom": "now-12M/M",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "Accumulated in selected range",
+      "description": "Solar produced and energy consumed within the time range chosen in the picker: the highest minus the lowest lifetime-counter reading in that range. Pick 'Last 7 days', 'This month so far' etc. For a range that starts before install day this is the full lifetime total.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 16,
+        "y": 36
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"pv1_energy_total\" or r.name == \"load_energy_total\"))\n  |> group(columns: [\"name\"])\n  |> spread()\n  |> map(fn: (r) => ({_value: r._value, series: if r.name == \"pv1_energy_total\" then \"Solar\" else \"Consumption\"}))\n  |> group()\n  |> pivot(rowKey: [], columnKey: [\"series\"], valueColumn: \"_value\")\n"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Solar": 0,
+              "Consumption": 1
+            },
+            "excludeByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [],
+          "noValue": "No data in range",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Solar"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumption"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Running total · selected range",
+      "description": "Solar produced (and energy consumed) since the start of the time range chosen in the picker, starting at 0 and ending at the 'Accumulated in selected range' figures. Useful for 'how much so far this week/month'. Flat stretches are nights; a steeper solar line means a sunnier day.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "pluginVersion": "13.2.2",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"timezone\"\n\nloc = timezone.location(name: \"America/Los_Angeles\")\ntotals = from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"pv1_energy_total\" or r.name == \"load_energy_total\"))\n  |> group(columns: [\"name\"])\n\n// Baseline = the lowest lifetime reading in the range, so the curve starts at 0 and ends\n// exactly at the 'accumulated in selected range' figure.\nbase = totals |> min() |> map(fn: (r) => ({name: r.name, base: r._value}))\n\njoin(tables: {t: totals |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false, location: loc), b: base}, on: [\"name\"])\n  |> map(fn: (r) => ({_time: r._time, _value: r._value - r.base, series: if r.name == \"pv1_energy_total\" then \"Solar\" else \"Consumption\"}))\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"series\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "_time": 0,
+              "Solar": 1,
+              "Consumption": 2
+            },
+            "excludeByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#8a8f98"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 4,
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisSoftMin": 0,
+            "barAlignment": 0,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Solar"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumption"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      }
     }
   ]
 }

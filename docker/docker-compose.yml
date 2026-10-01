@@ -19,11 +19,19 @@ x-lux-env: &lux-env
   LUX_DATALOG_SERIAL: ${LUX_DATALOG_SERIAL}
   LUX_INVERTER_SERIAL: ${LUX_INVERTER_SERIAL}
   LUX_WRITE_INTERVAL: ${LUX_WRITE_INTERVAL:-5}
+  # Fallback when MariaDB is unreachable at start; keep equal to the temperature_unit setting.
+  LUX_TEMPERATURE_UNIT: ${LUX_TEMPERATURE_UNIT:-fahrenheit}
   # EG4 cloud (transport=cloud_http). Credentials are passed to the collector
   # service only (see below), never to the api / db-init containers.
   LUX_CLOUD_BASE_URL: ${LUX_CLOUD_BASE_URL:-https://monitor.eg4electronics.com}
   LUX_CLOUD_POLL_SEC: ${LUX_CLOUD_POLL_SEC:-60}
   LUX_CLOUD_ENERGY_SEC: ${LUX_CLOUD_ENERGY_SEC:-300}
+  # Automatic gap-filling of InfluxDB from the EG4 data export (collector only;
+  # needs the EG4 login above, off for transport=replay).
+  LUX_GAPFILL_ENABLED: ${LUX_GAPFILL_ENABLED:-true}
+  LUX_GAPFILL_INTERVAL_MIN: ${LUX_GAPFILL_INTERVAL_MIN:-180}
+  LUX_GAPFILL_LOOKBACK_DAYS: ${LUX_GAPFILL_LOOKBACK_DAYS:-7}
+  LUX_GAPFILL_MIN_GAP_MIN: ${LUX_GAPFILL_MIN_GAP_MIN:-10}
 
   # MariaDB
   LUX_MARIADB_HOST: mariadb
@@ -282,6 +290,8 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_NAME: "Main Org."
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # Address other devices use to reach Grafana (share links, redirects).
+      GF_SERVER_ROOT_URL: ${LUX_GRAFANA_ROOT_URL:-http://localhost:3000/}
       # Home page: the live power flow dashboard (copied in by grafana-init).
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/lux-mon/eg4-flow.json
     volumes:

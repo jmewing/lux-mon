@@ -15,6 +15,11 @@ settings as the collector):
     docker exec lux-collector python -m collector.backfill --find-start --dry-run
     docker exec lux-collector python -m collector.backfill --start 2025-06-01
 
+--fill-gaps fills holes in the live data instead (collector.gapfill, which
+the collector also runs in the background):
+
+    docker exec lux-collector python -m collector.backfill --fill-gaps --dry-run
+
 Safety:
   - Read-only towards EG4: the login and runtime POSTs of cloud_http (its
     allowlist is unchanged) plus one GET, the data export, which is checked
@@ -27,7 +32,8 @@ Safety:
     before each window's data, so re-runs keep the same cutoff even after an
     interrupted run). A later --cutoff needs --allow-live-overlap. Re-running
     a range overwrites the same points (same series and timestamp); it never
-    duplicates them.
+    duplicates them. The only exception is --fill-gaps: rows strictly inside
+    a detected hole in the live data (Backfiller `gaps`), nothing else.
   - Write runs need a verified plant time zone (the export's Time column is
     plant-local): portal runs check it against the inverter clock and stop
     when it differs or cannot be read; --from-xls runs need --tz. Without
@@ -198,6 +204,10 @@ _RUNTIME_COLUMNS: Tuple[Tuple[Tuple[str, ...], str, Optional[float]], ...] = (
 
 class BackfillError(Exception):
     """A condition that stops the backfill (reported without a traceback)."""
+
+
+class RunStopped(Exception):
+    """The process is stopping: abandon the run (raised by a stop-aware sleep)."""
 
 
 class ExportFormatError(BackfillError):
@@ -386,15 +396,18 @@ class Stats:
     skipped_time: int = 0
     skipped_no_battery: int = 0
     skipped_overlap: int = 0
+    skipped_outside_gaps: int = 0
     skipped_serial: int = 0
     duplicates: int = 0
     dst_fold: int = 0
     dst_gap: int = 0
+    dst_dropped: int = 0
     unknown_status: Counter = field(default_factory=Counter)
 
 
 def localize_rows(rows: Sequence[Dict[str, Any]], tz: tzinfo,
-                  stats: Optional[Stats] = None) -> List[Tuple[int, str, Dict[str, Any]]]:
+                  stats: Optional[Stats] = None,
+                  drop_ambiguous: bool = False) -> List[Tuple[int, str, Dict[str, Any]]]:
     """Convert one sheet's plant-local Time cells to UTC epoch seconds.
 
     Returns (utc_seconds, local_text, row) in row order. At a DST fall-back
@@ -403,6 +416,13 @@ def localize_rows(rows: Sequence[Dict[str, Any]], tz: tzinfo,
     until the ambiguity ends. A wall time inside a spring-forward gap is read
     with the pre-transition offset (fold=0) and counted. A sheet listed
     newest first is reversed.
+
+    Row order cannot tell the passes apart when the sheet lacks rows of one
+    of them (the dongle was offline), and neither can the gaps: the other
+    instant of a repeated wall time may be a live point's reading. That is
+    exactly what a gap-fill looks at, so with drop_ambiguous (gap-fill mode)
+    every row with a repeated wall time is dropped (counted in
+    stats.dst_dropped): at most an hour a year, never an hour off.
     """
     stats = stats if stats is not None else Stats()
     parsed: List[Tuple[datetime, Dict[str, Any]]] = []
@@ -430,9 +450,12 @@ def localize_rows(rows: Sequence[Dict[str, Any]], tz: tzinfo,
             second_pass = False
             if kind == "gap":
                 stats.dst_gap += 1
+        prev = naive
+        if kind == "ambiguous" and drop_ambiguous:
+            stats.dst_dropped += 1
+            continue
         ts = int(naive.replace(tzinfo=tz, fold=fold).timestamp())
         out.append((ts, naive.strftime("%Y-%m-%d %H:%M:%S"), row))
-        prev = naive
     return out
 
 
@@ -447,6 +470,22 @@ def _local_day(ts: float, tz: tzinfo) -> date:
 
 def _iso_utc(ts: float) -> str:
     return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def gap_index(ts: float, gaps: Sequence[Tuple[float, float]], margin: float,
+              not_after: Optional[float] = None) -> Optional[int]:
+    """Index of the gap that holds ts strictly inside its margins, else None.
+
+    A row belongs to gap (start, end) only when start + margin < ts <
+    end - margin (and ts < not_after): never on or next to the live points
+    that bound the gap.
+    """
+    if not_after is not None and ts >= not_after:
+        return None
+    for i, (start, end) in enumerate(gaps):
+        if start + margin < ts < end - margin:
+            return i
+    return None
 
 
 # ── Row -> registers -> decoded ─────────────────────────────────────────────
@@ -600,11 +639,12 @@ def _row_serial(row: Dict[str, Any]) -> str:
 
 
 def sheet_points(sheet: ExportSheet, ctx: MapContext, stats: Optional[Stats] = None,
-                 serial: Optional[str] = None) -> List[RowPoint]:
-    """Decode every usable row of a sheet, in time order."""
+                 serial: Optional[str] = None,
+                 drop_ambiguous: bool = False) -> List[RowPoint]:
+    """Decode every usable row of a sheet, in time order (see localize_rows for drop_ambiguous)."""
     stats = stats if stats is not None else Stats()
     points: List[RowPoint] = []
-    for ts, local, row in localize_rows(sheet.rows, ctx.tz, stats):
+    for ts, local, row in localize_rows(sheet.rows, ctx.tz, stats, drop_ambiguous):
         row_serial = _row_serial(row)
         if serial and row_serial and row_serial != serial:
             stats.skipped_serial += 1
@@ -705,6 +745,50 @@ class InfluxTarget:
                 newest[name] = (t, str(r.values.get("unit") or ""))
         return {name: unit for name, (_, unit) in newest.items()}
 
+    def unit_sets(self, start: float, stop: float) -> Dict[str, set]:
+        """name -> every unit tag of the live luxmon_register points in [start, stop)."""
+        if stop <= start:
+            return {}
+        records = self._query(
+            f'{self._from()} |> range(start: {_flux_time(start)}, stop: {_flux_time(stop)}) '
+            f'|> filter(fn: (r) => r._measurement == "luxmon_register" and r._field == "value") '
+            f'|> last()'
+        )
+        out: Dict[str, set] = {}
+        for r in records:
+            name = r.values.get("name")
+            if name:
+                out.setdefault(name, set()).add(str(r.values.get("unit") or ""))
+        return out
+
+    def reading_time(self, ts: float) -> Optional[float]:
+        """When the reading of the live point written at ts was uploaded (UTC epoch seconds).
+
+        A cloud_http point is written when it is polled, data_age_s after
+        EG4 received the upload (serverTime); its luxmon_cloud point shares
+        the timestamp. None when there is no luxmon_cloud point at ts.
+        """
+        records = self._query(
+            f'{self._from()} |> range(start: {_flux_time(ts - 1)}, stop: {_flux_time(ts + 1)}) '
+            f'|> filter(fn: (r) => r._measurement == "luxmon_cloud" and '
+            f'(r._field == "server_time" or r._field == "data_age_s"))'
+        )
+        fields: Dict[str, Tuple[float, Any]] = {}
+        for r in records:
+            name = r.values.get("_field")
+            t = r.get_time().timestamp()
+            if name and (name not in fields or abs(t - ts) < abs(fields[name][0] - ts)):
+                fields[name] = (t, r.get_value())
+        if "server_time" in fields:
+            server = _parse_server_time(fields["server_time"][1])
+            if server is not None:
+                return server
+        if "data_age_s" in fields:
+            t, age = fields["data_age_s"]
+            if isinstance(age, (int, float)) and not isinstance(age, bool) and math.isfinite(age):
+                return t - float(age)
+        return None
+
     def register_points(self, start: float, stop: float) -> Dict[str, List[Tuple[float, float, str]]]:
         """name -> [(utc seconds, value, unit)] of luxmon_register in [start, stop), time-sorted."""
         records = self._query(
@@ -721,6 +805,48 @@ class InfluxTarget:
         for series in out.values():
             series.sort()
         return out
+
+    def _soc_filter(self) -> str:
+        return '|> filter(fn: (r) => r._measurement == "luxmon_register" and r.name == "soc" and r._field == "value")'
+
+    def soc_times(self, start: float, stop: float) -> List[float]:
+        """Sorted UTC epoch seconds of the luxmon_register soc points in [start, stop)."""
+        if stop <= start:
+            return []
+        records = self._query(
+            f'{self._from()} |> range(start: {_flux_time(start)}, stop: {_flux_time(stop)}) '
+            f'{self._soc_filter()} |> keep(columns: ["_time", "_value"])'
+        )
+        return sorted(r.get_time().timestamp() for r in records)
+
+    def last_soc_before(self, before: float, since: float) -> Optional[float]:
+        """Time of the last luxmon_register soc point in [since, before), if any."""
+        if before <= since:
+            return None
+        records = self._query(
+            f'{self._from()} |> range(start: {_flux_time(since)}, stop: {_flux_time(before)}) '
+            f'{self._soc_filter()} |> last()'
+        )
+        times = [r.get_time().timestamp() for r in records]
+        return max(times) if times else None
+
+    def gapfill_records(self, since: float) -> List[Dict[str, Any]]:
+        """The gap-fill attempt records (luxmon_backfill, tag mode=gapfill) since `since`.
+
+        One dict of fields per record (run_id and timestamp), in no particular order.
+        """
+        records = self._query(
+            f'{self._from()} |> range(start: {_flux_time(since)}) '
+            f'|> filter(fn: (r) => r._measurement == "{BACKFILL_MEASUREMENT}" and r.mode == "gapfill")'
+        )
+        merged: Dict[Tuple[str, float], Dict[str, Any]] = {}
+        for r in records:
+            name = r.values.get("_field")
+            if not name:
+                continue
+            key = (str(r.values.get("run_id") or ""), r.get_time().timestamp())
+            merged.setdefault(key, {})[name] = r.get_value()
+        return list(merged.values())
 
     def write(self, lines: List[str]) -> None:
         """Write one batch synchronously; any error is raised to the caller."""
@@ -740,16 +866,27 @@ class InfluxTarget:
 # ── Backfill core ───────────────────────────────────────────────────────────
 
 class Backfiller:
-    """Turns day sheets into InfluxDB points and writes them (unless dry_run)."""
+    """Turns day sheets into InfluxDB points and writes them (unless dry_run).
+
+    With `gaps` (gap-fill mode, collector.gapfill) only rows strictly inside
+    one of those (start, end) intervals are kept (see gap_index: at least
+    gap_margin from both ends and before not_after), and only those rows are
+    exempt from the cutoff; every other row is dropped.
+    """
 
     def __init__(self, ctx: MapContext, target: Optional[InfluxTarget] = None,
                  cutoff: Optional[float] = None, live_start: Optional[float] = None,
                  live_units: Optional[Dict[str, str]] = None, serial: Optional[str] = None,
                  dry_run: bool = True, run_id: Optional[str] = None, samples: int = 0,
-                 batch_lines: int = BATCH_LINES, out: Callable[[str], None] = print):
+                 batch_lines: int = BATCH_LINES, out: Callable[[str], None] = print,
+                 gaps: Optional[Sequence[Tuple[float, float]]] = None, gap_margin: float = 60.0,
+                 not_after: Optional[float] = None):
         if not dry_run and target is None:
             raise ValueError("a write run needs an InfluxDB target")
         self.ctx = ctx
+        self.gaps = list(gaps) if gaps is not None else None
+        self.gap_margin = float(gap_margin)
+        self.not_after = not_after
         self.target = target
         self.cutoff = cutoff
         self.live_start = live_start
@@ -775,17 +912,30 @@ class Backfiller:
                 continue
             self.stats.sheets += 1
             rows += len(sheet.rows)
-            for p in sheet_points(sheet, self.ctx, self.stats, self.serial):
+            # Gap-fill mode: a repeated DST wall time cannot be placed safely (localize_rows).
+            for p in sheet_points(sheet, self.ctx, self.stats, self.serial, drop_ambiguous=self.gaps is not None):
                 if p.ts in by_ts:
                     self.stats.duplicates += 1  # same UTC second: the later row wins
                 by_ts[p.ts] = p
         points = [by_ts[t] for t in sorted(by_ts)]
+        if self.gaps is not None:
+            kept = [p for p in points if self.gap_of(p.ts) is not None]
+            self.stats.skipped_outside_gaps += len(points) - len(kept)
+            points = kept
         if self.cutoff is not None:
-            kept = [p for p in points if p.ts < self.cutoff]
+            # A row inside a gap fills a hole in the live data, so it is the
+            # only kind of row that may lie after the cutoff.
+            kept = [p for p in points if p.ts < self.cutoff or self.gap_of(p.ts) is not None]
             self.stats.skipped_overlap += len(points) - len(kept)
             points = kept
         self.stats.rows += rows
         return rows, points
+
+    def gap_of(self, ts: float) -> Optional[int]:
+        """Index of the gap (gap-fill mode) that holds ts, else None."""
+        if self.gaps is None:
+            return None
+        return gap_index(ts, self.gaps, self.gap_margin, self.not_after)
 
     def check_units(self, points: Sequence[RowPoint]) -> None:
         """Refuse to write a name under a different unit tag than live data uses."""
@@ -826,15 +976,7 @@ class Backfiller:
             # next one still finds it instead of taking the earliest (by then
             # backfilled) soc point as the first live point.
             self._write_provenance(prov_ts, label)
-        written = 0
-        batch: List[str] = []
-        for p in points:
-            batch.extend(p.lines())
-            if len(batch) >= self.batch_lines:
-                written += self._flush(batch)
-                batch = []
-        if batch:
-            written += self._flush(batch)
+        written = self.write_points(points)
         if not self.dry_run:
             self._write_provenance(prov_ts, label, rows=rows, snapshots=len(points), points=written)
         self.stats.snapshots += len(points)
@@ -845,6 +987,19 @@ class Backfiller:
             " (dry run, nothing written)" if self.dry_run else "",
         )
         return rows, len(points), written
+
+    def write_points(self, points: Sequence[RowPoint]) -> int:
+        """Write the points' lines in batches (count only in a dry run). Returns the line count."""
+        written = 0
+        batch: List[str] = []
+        for p in points:
+            batch.extend(p.lines())
+            if len(batch) >= self.batch_lines:
+                written += self._flush(batch)
+                batch = []
+        if batch:
+            written += self._flush(batch)
+        return written
 
     def _flush(self, lines: List[str]) -> int:
         if not self.dry_run:
@@ -1179,6 +1334,57 @@ def find_first_day(has_rows: Callable[[date], bool], upper: date,
     return hi
 
 
+def download_sheets(client: ExportClient, start: date, end: date,
+                    save: Optional[Callable[[bytes, date, date], None]] = None) -> List[ExportSheet]:
+    """Download and parse the export for the plant-local days start..end (inclusive)."""
+    content = client.export(start, end)
+    if save is not None:
+        save(content, start, end)
+    sheets = parse_workbook(content)
+    got = {s.day for s in sheets}
+    missing = [d for d in (start + timedelta(days=i) for i in range((end - start).days + 1))
+               if d.isoformat() not in got]
+    if missing:
+        logger.info("No worksheet for %d of %d days (%s%s)", len(missing), (end - start).days + 1,
+                    ", ".join(d.isoformat() for d in missing[:5]), " ..." if len(missing) > 5 else "")
+    return sheets
+
+
+def verify_timezone(client: ExportClient, tz: tzinfo, strict: bool) -> None:
+    """Compare the inverter clock's UTC offset with the plant time zone in use.
+
+    strict (a write run without an explicit --tz): a mismatch or a clock that
+    cannot be read raises BackfillError, since a wrong zone shifts every
+    point written. Otherwise both are logged as warnings. A rejected login
+    (CloudAuthError) and a stop request (RunStopped) are always raised.
+    """
+    try:
+        clock = client.device_clock()
+    except (CloudAuthError, RunStopped):
+        raise
+    except Exception as exc:
+        detail = client._redact(f"{type(exc).__name__}: {exc}")
+        reason, clock = f"could not read the inverter clock ({detail})", None
+    else:
+        reason = "the portal did not report deviceTime/serverTime"
+    if clock is None:
+        msg = f"{reason}; the plant time zone {tz} is not verified"
+        if strict:
+            raise BackfillError(f"{msg}: pass --tz with the inverter's time zone")
+        logger.warning(msg)
+        return
+    at, offset = clock
+    expected = datetime.fromtimestamp(at, tz).utcoffset().total_seconds()
+    logger.info("Inverter clock is UTC%+.2fh; %s was UTC%+.2fh at that upload",
+                offset / 3600, tz, expected / 3600)
+    if abs(offset - expected) > TZ_CHECK_TOLERANCE_SEC:
+        msg = (f"the inverter clock (UTC{offset / 3600:+.2f}h) does not match the plant time zone "
+               f"{tz} (UTC{expected / 3600:+.2f}h); pass --tz with the inverter's time zone")
+        if strict:
+            raise BackfillError(msg)
+        logger.warning(msg)
+
+
 # ── Configuration ───────────────────────────────────────────────────────────
 
 @dataclass
@@ -1307,6 +1513,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "day with data and use it as --start")
     p.add_argument("--compare-live", type=_parse_day, metavar="DATE",
                    help="compare that day's export with the live luxmon_register points (writes nothing)")
+    p.add_argument("--fill-gaps", action="store_true",
+                   help="find holes in the live data of the last days and fill them from the export "
+                        "(what the collector's background gap-filler does; see collector/gapfill.py)")
+    p.add_argument("--lookback-days", type=int, metavar="N",
+                   help="--fill-gaps: how many days back to look for gaps (default 7)")
+    p.add_argument("--min-gap-min", type=float, metavar="M",
+                   help="--fill-gaps: minutes between two live points that count as a gap (default 10, min 6)")
     p.add_argument("--dry-run", action="store_true", help="download/parse/map/count, write nothing")
     p.add_argument("--save-xls", metavar="DIR", help="keep the raw .xls downloads in DIR")
     p.add_argument("--from-xls", metavar="FILE", help="read a saved export instead of the portal (no network)")
@@ -1354,8 +1567,8 @@ class Runner:
 
     # Setup
     def open_influx(self) -> None:
-        """Connect and read the first live point. Required for writes and --compare-live."""
-        required = self.writes or self.args.compare_live is not None
+        """Connect and read the first live point. Required for writes, --compare-live and --fill-gaps."""
+        required = self.writes or self.args.compare_live is not None or self.args.fill_gaps
         out = self.cfg.outputs
         if self.writes and not out.influx_enabled:
             raise BackfillError("InfluxDB output is disabled in the lux-mon settings; nothing to backfill into")
@@ -1402,32 +1615,7 @@ class Runner:
         strict (a write run): without --tz, a mismatch or a clock that cannot
         be read stops the run, since a wrong zone shifts every backfilled point.
         """
-        strict = strict and not self.s.tz_explicit
-        try:
-            clock = self.client.device_clock()
-        except CloudAuthError:
-            raise
-        except Exception as exc:
-            detail = self.client._redact(f"{type(exc).__name__}: {exc}")
-            reason, clock = f"could not read the inverter clock ({detail})", None
-        else:
-            reason = "the portal did not report deviceTime/serverTime"
-        if clock is None:
-            msg = f"{reason}; the plant time zone {self.ctx.tz} is not verified"
-            if strict:
-                raise BackfillError(f"{msg}: pass --tz with the inverter's time zone")
-            logger.warning(msg)
-            return
-        at, offset = clock
-        expected = datetime.fromtimestamp(at, self.ctx.tz).utcoffset().total_seconds()
-        logger.info("Inverter clock is UTC%+.2fh; %s was UTC%+.2fh at that upload",
-                    offset / 3600, self.ctx.tz, expected / 3600)
-        if abs(offset - expected) > TZ_CHECK_TOLERANCE_SEC:
-            msg = (f"the inverter clock (UTC{offset / 3600:+.2f}h) does not match the plant time zone "
-                   f"{self.ctx.tz} (UTC{expected / 3600:+.2f}h); pass --tz with the inverter's time zone")
-            if strict:
-                raise BackfillError(msg)
-            logger.warning(msg)
+        verify_timezone(self.client, self.ctx.tz, strict=strict and not self.s.tz_explicit)
 
     def _serial(self) -> Optional[str]:
         return self.cfg.inverter_serial or None
@@ -1442,16 +1630,7 @@ class Runner:
         logger.debug("Saved %s (%d bytes)", path, len(content))
 
     def download(self, start: date, end: date) -> List[ExportSheet]:
-        content = self.client.export(start, end)
-        self._save(content, start, end)
-        sheets = parse_workbook(content)
-        got = {s.day for s in sheets}
-        missing = [d for d in (start + timedelta(days=i) for i in range((end - start).days + 1))
-                   if d.isoformat() not in got]
-        if missing:
-            logger.info("No worksheet for %d of %d days (%s%s)", len(missing), (end - start).days + 1,
-                        ", ".join(d.isoformat() for d in missing[:5]), " ..." if len(missing) > 5 else "")
-        return sheets
+        return download_sheets(self.client, start, end, save=self._save)
 
     def backfiller(self) -> Backfiller:
         cutoff = _parse_cutoff(self.args.cutoff, self.ctx.tz) if self.args.cutoff else self.live_start
@@ -1483,6 +1662,17 @@ class Runner:
     # Modes
     def run(self) -> int:
         args = self.args
+        if args.fill_gaps:
+            clashing = [flag for flag, value in (
+                ("--start", args.start), ("--end", args.end), ("--find-start", args.find_start),
+                ("--compare-live", args.compare_live), ("--from-xls", args.from_xls),
+                ("--cutoff", args.cutoff), ("--allow-live-overlap", args.allow_live_overlap),
+            ) if value]
+            if clashing:
+                raise BackfillError(f"--fill-gaps picks its own days and cutoff; do not combine it with "
+                                    f"{', '.join(clashing)}")
+        elif args.lookback_days is not None or args.min_gap_min is not None:
+            raise BackfillError("--lookback-days and --min-gap-min only apply to --fill-gaps")
         if args.compare_live is not None and (args.find_start or args.start or args.end):
             raise BackfillError("--compare-live takes one DATE; do not combine it with --start/--end/--find-start")
         if args.from_xls and args.find_start:
@@ -1507,6 +1697,8 @@ class Runner:
                 f"the time zone in use ({self.ctx.tz}) cannot be checked against the inverter clock offline")
 
         self.open_influx()
+        if args.fill_gaps:
+            return self.run_fill_gaps()
         if args.compare_live is not None:
             return self.run_compare(args.compare_live)
         if args.from_xls:
@@ -1566,6 +1758,32 @@ class Runner:
         self.summary(bf, started)
         return 0
 
+    def run_fill_gaps(self) -> int:
+        """--fill-gaps: fill the holes in the live data from the export (collector.gapfill)."""
+        from .gapfill import GapFiller, exclusive_run, format_report, make_options
+
+        started = time.monotonic()
+        options = make_options(lookback_days=self.args.lookback_days, min_gap_min=self.args.min_gap_min)
+        filler = GapFiller(
+            self.ctx, self.target, client_factory=self.open_client, options=options,
+            dry_run=not self.writes, serial=self._serial(), tz_explicit=self.s.tz_explicit,
+            save=self._save,
+        )
+        with exclusive_run() as alone:
+            if not alone:
+                raise BackfillError("another gap-fill run is in progress (the collector's background "
+                                    "gap-filler?); try again later")
+            try:
+                filler.run()
+            finally:
+                # Also after an error: the gaps found and what was already done.
+                for line in format_report(filler.report, self.ctx.tz):
+                    self._out(line)
+                if self.client is not None:
+                    self._out(f"downloaded {self.client.bytes_downloaded / 1e6:.1f} MB")
+                self._out(f"elapsed {time.monotonic() - started:.0f}s")
+        return 0
+
     def find_start(self, upper: date) -> Optional[date]:
         def has_rows(day: date) -> bool:
             sheets = self.download(day, day)
@@ -1617,7 +1835,8 @@ class Runner:
             f"snapshots {st.snapshots}, points {'counted' if bf.dry_run else 'written'} {st.points}",
             f"skipped: {st.skipped_overlap} at/after the cutoff, {st.skipped_no_battery} without battery voltage, "
             f"{st.skipped_time} without a time, {st.skipped_serial} other serial, {st.duplicates} duplicate timestamps",
-            f"DST: {st.dst_fold} repeated-hour rows, {st.dst_gap} rows in a skipped hour",
+            f"DST: {st.dst_fold} repeated-hour rows, {st.dst_gap} rows in a skipped hour, "
+            f"{st.dst_dropped} repeated-hour rows dropped (gap-fill)",
         ]
         if st.unknown_status:
             lines.append("unknown Status texts (state left out): "

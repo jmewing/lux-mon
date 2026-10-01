@@ -16,6 +16,9 @@ Supported output backends (can be enabled together):
     influxdb      - SolarAssistant-compatible InfluxDB 1.x/2.x line protocol
     mqtt          - Home Assistant auto-discovery + raw state topic
 
+With an EG4 portal login configured, a background thread (collector.gapfill)
+also fills holes in the InfluxDB data from the EG4 data export.
+
 Future transports:
     rtu_serial    - Modbus RTU over RS485 (USB adapter)
     solarman      - Solarman WiFi dongle local protocol
@@ -40,6 +43,7 @@ from .outputs import Outputs, OutputConfig
 from .automation import AutomationEngine
 from .quick_charge import QuickChargeManager
 from .notifiers import Notifiers
+from .settings import DEFAULTS as SETTINGS_DEFAULTS
 
 
 def _env_or(key: str, default=None, cast=None):
@@ -144,7 +148,7 @@ def config_from_env() -> CollectorConfig:
             mqtt_ha_prefix=_env_or("LUX_MQTT_HA_PREFIX", "homeassistant"),
             mqtt_device_name=_env_or("LUX_MQTT_DEVICE_NAME", "luxmon"),
             mqtt_device_id=_env_or("LUX_MQTT_DEVICE_ID", "luxmon_solar"),
-            temperature_unit=_env_or("LUX_TEMPERATURE_UNIT", "celsius"),
+            temperature_unit=_env_or("LUX_TEMPERATURE_UNIT", SETTINGS_DEFAULTS["temperature_unit"]),
 
             alerts_enabled=_env_bool("LUX_ALERTS_ENABLED"),
             alerts_soc_low=_env_or("LUX_ALERTS_SOC_LOW", 20.0, float),
@@ -357,6 +361,41 @@ def _load_db_core_settings(cfg: CollectorConfig) -> None:
         logger.exception("Failed to load core settings from MariaDB")
 
 
+def _wait_for_db(cfg: CollectorConfig, timeout: float = 120.0) -> bool:
+    """Wait until MariaDB accepts connections, up to timeout seconds.
+
+    After a Docker Desktop restart every container starts at once (compose's
+    depends_on only applies to `compose up`), so the collector can come up
+    before MariaDB. Loading settings then silently falls back to environment
+    defaults (e.g. the temperature unit), so give the database time first.
+    """
+    import pymysql
+    deadline = time.monotonic() + timeout
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            pymysql.connect(
+                host=cfg.outputs.mariadb_host,
+                port=cfg.outputs.mariadb_port,
+                user=cfg.outputs.mariadb_user,
+                password=cfg.outputs.mariadb_password,
+                database=cfg.outputs.mariadb_database,
+                connect_timeout=5,
+            ).close()
+            if attempt > 1:
+                logger.info("MariaDB reachable after %d attempts", attempt)
+            return True
+        except Exception as exc:
+            if time.monotonic() >= deadline:
+                logger.error("MariaDB still unreachable after %.0f s (%s); starting with "
+                             "environment settings", timeout, exc)
+                return False
+            if attempt == 1:
+                logger.info("Waiting for MariaDB (%s)", exc)
+            time.sleep(3)
+
+
 def _seed_db_from_env(cfg: CollectorConfig) -> None:
     """Seed the DB settings table from environment variables (bootstrap).
 
@@ -481,6 +520,8 @@ class PassiveCollector:
         self._last_data_time: Optional[float] = None
         self._last_data_serial: Optional[str] = None
         self._dongle_io_notice_logged = False
+        # Background gap-filler (collector.gapfill.GapFillThread), if running.
+        self._gapfill = None
 
         # Register handler for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -552,9 +593,13 @@ class PassiveCollector:
     def _reload_config(self) -> None:
         """Re-apply DB settings to self.cfg and rebuild outputs + transport in place."""
         logger.info("Config change detected; reloading settings from MariaDB")
+        previous_unit = self.cfg.outputs.temperature_unit
         _load_db_serials(self.cfg)
         _load_db_output_settings(self.cfg)
         _load_db_core_settings(self.cfg)
+        if self.cfg.outputs.temperature_unit != previous_unit:
+            logger.warning("Temperature unit changed from %s to %s: temperature series get a new unit tag",
+                           previous_unit, self.cfg.outputs.temperature_unit)
 
         # Rebuild outputs (closes old backends, opens new ones).
         if self._outputs:
@@ -669,9 +714,54 @@ class PassiveCollector:
             k: self._read_db_settings().get(k, "") for k in self._RESTART_KEYS
         }
 
+        self._start_gapfill()
+
+    def _start_gapfill(self) -> None:
+        """Start the background gap-filler (collector.gapfill) when it can run.
+
+        It fills holes in the live InfluxDB data from the EG4 data export, in
+        its own thread with its own portal session, and writes InfluxDB only
+        (never MariaDB, MQTT, alerts or the hourly rollups). Needs the EG4
+        login (LUX_CLOUD_USERNAME/PASSWORD); off with LUX_GAPFILL_ENABLED=false
+        and for the replay transport. A failure here never stops the collector.
+        """
+        try:
+            # Imported lazily: collector.gapfill imports this module.
+            from .gapfill import GapFillThread, gapfill_disabled_reason, settings_from_env
+            settings = settings_from_env()
+            reason = gapfill_disabled_reason(self.cfg, settings)
+            if reason:
+                logger.info("Automatic gap-filling off: %s", reason)
+                return
+            self._gapfill = GapFillThread(self.cfg, model=self.driver.name, settings=settings,
+                                          portal_blocked=self._gapfill_portal_blocked)
+            self._gapfill.start()
+        except Exception:
+            logger.exception("Could not start automatic gap-filling")
+
+    def _gapfill_portal_blocked(self) -> Optional[str]:
+        """Why the gap-filler should not log in to the EG4 portal now, else None.
+
+        Reads the live transport's stats only: while the portal keeps
+        rejecting the live login, a second login would just add rejections.
+        """
+        transport = self._transport
+        if transport is None:
+            return None
+        try:
+            stats = transport.stats()
+        except Exception:
+            return None
+        if isinstance(stats, dict) and stats.get("auth_failed"):
+            return "the live EG4 cloud transport's login is being rejected"
+        return None
+
     def stop(self) -> None:
         """Signal the collector to stop and release resources."""
         self._stop.set()
+        gapfill = getattr(self, "_gapfill", None)
+        if gapfill:
+            gapfill.stop()
         if self._transport:
             self._transport.stop()
         if self._outputs:
@@ -1003,6 +1093,8 @@ def run_collector(
 
     # Seed the DB from environment (bootstrap) so the DB-authoritative
     # collector reads the correct container-internal values + secrets.
+    if cfg.outputs.mariadb_enabled:
+        _wait_for_db(cfg)
     _seed_db_from_env(cfg)
 
     # Fill serials and output settings from DB (DB is authoritative).
@@ -1017,6 +1109,8 @@ def run_collector(
         logger.warning(
             "LUX_POLL_MODE=true is deprecated; set LUX_TRANSPORT=tcp_active instead"
         )
+
+    logger.info("Temperatures written in %s", cfg.outputs.temperature_unit)
 
     inverter_model = _load_db_setting("inverter_model", cfg) or _env_or("LUX_INVERTER_MODEL") or DEFAULT_MODEL
     try:

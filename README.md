@@ -1,5 +1,7 @@
 # lux-mon
 
+> **EG4 12000XP setup** (EG4 cloud transport, dashboards, history backfill, gap-filling, LAN hosting): see [README-EG4-12000XP.md](README-EG4-12000XP.md).
+
 **Local monitoring for LuxPower-based inverters — no cloud required (local-first; optional read-only EG4 cloud transport).**
 
 Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi dongle protocol (TCP port 8000). Also supports RS-485 battery BMS monitoring (EG4 A5/5A, JK BMS, generic Modbus RTU).
@@ -409,6 +411,63 @@ differs from the live data; with MariaDB unreachable it needs `--model` and
 - The portal's energy chart endpoints (`analyze/energy/*Column`) return zeros for
   off-grid units and are not used.
 
+#### Automatic gap-filling
+
+With the EG4 portal login in `.env` (`LUX_CLOUD_USERNAME` / `LUX_CLOUD_PASSWORD`,
+any transport except `replay`), the collector also repairs holes in the **live**
+InfluxDB data on its own. A background thread looks at the `luxmon_register`
+`soc` points of the last `LUX_GAPFILL_LOOKBACK_DAYS` days: two consecutive points
+more than `LUX_GAPFILL_MIN_GAP_MIN` minutes apart are a gap, and so is the time
+from the last point to 30 min ago. It downloads only the plant-local days those
+gaps span (the same export, windows and checks as the backfill above) and writes
+only the export rows that fall **inside** a gap, at least 60 s from the live
+points around it and never in the last 30 min (the export and the dongle's
+buffered upload lag behind). Only time after the first live point counts;
+anything earlier is the one-off backfill's job. The points are the same as the
+backfill writes (same names and unit tags, no `luxmon_cloud`), InfluxDB only —
+never MariaDB, MQTT, alerts or the hourly energy rollup, so anything read from
+MariaDB still shows the outage.
+
+What EG4 has depends on what was down:
+
+| Outage | What EG4 has | Result |
+|--------|--------------|--------|
+| lux-mon (the host) offline, dongle online | everything | filled on the first check after lux-mon is back |
+| house internet down | nothing until the dongle reconnects; once offline for ~20 min it stores a reading every 5 min and uploads them on reconnect (buffer size undocumented) | filled after the internet is back, usually without the first ~20 min |
+| inverter or dongle without power | nothing | stays a gap |
+
+A gap whose days had no export rows is retried at most every 6 h and given up
+(one INFO log line) once its end is more than 48 h old. A gap that was still
+open when checked is tried again as soon as the live data comes back, since
+that is when the dongle uploads its buffer. Each attempt is recorded in
+`luxmon_backfill` (tags `mode=gapfill`, `run_id`; fields `gap_start`,
+`gap_end`, `attempted_at`, `status` = `filled` / `empty` / `gave_up`,
+`rows_written`, `trailing`, `window`), so a restart does not download
+everything again. Each run downloads at most 6 export windows, logs in with its
+own portal session (never the live transport's) and only when a gap is due;
+after a rejected login it leaves the portal alone for 24 h, and it does not log
+in while the live transport's login is being rejected. The inverter-clock time
+zone check and the unit-tag check of the backfill apply to every run.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LUX_GAPFILL_ENABLED` | `true` | Turn the background gap-filler off with `false` |
+| `LUX_GAPFILL_INTERVAL_MIN` | `180` | Minutes between checks (minimum 30; the first is 10 min after the collector starts) |
+| `LUX_GAPFILL_LOOKBACK_DAYS` | `7` | How many days back to look for gaps (1-30) |
+| `LUX_GAPFILL_MIN_GAP_MIN` | `10` | Minutes between two live points that count as a gap (minimum 6, since export rows are ~4-5 min apart) |
+
+These are env-only (not in the Settings page); recreate the collector after a
+change. To look or fill by hand (the dry run downloads but writes nothing and
+records nothing; a manual run is refused while the background thread is busy):
+
+```bash
+docker exec lux-collector python -m collector.backfill --fill-gaps --dry-run
+docker exec lux-collector python -m collector.backfill --fill-gaps --lookback-days 14 --min-gap-min 15
+```
+
+It prints each gap in plant-local time with what it did (rows written, no rows
+yet, waiting until the next retry, given up) and the number of downloads.
+
 ## REST API
 
 The API server runs on port 80 and provides:
@@ -598,6 +657,10 @@ All config can be set via env vars:
 | `LUX_CLOUD_POLL_SEC` | `60` | Seconds between cloud runtime polls (minimum 30) |
 | `LUX_CLOUD_ENERGY_SEC` | `300` | Seconds between cloud energy polls (battery info is fetched with every new upload) |
 | `LUX_CLOUD_BASE_URL` | `https://monitor.eg4electronics.com` | EG4 portal base URL (must be `https://`) |
+| `LUX_GAPFILL_ENABLED` | `true` | Fill holes in the InfluxDB data from the EG4 export in the background (needs the EG4 login; see [Automatic gap-filling](#automatic-gap-filling)) |
+| `LUX_GAPFILL_INTERVAL_MIN` | `180` | Minutes between gap-fill checks (minimum 30) |
+| `LUX_GAPFILL_LOOKBACK_DAYS` | `7` | Days back the gap-filler looks (1-30) |
+| `LUX_GAPFILL_MIN_GAP_MIN` | `10` | Minutes between live points that count as a gap (minimum 6) |
 | `LUX_WRITE_INTERVAL` | `5` | Seconds between DB writes |
 | `LUX_STORAGE_TYPE` | `mariadb` | `mariadb` or `influxdb` |
 | `LUX_MARIADB_HOST` | `localhost` | MariaDB host |
