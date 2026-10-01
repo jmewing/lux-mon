@@ -1,6 +1,8 @@
 # lux-mon
 
-**Local monitoring for LuxPower-based inverters — no cloud required.**
+> **EG4 12000XP setup** (EG4 cloud transport, dashboards, history backfill, gap-filling, LAN hosting): see [README-EG4-12000XP.md](README-EG4-12000XP.md).
+
+**Local monitoring for LuxPower-based inverters — no cloud required (local-first; optional read-only EG4 cloud transport).**
 
 Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi dongle protocol (TCP port 8000). Also supports RS-485 battery BMS monitoring (EG4 A5/5A, JK BMS, generic Modbus RTU).
 
@@ -8,6 +10,7 @@ Works with EG4, LuxPower, and any rebranded inverter using the LuxPower WiFi don
 
 - **Passively listens** to your inverter's WiFi dongle — zero bus contention
 - **Actively polls** as a fallback for non-broadcasting dongles
+- **Reads the EG4 cloud portal** (read-only, optional) when the dongle refuses all local TCP — see [EG4 cloud transport](#eg4-cloud-transport-cloud_http)
 - **Stores** time-series data in **MariaDB/MySQL** (InfluxDB optional, both can run together)
 - **Exposes** a **REST API** for scripting, morning briefings, Home Assistant, etc.
 - **Streams live snapshots** over a **WebSocket** (`/ws`) so the web dashboard updates instantly
@@ -32,6 +35,7 @@ This project is actively running on private hardware monitoring an EG4 6000XP in
 | Storage | ✅ Live | MariaDB, InfluxDB v2, hourly energy rollups |
 | Dashboard | ✅ Live | Web UI with gauges, charts, battery, totals, settings, automations, schedule editor |
 | Active polling | ✅ Built | Fallback for non-broadcasting dongles |
+| EG4 cloud transport | ⚠️ Built, unverified live | `transport=cloud_http`: read-only HTTPS polling of monitor.eg4electronics.com for dongles that refuse local TCP |
 | Runtime settings | ✅ Live | DB-backed, editable from dashboard ⚙️ tab |
 | Docker image | ✅ Published | Stable: `jmewing/lux-mon:v1.0.1`; Beta: `jmewing/lux-mon:v1.1.0-beta.1` (amd64 + arm64) on Docker Hub and GHCR |
 | RS-485 / BMS | ✅ Live | `lux-mon-rs485` daemon, EG4 A5/5A battery BMS driver deployed |
@@ -143,6 +147,9 @@ EG4/LuxPower Inverter → WiFi Dongle (TCP :8000)
                  └─────────────────┘
 
 RS-485 BMS (optional) → lux-mon-rs485 daemon → same backends
+
+transport=cloud_http (dongles that refuse local TCP):
+Inverter → WiFi Dongle → EG4 cloud ◄── HTTPS, read-only polling ── lux-collector → same backends
 ```
 
 ## Quick Start
@@ -166,7 +173,7 @@ bash scripts/install.sh
 
 After install:
 - API: http://YOUR-HOST:80/api/status
-- Grafana: http://YOUR-HOST:3000/grafana/d/lux-mon-charts/lux-mon-charts
+- Grafana: http://YOUR-HOST:3000/grafana/d/eg4-flow
 - Add an Apache/Nginx reverse proxy on port 80 if desired.
 
 ### Docker Compose (full stack)
@@ -237,6 +244,229 @@ python -m collector
 ```
 
 For a config-file approach you can also copy `config.example.py` to `config.py` and pass `--config config.py`.
+
+### EG4 cloud transport (cloud_http)
+
+Some EG4 WiFi dongles (for example on the **E Wi-Fi ENC** firmware) refuse every
+local TCP connection, so neither `tcp_active` nor `tcp_passive` can reach them.
+For those, lux-mon can read the same data from the EG4 cloud portal
+(`monitor.eg4electronics.com`) that the dongle already uploads to:
+
+```
+Inverter → WiFi dongle → EG4 cloud  ←(HTTPS, read-only)─  lux-collector → MariaDB / InfluxDB / MQTT
+```
+
+**What to expect**
+
+- The portal lags the inverter by roughly **20 s to 5 min**. The collector
+  polls the runtime every `LUX_CLOUD_POLL_SEC` (default 60 s, minimum 30 s)
+  and writes **one snapshot per new portal upload** (a later portal
+  `serverTime`); unchanged, older or offline (`lost`) payloads are skipped,
+  never re-stored as fresh. After a (re)start, an upload older than
+  3 × `LUX_CLOUD_POLL_SEC` + 300 s is not written; the collector waits for the
+  next one. Each new upload also fetches the battery info; the energy
+  counters are fetched every `LUX_CLOUD_ENERGY_SEC` (default 300 s) and right
+  after the plant's local midnight. The hourly energy rollup counts each
+  snapshot for the time since the previous upload (at most 15 min).
+- If the portal is unreachable the collector retries after 1, 2 and 4 s, then
+  after 1, 2 and 4 poll intervals, and from then on every 5 min until it
+  recovers (HTTP 429 skips the fast retries). If the
+  portal **rejects the login**, it waits 15 min, 1 h, 6 h and then a day between
+  attempts (so a wrong or changed password is not retried over and over),
+  and `scripts/lux-mon-freeze-check.sh` does not auto-restart it meanwhile.
+  After fixing the credentials, recreate the collector (step 3 below).
+- **Read-only:** only the login and three read endpoints
+  (`getInverterRuntime`, `getInverterEnergyInfo`, `getBatteryInfo`) are ever
+  called — never `remoteRead`/`remoteSet`. Quick charge, automations and
+  holding-register reads/writes (`/api/holding*`, `/api/quick-charge/start|stop`)
+  are disabled while `transport=cloud_http` (the API answers 409).
+- lux-mon never opens a socket to the dongle in this mode.
+
+**Setup**
+
+1. Put your EG4 portal login in `.env` (env-only, never stored in MariaDB):
+   `LUX_CLOUD_USERNAME=...` and `LUX_CLOUD_PASSWORD=...` (single-quote the
+   password if it contains `$`).
+2. `transport`, `inverter_model` and `inverter_serial` are DB-authoritative
+   for the collector — editing `.env` alone is ignored once the DB rows
+   exist. `transport` has no field on the Configuration page, so set all
+   three through the API:
+
+   ```bash
+   curl -X PUT http://your-server/api/settings/transport -H 'Content-Type: application/json' -d '{"value": "cloud_http"}'
+   curl -X PUT http://your-server/api/settings/inverter_model -H 'Content-Type: application/json' -d '{"value": "eg4_12000xp"}'
+   curl -X PUT http://your-server/api/settings/inverter_serial -H 'Content-Type: application/json' -d '{"value": "YOUR_INVERTER_SERIAL"}'
+   ```
+
+   Also set the same values in `.env`: `LUX_TRANSPORT=cloud_http`,
+   `LUX_INVERTER_MODEL=eg4_12000xp` and `LUX_INVERTER_SERIAL=...`. The api
+   container shows an environment value in preference to the DB row (and
+   Compose defaults `LUX_INVERTER_MODEL` to `eg4_6000xp`), and the
+   Configuration page's **Save** writes every field it shows, including the
+   inverter model, back to the DB. If the api container still had the old
+   model, a later Save (for example to change the timezone) would switch the
+   collector back to the 6000XP driver.
+3. Recreate **both** the collector and the api so they pick up `.env`:
+   `docker compose -f docker/docker-compose.yml up -d collector api`.
+   Then check that the Configuration page shows the new inverter model and
+   serial. The first poll logs `First EG4 cloud update: serverTime=...
+   deviceTime=..., collector UTC now ...` — check that `serverTime` matches UTC.
+
+**Mapping caveats**
+
+- The cloud has no per-string energy: the **PV energy total** is stored in the
+  PV1 slot (`pv1_energy_today` / `pv1_energy_total`); PV2/PV3 energy stay empty.
+- **No fault or warning codes** are available from the cloud runtime, so
+  `fault_code` / `warning_code` are absent (not zero).
+- `load_energy_today` / `load_energy_total` are the portal's server-computed
+  "usage", not the inverter's own load counter.
+- `eps_power_l1` / `eps_power_l2` are cloud-reported per-leg values and may not
+  add up to `eps_power` (the combined backup output).
+- **SOH is left blank** when the battery reports no module array (typical for
+  the 12000XP), instead of publishing a fake 0 %; `/api/batteries` reports
+  `soh_pct: null` for a module that does not report its SOH.
+- `battery_current` comes from the battery info fetched with each upload. If
+  that fetch fails, it is left out of the snapshot rather than repeated next
+  to newer charge/discharge power.
+- The inverter temperature is not available from the 12000XP cloud feed (the
+  portal sends a constant 0), so `temp_inverter` is absent there.
+- Each snapshot also writes one `luxmon_cloud` InfluxDB point (tags
+  `data_source=cloud`, `serial`) with the portal `server_time`, `data_age_s`
+  (portal lag), status/firmware text and cloud-only values such as
+  `smart_load_power`, `eps_load_power`, `grid_load_power` and `bat_power`.
+  The load split and `consumption_power` are only written when the portal
+  flags them as shown (`smartLoadInverterEnable`, `epsLoadPowerShow`,
+  `gridLoadPowerShow`, `hideConsumption`); on the 12000XP they are placeholder
+  zeros and are left out.
+  "Was this time range cloud-fed?" = "does `luxmon_cloud` have points there?".
+
+For an EG4 12000XP, suggested dashboard gauge settings are `pv_max_power`
+24000, `grid_max_power` 24000, `eps_max_power` 12000, `charge_max_power` 12000
+and `discharge_max_power` 12000.
+
+### Backfilling history from the EG4 portal
+
+The EG4 portal keeps the inverter's whole history. `python -m collector.backfill`
+downloads it through the portal's data export (a `.xls` workbook, one sheet per
+day, one row per ~4 min; at most 10 days per request, 3 s apart) and writes it
+to InfluxDB exactly as the cloud collector would have: the same
+`luxmon_register` names and unit tags (including °F when `temperature_unit` is
+fahrenheit) and the same SolarAssistant-style measurements, so Grafana shows one
+continuous series. It never writes at or after the first live point, and never
+writes MariaDB, MQTT, alerts, the hourly energy rollup or `luxmon_cloud`.
+Re-running a range overwrites the same points (same series and timestamp).
+
+The tool ships in the collector image and needs `xlrd`, so rebuild and recreate
+the collector once: `docker compose -f docker/docker-compose.yml build collector`
+then `docker compose -f docker/docker-compose.yml up -d collector`. It uses the
+collector's environment (EG4 login, InfluxDB) and DB settings (serial, model,
+`temperature_unit`, `timezone`); nothing is logged about the credentials.
+
+```bash
+# 1. Check the mapping on a day that has both export rows and live data
+#    (per-field matched count and mean/max difference; writes nothing):
+docker exec lux-collector python -m collector.backfill --compare-live 2026-09-26
+
+# 2. Find the first day with data and dry-run everything up to the first live point:
+docker exec lux-collector python -m collector.backfill --find-start --dry-run
+
+# 3. Backfill (--end defaults to the day of the first live point; add
+#    --tz America/Los_Angeles etc. if the timezone setting is not the plant's zone):
+docker exec lux-collector python -m collector.backfill --find-start
+#    or a range of plant-local days (inclusive):
+docker exec lux-collector python -m collector.backfill --start 2025-06-01 --end 2025-12-31
+```
+
+Other options: `--save-xls DIR` keeps the downloads (inside the container; copy
+them out with `docker cp`), `--from-xls FILE` re-reads a saved export without the
+network (writing from it needs `--tz`), `--request-delay SEC` (default 3),
+`--cutoff DATETIME` moves the first-live-point cutoff earlier (a later one also
+needs `--allow-live-overlap`, since those rows would sit between live points),
+`--tz` / `--model` / `--temp-unit` override the DB settings (a write run refuses
+a `--temp-unit` that differs from the collector's setting and any unit tag that
+differs from the live data; with MariaDB unreachable it needs `--model` and
+`--temp-unit`), `--verbose` prints sample decoded rows.
+
+- The export's `Time` column is the inverter's local clock. It is converted with
+  `--tz`, or else the `timezone` setting. That setting only drives schedules and
+  defaults to `America/Chicago`, so a portal write run without `--tz` first
+  compares the inverter's current UTC offset (portal `deviceTime` vs
+  `serverTime`) with the zone and stops on a mismatch, or when the offset cannot
+  be read. A `--from-xls` write run cannot check it offline and needs `--tz`. A
+  wrong zone shifts every point, and re-running with the right one does not
+  remove them. DST fall-back hours are told apart by row order.
+- Each 10-day window also writes one `luxmon_backfill` point (tag `run_id`;
+  fields `rows`, `snapshots`, `points`, `window`, `source="eg4_export"`,
+  `live_start`, `cutoff`). `live_start` and `cutoff` are written before the
+  window's data, so an interrupted run leaves the cutoff in place and re-running
+  the range is safe. Everything the backfill wrote lies before `live_start`,
+  unless `--allow-live-overlap` was used.
+- Compared with live data: the export adds `soh` and `cell_temp_max` (the BMS
+  values the cloud runtime lacks, written only when non-zero), has no
+  `battery_count`, and `state` comes from the portal's status text
+  (`Standby`, `PV Charge`, `Battery Grid off`, `PV&Battery Grid off`; any other
+  text leaves `state` out and is listed in the summary). Energy follows the live
+  semantics: PV total in `pv1_energy_*`, and `load_energy_*` = backup-port (EPS)
+  energy + grid-to-user energy, the portal's "Consumption".
+- The portal's energy chart endpoints (`analyze/energy/*Column`) return zeros for
+  off-grid units and are not used.
+
+#### Automatic gap-filling
+
+With the EG4 portal login in `.env` (`LUX_CLOUD_USERNAME` / `LUX_CLOUD_PASSWORD`,
+any transport except `replay`), the collector also repairs holes in the **live**
+InfluxDB data on its own. A background thread looks at the `luxmon_register`
+`soc` points of the last `LUX_GAPFILL_LOOKBACK_DAYS` days: two consecutive points
+more than `LUX_GAPFILL_MIN_GAP_MIN` minutes apart are a gap, and so is the time
+from the last point to 30 min ago. It downloads only the plant-local days those
+gaps span (the same export, windows and checks as the backfill above) and writes
+only the export rows that fall **inside** a gap, at least 60 s from the live
+points around it and never in the last 30 min (the export and the dongle's
+buffered upload lag behind). Only time after the first live point counts;
+anything earlier is the one-off backfill's job. The points are the same as the
+backfill writes (same names and unit tags, no `luxmon_cloud`), InfluxDB only —
+never MariaDB, MQTT, alerts or the hourly energy rollup, so anything read from
+MariaDB still shows the outage.
+
+What EG4 has depends on what was down:
+
+| Outage | What EG4 has | Result |
+|--------|--------------|--------|
+| lux-mon (the host) offline, dongle online | everything | filled on the first check after lux-mon is back |
+| house internet down | nothing until the dongle reconnects; once offline for ~20 min it stores a reading every 5 min and uploads them on reconnect (buffer size undocumented) | filled after the internet is back, usually without the first ~20 min |
+| inverter or dongle without power | nothing | stays a gap |
+
+A gap whose days had no export rows is retried at most every 6 h and given up
+(one INFO log line) once its end is more than 48 h old. A gap that was still
+open when checked is tried again as soon as the live data comes back, since
+that is when the dongle uploads its buffer. Each attempt is recorded in
+`luxmon_backfill` (tags `mode=gapfill`, `run_id`; fields `gap_start`,
+`gap_end`, `attempted_at`, `status` = `filled` / `empty` / `gave_up`,
+`rows_written`, `trailing`, `window`), so a restart does not download
+everything again. Each run downloads at most 6 export windows, logs in with its
+own portal session (never the live transport's) and only when a gap is due;
+after a rejected login it leaves the portal alone for 24 h, and it does not log
+in while the live transport's login is being rejected. The inverter-clock time
+zone check and the unit-tag check of the backfill apply to every run.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LUX_GAPFILL_ENABLED` | `true` | Turn the background gap-filler off with `false` |
+| `LUX_GAPFILL_INTERVAL_MIN` | `180` | Minutes between checks (minimum 30; the first is 10 min after the collector starts) |
+| `LUX_GAPFILL_LOOKBACK_DAYS` | `7` | How many days back to look for gaps (1-30) |
+| `LUX_GAPFILL_MIN_GAP_MIN` | `10` | Minutes between two live points that count as a gap (minimum 6, since export rows are ~4-5 min apart) |
+
+These are env-only (not in the Settings page); recreate the collector after a
+change. To look or fill by hand (the dry run downloads but writes nothing and
+records nothing; a manual run is refused while the background thread is busy):
+
+```bash
+docker exec lux-collector python -m collector.backfill --fill-gaps --dry-run
+docker exec lux-collector python -m collector.backfill --fill-gaps --lookback-days 14 --min-gap-min 15
+```
+
+It prints each gap in plant-local time with what it did (rows written, no rows
+yet, waiting until the next retry, given up) and the number of downloads.
 
 ## REST API
 
@@ -419,8 +649,18 @@ All config can be set via env vars:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `LUX_TRANSPORT` | `tcp_active` | `tcp_active`, `tcp_passive`, `replay` or `cloud_http` (seeds the DB-authoritative `transport` setting) |
 | `LUX_DONGLE_HOST` | `192.168.1.100` | Inverter dongle IP |
 | `LUX_DONGLE_PORT` | `8000` | Dongle TCP port |
+| `LUX_CLOUD_USERNAME` | — | EG4 portal login for `cloud_http` (env-only, never stored in the DB) |
+| `LUX_CLOUD_PASSWORD` | — | EG4 portal password for `cloud_http` (env-only; single-quote it if it contains `$`) |
+| `LUX_CLOUD_POLL_SEC` | `60` | Seconds between cloud runtime polls (minimum 30) |
+| `LUX_CLOUD_ENERGY_SEC` | `300` | Seconds between cloud energy polls (battery info is fetched with every new upload) |
+| `LUX_CLOUD_BASE_URL` | `https://monitor.eg4electronics.com` | EG4 portal base URL (must be `https://`) |
+| `LUX_GAPFILL_ENABLED` | `true` | Fill holes in the InfluxDB data from the EG4 export in the background (needs the EG4 login; see [Automatic gap-filling](#automatic-gap-filling)) |
+| `LUX_GAPFILL_INTERVAL_MIN` | `180` | Minutes between gap-fill checks (minimum 30) |
+| `LUX_GAPFILL_LOOKBACK_DAYS` | `7` | Days back the gap-filler looks (1-30) |
+| `LUX_GAPFILL_MIN_GAP_MIN` | `10` | Minutes between live points that count as a gap (minimum 6) |
 | `LUX_WRITE_INTERVAL` | `5` | Seconds between DB writes |
 | `LUX_STORAGE_TYPE` | `mariadb` | `mariadb` or `influxdb` |
 | `LUX_MARIADB_HOST` | `localhost` | MariaDB host |
@@ -526,6 +766,7 @@ Settings are stored in the `lux_settings` MariaDB table (auto-created) and read 
 | `dashboard_refresh_sec` | `5` | Dashboard auto-refresh interval |
 | `chart_default_hours` | `6` | Default chart time range |
 | `write_interval_sec` | `5` | Seconds between MariaDB writes |
+| `transport` | `tcp_active` | `tcp_active`, `tcp_passive`, `replay` or `cloud_http` (restart-required; other values are rejected with 422) |
 | `timezone` | `America/Chicago` | Local timezone for scheduling |
 | `temperature_unit` | `celsius` | Temperature unit |
 | `quick_charge_minutes` | `60` | Default quick-charge duration (min, 1–240) |

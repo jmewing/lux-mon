@@ -54,7 +54,7 @@ You can also store these settings in MariaDB via the web UI (`/api/settings`). E
 
 ## Accessing Grafana
 
-- Direct (via SSH tunnel): `http://127.0.0.1:3000/grafana/d/lux-mon-charts/lux-mon-charts`
+- Direct (via SSH tunnel): `http://127.0.0.1:3000/grafana/d/eg4-flow`
 - Through Apache reverse proxy (add to your vhost):
 
   ```apache
@@ -62,25 +62,9 @@ You can also store these settings in MariaDB via the web UI (`/api/settings`). E
   ProxyPassReverse /grafana http://127.0.0.1:3000
   ```
 
-  Then visit: `http://192.168.1.100/grafana/d/lux-mon-charts/lux-mon-charts`
+  Then visit: `http://192.168.1.100/grafana/d/eg4-flow`
 
 - Default Grafana credentials: `admin` / `admin` (change on first login)
-
-## Updating dashboards from settings
-
-After changing power/temperature settings in the web UI, regenerate the Grafana dashboard JSON files so panel axis maxima and temperature units match:
-
-```bash
-python3 scripts/regenerate-dashboards.py
-```
-
-Then copy the updated JSON files to your Grafana dashboards folder (on alpha):
-
-```bash
-rsync -av grafana/dashboards/ alpha:/var/lib/grafana/dashboards/lux-mon/
-```
-
-The script reads `pv_max_power`, `grid_max_power`, `charge_max_power`, `discharge_max_power`, `eps_max_power`, and `temperature_unit` from MariaDB and updates `axisSoftMax` plus temperature labels in all `grafana/dashboards/*.json` files.
 
 ## Schema
 
@@ -123,6 +107,5 @@ Add your MQTT broker to Home Assistant (default: `192.168.1.100:1883` if exposed
 
 - `provisioning/datasources/influxdb.yaml` — Grafana datasource config (InfluxDB 1.x fallback)
 - `provisioning/dashboards/dashboards.yaml` — dashboard provider
-- `dashboards/lux-mon-charts.json` — imported SolarAssistant "Charts" dashboard
+- `dashboards/eg4-*.json` — EG4 12000XP dashboards: live power flow (home), energy, battery, solar strings & inverter
 - `../scripts/setup-grafana-stack.sh` — one-command install/bootstrap script
-- `../scripts/regenerate-dashboards.py` — update dashboard JSON from lux-mon settings

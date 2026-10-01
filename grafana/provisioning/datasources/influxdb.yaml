@@ -1,7 +1,18 @@
 apiVersion: 1
 
-datasources:
+# Older installs provisioned "lux-mon" without a uid, so Grafana auto-generated
+# one; Grafana refuses to change a uid in place. Delete and recreate it so the
+# fixed uid below (which the dashboards reference) takes effect.
+deleteDatasources:
   - name: lux-mon
+    orgId: 1
+
+datasources:
+  # InfluxQL (v1 compatibility API) — used by the existing dashboards.
+  # InfluxDB 2.x rejects InfluxQL requests that only carry secureJsonData.token,
+  # so the token is sent explicitly as an Authorization header.
+  - name: lux-mon
+    uid: lux-mon
     type: influxdb
     access: proxy
     url: http://localhost:8086
@@ -11,6 +22,23 @@ datasources:
     jsonData:
       version: InfluxQL
       organization: luxmon
+      tlsSkipVerify: true
+      httpHeaderName1: Authorization
+    secureJsonData:
+      token: ${LUX_INFLUX_TOKEN}
+      httpHeaderValue1: Token ${LUX_INFLUX_TOKEN}
+
+  # Flux — needed for calendar-month buckets and timezone-aware daily rollups.
+  - name: lux-mon-flux
+    uid: lux-mon-flux
+    type: influxdb
+    access: proxy
+    url: http://localhost:8086
+    editable: true
+    jsonData:
+      version: Flux
+      organization: luxmon
+      defaultBucket: luxmon
       tlsSkipVerify: true
     secureJsonData:
       token: ${LUX_INFLUX_TOKEN}

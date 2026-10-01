@@ -9,6 +9,14 @@
 # False-positive guard: if grid is importing (positive) AND battery SOC >= 99%,
 # the static values are legitimate (battery full, grid carrying steady load) — ignore.
 #
+# transport=cloud_http (EG4 cloud portal): snapshots are only written when the
+# portal has a new upload (every ~20 s - 5 min), so the freshness threshold is
+# max(900, 3 x LUX_CLOUD_POLL_SEC + 300) seconds and the identical-values freeze
+# rule is skipped (the collector already de-duplicates unchanged portal data, so
+# a frozen portal shows up as stale, not as identical values). While the portal
+# is rejecting the EG4 login, the collector is never auto-restarted: a restart
+# would only replay the rejected password.
+#
 # Usage: lux-mon-freeze-check.sh [--auto-restart]
 # Exit 0 = healthy/recovered, exit 2 = frozen/stale (alert condition)
 
@@ -100,14 +108,54 @@ restart_lux() {
   docker restart lux-collector 2>&1
 }
 
+cloud_auth_rejected() {
+  # 1 if the collector's most recent EG4 cloud login attempt was rejected
+  # (transport=cloud_http), else 0. A restart would only replay the rejected
+  # password (account lockout risk); the collector retries on its own with
+  # an escalating pause, and a credentials fix needs `docker compose up -d`.
+  local last
+  last=$(docker logs --since 48h lux-collector 2>&1 \
+    | grep -E "EG4 cloud rejected the login|Logged in to the EG4 cloud" | tail -n 1)
+  case "$last" in
+    *"rejected the login"*) echo "1" ;;
+    *) echo "0" ;;
+  esac
+}
+
+# Active transport (DB-authoritative, like the collector).
+TRANSPORT=$(docker exec lux-mariadb mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e \
+  "SELECT value FROM lux_settings WHERE name='transport';" 2>/dev/null)
+TRANSPORT=${TRANSPORT:-tcp_active}
+
+FRESH_MAX=120              # seconds: dongle transports write every few seconds
+SOURCE_DESC="dongle fault"
+if [ "$TRANSPORT" = "cloud_http" ]; then
+  # Gated writes: one snapshot per new portal upload.
+  CLOUD_POLL=$(docker exec lux-collector printenv LUX_CLOUD_POLL_SEC 2>/dev/null)
+  CLOUD_POLL=${CLOUD_POLL%%.*}
+  case "$CLOUD_POLL" in ''|*[!0-9]*) CLOUD_POLL=60 ;; esac
+  FRESH_MAX=$((3 * CLOUD_POLL + 300))
+  [ "$FRESH_MAX" -lt 900 ] && FRESH_MAX=900
+  SOURCE_DESC="EG4 cloud outage"
+fi
+
 # --- 1. freshness check ---
 AGE=$(latest_age)
 if [ "$AGE" = "no-snapshots" ]; then
   echo "ALERT: no snapshots found in lux_snapshots"
   exit 2
 fi
-if [ "$AGE" -gt 120 ]; then
-  echo "ALERT: no fresh snapshots — last write ${AGE}s ago"
+if [ "$AGE" -gt "$FRESH_MAX" ]; then
+  echo "ALERT: no fresh snapshots — last write ${AGE}s ago (transport ${TRANSPORT}, limit ${FRESH_MAX}s)"
+  if [ "$TRANSPORT" = "cloud_http" ] && [ "$(cloud_auth_rejected)" = "1" ]; then
+    if episode_suppressed; then
+      echo "OK: known EG4 cloud login rejection, still stale - suppressing duplicate alert"
+      exit 0
+    fi
+    episode_pin
+    echo "ALERT: EG4 cloud is rejecting the login - fix LUX_CLOUD_USERNAME/LUX_CLOUD_PASSWORD in .env and run 'docker compose -f docker/docker-compose.yml up -d collector' (not auto-restarting)"
+    exit 2
+  fi
   if [ "$AUTO_RESTART" = "1" ]; then
     LAST=$(cat "$STATE_FILE" 2>/dev/null || echo 0)
     NOW=$(date +%s)
@@ -115,7 +163,7 @@ if [ "$AGE" -gt 120 ]; then
       restart_lux
       sleep 60
       AGE2=$(latest_age)
-      if [ "$AGE2" != "no-snapshots" ] && [ "$AGE2" -le 120 ]; then
+      if [ "$AGE2" != "no-snapshots" ] && [ "$AGE2" -le "$FRESH_MAX" ]; then
         episode_clear
         echo "RECOVERED: lux-collector restarted, data flowing (age ${AGE2}s)"
         exit 0
@@ -125,7 +173,7 @@ if [ "$AGE" -gt 120 ]; then
       exit 2
     fi
     if episode_suppressed; then
-      echo "OK: known dongle fault, still stale, last restart ${LAST}s ago - suppressing duplicate alert"
+      echo "OK: known ${SOURCE_DESC}, still stale, last restart ${LAST}s ago - suppressing duplicate alert"
       exit 0
     fi
     episode_pin
@@ -135,7 +183,14 @@ if [ "$AGE" -gt 120 ]; then
   exit 2
 fi
 
-# --- 2. freeze check (load + battery identical for 30 min) ---
+# --- 2. freeze check (load + battery identical for 5 min) ---
+# Skipped for cloud_http: unchanged portal data is de-duplicated by the
+# collector (no new snapshot), so a frozen portal is caught by check 1.
+if [ "$TRANSPORT" = "cloud_http" ]; then
+  episode_clear
+  echo "OK: data fresh (last write ${AGE}s ago, transport cloud_http)"
+  exit 0
+fi
 STABLE=$(registers_stable)
 if [ "$STABLE" = "1" ]; then
   FP=$(false_positive)
@@ -152,7 +207,7 @@ if [ "$STABLE" = "1" ]; then
       sleep 60
       AGE2=$(latest_age)
       STABLE2=$(registers_stable)
-      if [ "$AGE2" != "no-snapshots" ] && [ "$AGE2" -le 120 ] && [ "$STABLE2" != "1" ]; then
+      if [ "$AGE2" != "no-snapshots" ] && [ "$AGE2" -le "$FRESH_MAX" ] && [ "$STABLE2" != "1" ]; then
         episode_clear
         echo "RECOVERED: lux-collector restarted, data flowing (age ${AGE2}s)"
         exit 0
@@ -162,7 +217,7 @@ if [ "$STABLE" = "1" ]; then
       exit 2
     fi
     if episode_suppressed; then
-      echo "OK: known dongle fault, still frozen, last restart ${LAST}s ago - suppressing duplicate alert"
+      echo "OK: known ${SOURCE_DESC}, still frozen, last restart ${LAST}s ago - suppressing duplicate alert"
       exit 0
     fi
     episode_pin

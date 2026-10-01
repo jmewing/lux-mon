@@ -1,0 +1,1811 @@
+{
+  "id": null,
+  "uid": "eg4-energy",
+  "title": "EG4 · Energy",
+  "description": "EG4 12000XP daily, monthly and lifetime energy (solar, consumption, battery) from the EG4 cloud.",
+  "tags": [
+    "eg4",
+    "12000xp"
+  ],
+  "timezone": "America/Los_Angeles",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "schemaVersion": 41,
+  "version": 1,
+  "fiscalYearStartMonth": 0,
+  "weekStart": "",
+  "liveNow": false,
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "Live power flow",
+      "type": "link",
+      "url": "/d/eg4-flow",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Live Power Flow",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Energy",
+      "type": "link",
+      "url": "/d/eg4-energy",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Energy — daily, monthly and lifetime energy",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Battery",
+      "type": "link",
+      "url": "/d/eg4-battery",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Battery",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    },
+    {
+      "title": "Solar strings & inverter",
+      "type": "link",
+      "url": "/d/eg4-pv",
+      "icon": "dashboard",
+      "tooltip": "EG4 · Solar Strings & Inverter",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "tags": []
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Today (since local midnight, America/Los_Angeles)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Solar today",
+      "description": "Solar energy produced today, both MPPTs combined (pv1_energy_today; the cloud has no per-string energy). Latest reading of the inverter's daily counter, which resets at local midnight (America/Los_Angeles). EG4 cloud data: a new sample only arrives when EG4 publishes (about every 1-2 min, sometimes 5).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and r.name == \"pv1_energy_today\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, \"Solar\": r._value}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:kWh",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#c98500"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1,
+          "noValue": "No data yet today"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "timeFrom": "now/d",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Consumption today",
+      "description": "Energy the house used today via the inverter's backup (EPS) output, i.e. the portal's 'Consumption' (load_energy_today). Latest reading of the inverter's daily counter, which resets at local midnight (America/Los_Angeles). EG4 cloud data: a new sample only arrives when EG4 publishes (about every 1-2 min, sometimes 5).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and r.name == \"load_energy_today\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, \"Consumption\": r._value}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:kWh",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1,
+          "noValue": "No data yet today"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "timeFrom": "now/d",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Battery charged today",
+      "description": "Energy charged into the battery today (charge_energy_today). Latest reading of the inverter's daily counter, which resets at local midnight (America/Los_Angeles). EG4 cloud data: a new sample only arrives when EG4 publishes (about every 1-2 min, sometimes 5).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and r.name == \"charge_energy_today\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, \"Charged\": r._value}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:kWh",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#199e70"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1,
+          "noValue": "No data yet today"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "timeFrom": "now/d",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Battery discharged today",
+      "description": "Energy discharged from the battery today (discharge_energy_today). Latest reading of the inverter's daily counter, which resets at local midnight (America/Los_Angeles). EG4 cloud data: a new sample only arrives when EG4 publishes (about every 1-2 min, sometimes 5).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and r.name == \"discharge_energy_today\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, \"Discharged\": r._value}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:kWh",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#199e70"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1,
+          "noValue": "No data yet today"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "timeFrom": "now/d",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Self-sufficiency today",
+      "description": "Share of today's consumption not supplied by grid or generator: 1 − grid_import_today ÷ load_energy_today (grid import is always 0 on this off-grid site). The EG4 cloud has no generator-energy counter, so generator energy cannot be subtracted: see 'Generator today' next to it. If the generator ran, this percentage is overstated. Blank while today's consumption is still 0. EG4 cloud data: a new sample only arrives when EG4 publishes (about every 1-2 min, sometimes 5).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"internal/debug\"\n\nfrom(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"load_energy_today\" or r.name == \"grid_import_today\"))\n  |> last()\n  |> group(columns: [\"name\"])\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({k: 1, name: r.name, _value: r._value}))\n  |> group()\n  |> pivot(rowKey: [\"k\"], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> filter(fn: (r) => exists r.load_energy_today)\n  |> map(fn: (r) => {\n      grid = if exists r.grid_import_today then r.grid_import_today else 0.0\n      return {\"Self-sufficiency\": if r.load_energy_today > 0.0 then 100.0 * (1.0 - grid / r.load_energy_today) else debug.null(type: \"float\")}\n    })"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "No data yet today"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "timeFrom": "now/d",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Generator today",
+      "description": "Whether the generator input showed voltage or frequency above 20 (gen_voltage, gen_frequency) at any sample today. There is no generator-energy counter, so generator energy is not counted in self-sufficiency; if it ran, self-sufficiency is overstated. Samples arrive every 1–2 min (sometimes 5) from the EG4 cloud, so a very short run can be missed.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 6,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"gen_voltage\" or r.name == \"gen_frequency\"))\n  |> group()\n  |> map(fn: (r) => ({_time: r._time, _value: if r._value > 20.0 then 1 else 0}))\n  |> max()\n  |> map(fn: (r) => ({\"Generator\": r._value}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Not seen",
+                  "color": "#0ca30c",
+                  "index": 0
+                },
+                "1": {
+                  "text": "Ran · not counted",
+                  "color": "#fab219",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "No data yet today"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "timeFrom": "now/d",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Solar ÷ consumption today",
+      "description": "Solar today ÷ consumption today (pv1_energy_today ÷ load_energy_today). Over 100% means solar exceeded what the house used; the surplus charged the battery or was curtailed. Low early in the day is normal. EG4 cloud data: a new sample only arrives when EG4 publishes (about every 1-2 min, sometimes 5).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 11,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"internal/debug\"\n\nfrom(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"pv1_energy_today\" or r.name == \"load_energy_today\"))\n  |> last()\n  |> group(columns: [\"name\"])\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({k: 1, name: r.name, _value: r._value}))\n  |> group()\n  |> pivot(rowKey: [\"k\"], columnKey: [\"name\"], valueColumn: \"_value\")\n  |> filter(fn: (r) => exists r.pv1_energy_today and exists r.load_energy_today)\n  |> map(fn: (r) => ({\"Solar / consumption\": if r.load_energy_today > 0.0 then 100.0 * r.pv1_energy_today / r.load_energy_today else debug.null(type: \"float\")}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "No data yet today"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "timeFrom": "now/d",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Data freshness",
+      "description": "Age of the newest EG4 sample. Fresh under 6 min, Delayed 6–10 min, Stale over 10 min. Data comes from the EG4 cloud, so 1–2 min (sometimes 5) between samples is normal.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 7,
+        "x": 17,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and r.name == \"soc\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({\n      _time: r._time,\n      \"Status\": float(v: int(v: now()) - int(v: r._time)) / 1000000000.0,\n      \"Last update\": int(v: r._time) / 1000000,\n    }))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No data in 7 days"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 0,
+                      "to": 360,
+                      "result": {
+                        "text": "Fresh",
+                        "color": "#0ca30c",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 360,
+                      "to": 600,
+                      "result": {
+                        "text": "Delayed",
+                        "color": "#fab219",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "range",
+                    "options": {
+                      "from": 600,
+                      "to": 1000000000000.0,
+                      "result": {
+                        "text": "Stale",
+                        "color": "#d03b3b",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last update"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Status": 0,
+              "Last update": 1,
+              "_time": 2
+            },
+            "excludeByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "timeFrom": "7d",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Lifetime (latest counter reading in the selected time range)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Solar · lifetime",
+      "description": "Lifetime solar yield, both MPPTs combined (pv1_energy_total; matches the portal's solar 'Total'). Latest reading in the selected time range. Shown to about 3 significant figures (kWh, or MWh above 1000 kWh).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 11
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and r.name == \"pv1_energy_total\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, \"Solar\": r._value}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#c98500"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No data in range"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Consumption · lifetime",
+      "description": "Lifetime energy used by the house via the backup (EPS) output (load_energy_total). Latest reading in the selected time range. Shown to about 3 significant figures (kWh, or MWh above 1000 kWh).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 11
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and r.name == \"load_energy_total\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({_time: r._time, \"Consumption\": r._value}))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No data in range"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Battery throughput · lifetime",
+      "description": "Lifetime energy charged into (charge_energy_total) and discharged from (discharge_energy_total) the battery, shown separately rather than summed. Latest reading in the selected time range. Shown to about 3 significant figures (kWh, or MWh above 1000 kWh).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 11
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"charge_energy_total\" or r.name == \"discharge_energy_total\"))\n  |> last()\n  |> group(columns: [\"name\"])\n  |> sort(columns: [\"_time\"])\n  |> last()\n  |> map(fn: (r) => ({k: 1, series: if r.name == \"charge_energy_total\" then \"Charged\" else \"Discharged\", _value: r._value}))\n  |> group()\n  |> pivot(rowKey: [\"k\"], columnKey: [\"series\"], valueColumn: \"_value\")\n  |> drop(columns: [\"k\"])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#199e70"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "No data in range"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Charged": 0,
+              "Discharged": 1
+            },
+            "excludeByName": {},
+            "renameByName": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "Daily",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "panels": []
+    },
+    {
+      "id": 15,
+      "type": "barchart",
+      "title": "Daily energy",
+      "description": "Solar vs consumption per local day (America/Los_Angeles): the day's highest reading of the daily counters pv1_energy_today (both MPPTs combined) and load_energy_today. The counters run from midnight, so a day is complete even if sampling started late. If a counter resets a little after midnight (inverter clock behind), the readings before the reset still hold yesterday's total and are ignored. Today is marked '(so far)'. Days with no samples are left out, not drawn as zero; history starts 8 May 2026 (install day; imported from the EG4 portal export). EG4 cloud data: a new sample only arrives when EG4 publishes (about every 1-2 min, sometimes 5).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"timezone\"\nimport \"date\"\n\nloc = timezone.location(name: \"America/Los_Angeles\")\nmonths = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"]\ntoday = date.truncate(t: now(), unit: 1d, location: loc)\n\n// Day total of a *_today counter = its highest reading that local day. If the counter drops\n// within 3 h after local midnight, that drop is its reset: earlier readings still carried\n// yesterday's total (inverter clock behind the server, e.g. no DST) and are ignored.\ndayTotal = (column, tables=<-) => tables\n  |> reduce(identity: {_value: 0.0, prev: -1.0}, fn: (r, accumulator) => {\n      // r._start is local midnight for every window except a partial first one at the range start\n      early = r._start != v.timeRangeStart and int(v: r._time) - int(v: r._start) < 10800000000000\n      restart = accumulator.prev < 0.0 or (early and r._value < accumulator.prev)\n      return {_value: if restart or r._value > accumulator._value then r._value else accumulator._value, prev: r._value}\n    })\n\nfrom(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"pv1_energy_today\" or r.name == \"load_energy_today\"))\n  |> group(columns: [\"name\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: 1d, fn: dayTotal, createEmpty: false, timeSrc: \"_start\", location: loc)\n  |> map(fn: (r) => {\n      d = date.truncate(t: r._time, unit: 1d, location: loc)\n      return {\n        _time: d,\n        _value: r._value,\n        series: if r.name == \"pv1_energy_today\" then \"Solar\" else \"Consumption\",\n        Day: months[date.month(t: d, location: loc) - 1] + \" \" + string(v: date.monthDay(t: d, location: loc)) + (if d == today then \" (so far)\" else \"\"),\n      }\n    })\n  |> group()\n  |> pivot(rowKey: [\"_time\", \"Day\"], columnKey: [\"series\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"Day\", \"Solar\", \"Consumption\"])"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Day": 0,
+              "Solar": 1,
+              "Consumption": 2
+            },
+            "excludeByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:kWh",
+          "decimals": 1,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 90,
+            "gradientMode": "none",
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Solar"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumption"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "xField": "Day",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100,
+        "showValue": "never",
+        "stacking": "none",
+        "groupWidth": 0.7,
+        "barWidth": 0.92,
+        "barRadius": 0,
+        "fullHighlight": false,
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "barchart",
+      "title": "Daily battery in / out",
+      "description": "Battery energy in vs out per local day (America/Los_Angeles): the day's highest reading of charge_energy_today and discharge_energy_today, ignoring pre-reset readings just after midnight. Today is marked '(so far)'. Days with no samples are left out, not drawn as zero; history starts 8 May 2026 (install day; imported from the EG4 portal export). EG4 cloud data: a new sample only arrives when EG4 publishes (about every 1-2 min, sometimes 5).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"timezone\"\nimport \"date\"\n\nloc = timezone.location(name: \"America/Los_Angeles\")\nmonths = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"]\ntoday = date.truncate(t: now(), unit: 1d, location: loc)\n\n// Day total of a *_today counter = its highest reading that local day. If the counter drops\n// within 3 h after local midnight, that drop is its reset: earlier readings still carried\n// yesterday's total (inverter clock behind the server, e.g. no DST) and are ignored.\ndayTotal = (column, tables=<-) => tables\n  |> reduce(identity: {_value: 0.0, prev: -1.0}, fn: (r, accumulator) => {\n      // r._start is local midnight for every window except a partial first one at the range start\n      early = r._start != v.timeRangeStart and int(v: r._time) - int(v: r._start) < 10800000000000\n      restart = accumulator.prev < 0.0 or (early and r._value < accumulator.prev)\n      return {_value: if restart or r._value > accumulator._value then r._value else accumulator._value, prev: r._value}\n    })\n\nfrom(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"charge_energy_today\" or r.name == \"discharge_energy_today\"))\n  |> group(columns: [\"name\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: 1d, fn: dayTotal, createEmpty: false, timeSrc: \"_start\", location: loc)\n  |> map(fn: (r) => {\n      d = date.truncate(t: r._time, unit: 1d, location: loc)\n      return {\n        _time: d,\n        _value: r._value,\n        series: if r.name == \"charge_energy_today\" then \"Charged\" else \"Discharged\",\n        Day: months[date.month(t: d, location: loc) - 1] + \" \" + string(v: date.monthDay(t: d, location: loc)) + (if d == today then \" (so far)\" else \"\"),\n      }\n    })\n  |> group()\n  |> pivot(rowKey: [\"_time\", \"Day\"], columnKey: [\"series\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"Day\", \"Charged\", \"Discharged\"])"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Day": 0,
+              "Charged": 1,
+              "Discharged": 2
+            },
+            "excludeByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:kWh",
+          "decimals": 1,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 90,
+            "gradientMode": "none",
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Charged"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Discharged"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "xField": "Day",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100,
+        "showValue": "never",
+        "stacking": "none",
+        "groupWidth": 0.7,
+        "barWidth": 0.92,
+        "barRadius": 0,
+        "fullHighlight": false,
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "Monthly",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "panels": []
+    },
+    {
+      "id": 18,
+      "type": "barchart",
+      "title": "Monthly energy · last 12 months",
+      "description": "Solar vs consumption per local calendar month: the change in the lifetime counters (pv1_energy_total, load_energy_total) from the previous month's month-end reading to this month's. The very first month with data starts from the counter at local midnight of its first sampled day and says so, e.g. 'May 2026 (from 8th)'; the current month is marked '(so far)'. Months with no samples are left out (a fully missing month's energy lands in the next month with data). Always the 12 previous months plus this month, whatever the dashboard time range. EG4 cloud data: a new sample only arrives when EG4 publishes (about every 1-2 min, sometimes 5).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 16,
+        "x": 0,
+        "y": 26
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"timezone\"\nimport \"date\"\n\nloc = timezone.location(name: \"America/Los_Angeles\")\nmonths = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"]\nthisMonth = date.truncate(t: now(), unit: 1mo, location: loc)\nshownFrom = date.truncate(t: v.timeRangeStart, unit: 1mo, location: loc)\n\n// One extra day before the range, so the first shown month is measured from the previous\n// month's last counter reading. Only the very first month with data needs a baseline.\nsrc = from(bucket: \"luxmon\")\n  |> range(start: date.sub(d: 1d, from: v.timeRangeStart), stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"pv1_energy_total\" or r.name == \"load_energy_total\" or r.name == \"pv1_energy_today\" or r.name == \"load_energy_today\"))\n\n// Lifetime counter at the end of each local calendar month (its highest = last reading).\nmonthEnd = src\n  |> filter(fn: (r) => r.name == \"pv1_energy_total\" or r.name == \"load_energy_total\")\n  |> group(columns: [\"name\"])\n  |> aggregateWindow(every: 1mo, fn: max, createEmpty: false, timeSrc: \"_start\", location: loc)\n  |> map(fn: (r) => ({_time: date.truncate(t: r._time, unit: 1mo, location: loc), _value: r._value, series: if r.name == \"pv1_energy_total\" then \"Solar\" else \"Consumption\"}))\n  |> group(columns: [\"series\"])\n\n// Baseline for the first month with data: the lifetime counter at local midnight of the first\n// sampled day (lifetime total minus that day's counter, from the first sample carrying both).\nfirstRow = src\n  |> limit(n: 60)\n  |> map(fn: (r) => ({_time: r._time, _value: r._value, series: if r.name =~ /^pv1_/ then \"Solar\" else \"Consumption\", kind: if r.name =~ /_total$/ then \"total\" else \"today\"}))\n  |> group(columns: [\"series\"])\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"kind\"], valueColumn: \"_value\")\n  |> filter(fn: (r) => exists r.total and exists r.today)\n  |> sort(columns: [\"_time\"])\n  |> first(column: \"total\")\n  |> map(fn: (r) => ({\n      series: r.series,\n      _time: date.sub(d: 1mo, from: date.truncate(t: r._time, unit: 1mo, location: loc)),\n      _value: r.total - r.today,\n      firstMonth: date.truncate(t: r._time, unit: 1mo, location: loc),\n      firstDay: date.monthDay(t: r._time, location: loc),\n    }))\n  |> group(columns: [\"series\"])\n\nenergy = union(tables: [firstRow |> keep(columns: [\"_time\", \"_value\", \"series\"]), monthEnd])\n  |> sort(columns: [\"_time\"])\n  |> difference(nonNegative: true)\n  |> filter(fn: (r) => r._time >= shownFrom)\n\njoin(tables: {e: energy, f: firstRow |> keep(columns: [\"series\", \"firstMonth\", \"firstDay\"])}, on: [\"series\"])\n  |> map(fn: (r) => {\n      partialStart = r._time == r.firstMonth and r.firstDay > 1\n      current = r._time == thisMonth\n      label = months[date.month(t: r._time, location: loc) - 1] + \" \" + string(v: date.year(t: r._time, location: loc))\n      startDay = string(v: r.firstDay) + (if r.firstDay >= 11 and r.firstDay <= 13 then \"th\" else if r.firstDay % 10 == 1 then \"st\" else if r.firstDay % 10 == 2 then \"nd\" else if r.firstDay % 10 == 3 then \"rd\" else \"th\")\n      suffix = if partialStart and current then \" (from \" + startDay + \", so far)\" else if partialStart then \" (from \" + startDay + \")\" else if current then \" (so far)\" else \"\"\n      return {_time: r._time, _value: r._value, series: r.series, Month: label + suffix}\n    })\n  |> group()\n  |> pivot(rowKey: [\"_time\", \"Month\"], columnKey: [\"series\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"Month\", \"Solar\", \"Consumption\"])"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Month": 0,
+              "Solar": 1,
+              "Consumption": 2
+            },
+            "excludeByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:kWh",
+          "decimals": 1,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 90,
+            "gradientMode": "none",
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Solar"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumption"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "xField": "Month",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "showValue": "never",
+        "stacking": "none",
+        "groupWidth": 0.7,
+        "barWidth": 0.92,
+        "barRadius": 0,
+        "fullHighlight": false,
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "timeFrom": "now-12M/M",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 19,
+      "type": "text",
+      "title": "About these numbers",
+      "description": "Definitions and data caveats for this dashboard.",
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 16,
+        "y": 26
+      },
+      "options": {
+        "mode": "markdown",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "**Source.** EG4 12000XP counters read from the EG4 cloud. A new sample arrives only when EG4 publishes (about every 1–2 min, sometimes 5 min); check *Data freshness* first.\n\n**Solar** is the combined yield of both MPPT inputs. The cloud has no per-string energy (it is stored as `pv1_energy_*`).\n\n**Consumption** is the inverter's backup (EPS) output, i.e. what the house used.\n\n**History starts 8 May 2026** (install day). Everything before 26 Sep 2026 18:26 was imported from the EG4 portal's data export (~4-min rows); later data is recorded live. Days or months without samples are left out, not drawn as zero. Today and this month are marked *(so far)*; the first month is marked with the day it starts on.\n\n**Self-sufficiency** cannot subtract generator energy because the cloud has no generator-energy counter; *Generator today* flags a day on which the generator was seen running (the percentage is then overstated)."
+      }
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Accumulated solar",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      }
+    },
+    {
+      "id": 21,
+      "type": "barchart",
+      "title": "Solar accumulated · lifetime total at each month end",
+      "description": "Total solar energy produced since install (8 May 2026), as the inverter's lifetime counter (both MPPTs; pv1_energy_total) at the end of each calendar month, America/Los_Angeles — the bars grow by one step per month. Consumption (load_energy_total) alongside for comparison; the gap is solar that went into the battery or was never needed. The current month is the latest reading, marked '(so far)'. Last 12 months, whatever the time picker says. For a continuous curve, use 'Running total · selected range' below with a range that starts before install.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 16,
+        "x": 0,
+        "y": 36
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"timezone\"\nimport \"date\"\n\nloc = timezone.location(name: \"America/Los_Angeles\")\nmonths = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"]\nthisMonth = date.truncate(t: now(), unit: 1mo, location: loc)\n\nfrom(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"pv1_energy_total\" or r.name == \"load_energy_total\"))\n  |> group(columns: [\"name\"])\n  |> aggregateWindow(every: 1mo, fn: max, createEmpty: false, timeSrc: \"_start\", location: loc)\n  |> map(fn: (r) => {\n      m = date.truncate(t: r._time, unit: 1mo, location: loc)\n      label = months[date.month(t: m, location: loc) - 1] + \" \" + string(v: date.year(t: m, location: loc))\n      return {_time: m, _value: r._value, series: if r.name == \"pv1_energy_total\" then \"Solar\" else \"Consumption\", Month: if m == thisMonth then label + \" (so far)\" else label}\n    })\n  |> group()\n  |> pivot(rowKey: [\"_time\", \"Month\"], columnKey: [\"series\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n  |> keep(columns: [\"Month\", \"Solar\", \"Consumption\"])\n"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Month": 0,
+              "Solar": 1,
+              "Consumption": 2
+            },
+            "excludeByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 90,
+            "gradientMode": "none",
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisGridShow": true,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Solar"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumption"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "xField": "Month",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "showValue": "never",
+        "stacking": "none",
+        "groupWidth": 0.7,
+        "barWidth": 0.92,
+        "barRadius": 0,
+        "fullHighlight": false,
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "timeFrom": "now-12M/M",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "Accumulated in selected range",
+      "description": "Solar produced and energy consumed within the time range chosen in the picker: the highest minus the lowest lifetime-counter reading in that range. Pick 'Last 7 days', 'This month so far' etc. For a range that starts before install day this is the full lifetime total.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 16,
+        "y": 36
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"pv1_energy_total\" or r.name == \"load_energy_total\"))\n  |> group(columns: [\"name\"])\n  |> spread()\n  |> map(fn: (r) => ({_value: r._value, series: if r.name == \"pv1_energy_total\" then \"Solar\" else \"Consumption\"}))\n  |> group()\n  |> pivot(rowKey: [], columnKey: [\"series\"], valueColumn: \"_value\")\n"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "Solar": 0,
+              "Consumption": 1
+            },
+            "excludeByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "mappings": [],
+          "noValue": "No data in range",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Solar"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumption"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Running total · selected range",
+      "description": "Solar produced (and energy consumed) since the start of the time range chosen in the picker, starting at 0 and ending at the 'Accumulated in selected range' figures. Useful for 'how much so far this week/month'. Flat stretches are nights; a steeper solar line means a sunnier day.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "lux-mon-flux"
+      },
+      "pluginVersion": "13.2.2",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "lux-mon-flux"
+          },
+          "query": "import \"timezone\"\n\nloc = timezone.location(name: \"America/Los_Angeles\")\ntotals = from(bucket: \"luxmon\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"luxmon_register\" and r._field == \"value\" and (r.name == \"pv1_energy_total\" or r.name == \"load_energy_total\"))\n  |> group(columns: [\"name\"])\n\n// Baseline = the lowest lifetime reading in the range, so the curve starts at 0 and ends\n// exactly at the 'accumulated in selected range' figure.\nbase = totals |> min() |> map(fn: (r) => ({name: r.name, base: r._value}))\n\njoin(tables: {t: totals |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false, location: loc), b: base}, on: [\"name\"])\n  |> map(fn: (r) => ({_time: r._time, _value: r._value - r.base, series: if r.name == \"pv1_energy_total\" then \"Solar\" else \"Consumption\"}))\n  |> group()\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"series\"], valueColumn: \"_value\")\n  |> sort(columns: [\"_time\"])\n"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "_time": 0,
+              "Solar": 1,
+              "Consumption": 2
+            },
+            "excludeByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#8a8f98"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 4,
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisSoftMin": 0,
+            "barAlignment": 0,
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Solar"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Consumption"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      }
+    }
+  ]
+}

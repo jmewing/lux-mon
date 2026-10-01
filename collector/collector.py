@@ -9,11 +9,15 @@ Supported transports:
     tcp_passive   - listen to a LuxPower/EG4 WiFi dongle broadcast stream
     tcp_active    - actively poll via the dongle's Modbus TCP gateway mode
     replay        - replay a captured binary file for offline testing
+    cloud_http    - read-only polling of the EG4 cloud portal (dongles that refuse local TCP)
 
 Supported output backends (can be enabled together):
     mariadb       - existing relational snapshots + hourly rollups
     influxdb      - SolarAssistant-compatible InfluxDB 1.x/2.x line protocol
     mqtt          - Home Assistant auto-discovery + raw state topic
+
+With an EG4 portal login configured, a background thread (collector.gapfill)
+also fills holes in the InfluxDB data from the EG4 data export.
 
 Future transports:
     rtu_serial    - Modbus RTU over RS485 (USB adapter)
@@ -39,6 +43,7 @@ from .outputs import Outputs, OutputConfig
 from .automation import AutomationEngine
 from .quick_charge import QuickChargeManager
 from .notifiers import Notifiers
+from .settings import DEFAULTS as SETTINGS_DEFAULTS
 
 
 def _env_or(key: str, default=None, cast=None):
@@ -66,7 +71,7 @@ class CollectorConfig:
     write_interval: int = 30  # seconds between storage writes
     replay_file: Optional[str] = None  # if set, replay a capture file instead of live TCP
 
-    # Transport selection. Options: tcp_passive, tcp_active, replay
+    # Transport selection. Options: tcp_passive, tcp_active, replay, cloud_http
     transport: str = "tcp_active"
 
     # Active polling settings (used by tcp_active)
@@ -77,6 +82,15 @@ class CollectorConfig:
     # Dongle/inverter serials (required for active polling)
     datalog_serial: str = ""
     inverter_serial: str = ""
+
+    # EG4 cloud portal (used by cloud_http). Env-only, never stored in the DB:
+    # the credentials must not reach lux_settings / the settings API, and the
+    # base URL must not be changeable through the unauthenticated API.
+    cloud_base_url: str = "https://monitor.eg4electronics.com"
+    cloud_username: str = field(default="", repr=False)
+    cloud_password: str = field(default="", repr=False)
+    cloud_poll_interval: float = 60.0  # seconds between runtime polls (min 30)
+    cloud_energy_interval: float = 300.0  # seconds between energy polls
 
     # Output backends (multiple can be enabled)
     outputs: OutputConfig = field(default_factory=OutputConfig)
@@ -100,6 +114,11 @@ def config_from_env() -> CollectorConfig:
         poll_register_count=_env_or("LUX_POLL_REG_COUNT", 40, int),
         datalog_serial=_env_or("LUX_DATALOG_SERIAL", ""),
         inverter_serial=_env_or("LUX_INVERTER_SERIAL", ""),
+        cloud_base_url=_env_or("LUX_CLOUD_BASE_URL", "https://monitor.eg4electronics.com"),
+        cloud_username=_env_or("LUX_CLOUD_USERNAME", ""),
+        cloud_password=_env_or("LUX_CLOUD_PASSWORD", ""),
+        cloud_poll_interval=_env_or("LUX_CLOUD_POLL_SEC", 60.0, float),
+        cloud_energy_interval=_env_or("LUX_CLOUD_ENERGY_SEC", 300.0, float),
         outputs=OutputConfig(
             # Legacy LUX_STORAGE_TYPE=influxdb maps to enabling InfluxDB
             mariadb_enabled=not (_env_or("LUX_STORAGE_TYPE") == "influxdb"),
@@ -129,7 +148,7 @@ def config_from_env() -> CollectorConfig:
             mqtt_ha_prefix=_env_or("LUX_MQTT_HA_PREFIX", "homeassistant"),
             mqtt_device_name=_env_or("LUX_MQTT_DEVICE_NAME", "luxmon"),
             mqtt_device_id=_env_or("LUX_MQTT_DEVICE_ID", "luxmon_solar"),
-            temperature_unit=_env_or("LUX_TEMPERATURE_UNIT", "celsius"),
+            temperature_unit=_env_or("LUX_TEMPERATURE_UNIT", SETTINGS_DEFAULTS["temperature_unit"]),
 
             alerts_enabled=_env_bool("LUX_ALERTS_ENABLED"),
             alerts_soc_low=_env_or("LUX_ALERTS_SOC_LOW", 20.0, float),
@@ -342,6 +361,41 @@ def _load_db_core_settings(cfg: CollectorConfig) -> None:
         logger.exception("Failed to load core settings from MariaDB")
 
 
+def _wait_for_db(cfg: CollectorConfig, timeout: float = 120.0) -> bool:
+    """Wait until MariaDB accepts connections, up to timeout seconds.
+
+    After a Docker Desktop restart every container starts at once (compose's
+    depends_on only applies to `compose up`), so the collector can come up
+    before MariaDB. Loading settings then silently falls back to environment
+    defaults (e.g. the temperature unit), so give the database time first.
+    """
+    import pymysql
+    deadline = time.monotonic() + timeout
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            pymysql.connect(
+                host=cfg.outputs.mariadb_host,
+                port=cfg.outputs.mariadb_port,
+                user=cfg.outputs.mariadb_user,
+                password=cfg.outputs.mariadb_password,
+                database=cfg.outputs.mariadb_database,
+                connect_timeout=5,
+            ).close()
+            if attempt > 1:
+                logger.info("MariaDB reachable after %d attempts", attempt)
+            return True
+        except Exception as exc:
+            if time.monotonic() >= deadline:
+                logger.error("MariaDB still unreachable after %.0f s (%s); starting with "
+                             "environment settings", timeout, exc)
+                return False
+            if attempt == 1:
+                logger.info("Waiting for MariaDB (%s)", exc)
+            time.sleep(3)
+
+
 def _seed_db_from_env(cfg: CollectorConfig) -> None:
     """Seed the DB settings table from environment variables (bootstrap).
 
@@ -409,6 +463,31 @@ def _create_transport(cfg: CollectorConfig, on_frame: Callable[[LuxFrame], None]
             batches=driver.batches,
         )
 
+    if transport == "cloud_http":
+        # Imported lazily so tcp_* installs never load the HTTP client.
+        from .comm.cloud_http import CloudHttpTransport
+        if not cfg.cloud_username or not cfg.cloud_password:
+            raise ValueError(
+                "LUX_CLOUD_USERNAME and LUX_CLOUD_PASSWORD are required "
+                "when transport=cloud_http"
+            )
+        if not cfg.inverter_serial:
+            raise ValueError(
+                "LUX_INVERTER_SERIAL (or the inverter_serial setting) is required "
+                "when transport=cloud_http"
+            )
+        # datalog_serial / dongle_host are not used: nothing talks to the dongle.
+        return CloudHttpTransport(
+            on_frame,
+            base_url=cfg.cloud_base_url,
+            username=cfg.cloud_username,
+            password=cfg.cloud_password,
+            inverter_serial=cfg.inverter_serial,
+            model=driver.name,
+            poll_interval=cfg.cloud_poll_interval,
+            energy_interval=cfg.cloud_energy_interval,
+        )
+
     raise ValueError(f"Unknown transport: {cfg.transport}")
 
 
@@ -434,6 +513,15 @@ class PassiveCollector:
         self._config_fingerprint: Optional[str] = None
         self._loaded_restart_values: Dict[str, str] = {}
         self._last_forecast_refresh = 0.0
+        # data_seq of the last written snapshot (transports that expose one).
+        self._last_written_seq: Optional[int] = None
+        # Upload time (data_time) and inverter serial of the last written
+        # gated snapshot: the hourly energy interval and the re-delivery check.
+        self._last_data_time: Optional[float] = None
+        self._last_data_serial: Optional[str] = None
+        self._dongle_io_notice_logged = False
+        # Background gap-filler (collector.gapfill.GapFillThread), if running.
+        self._gapfill = None
 
         # Register handler for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -505,9 +593,13 @@ class PassiveCollector:
     def _reload_config(self) -> None:
         """Re-apply DB settings to self.cfg and rebuild outputs + transport in place."""
         logger.info("Config change detected; reloading settings from MariaDB")
+        previous_unit = self.cfg.outputs.temperature_unit
         _load_db_serials(self.cfg)
         _load_db_output_settings(self.cfg)
         _load_db_core_settings(self.cfg)
+        if self.cfg.outputs.temperature_unit != previous_unit:
+            logger.warning("Temperature unit changed from %s to %s: temperature series get a new unit tag",
+                           previous_unit, self.cfg.outputs.temperature_unit)
 
         # Rebuild outputs (closes old backends, opens new ones).
         if self._outputs:
@@ -526,8 +618,14 @@ class PassiveCollector:
                 logger.exception("Failed to stop old transport")
         self._transport = _create_transport(self.cfg, self._handle_frame, self.driver)
         self._transport.start()
-        logger.info("Config reloaded: transport=%s, %s:%d",
-                    self.cfg.transport, self.cfg.dongle_host, self.cfg.dongle_port)
+        # The new transport starts at data_seq 0: nothing is written until it delivers.
+        self._last_written_seq = None
+        if self.cfg.transport.lower() == "cloud_http":
+            logger.info("Config reloaded: transport=%s, %s",
+                        self.cfg.transport, self.cfg.cloud_base_url)
+        else:
+            logger.info("Config reloaded: transport=%s, %s:%d",
+                        self.cfg.transport, self.cfg.dongle_host, self.cfg.dongle_port)
 
     def _check_config_change(self) -> None:
         """Compare the current DB config fingerprint against the loaded one.
@@ -572,6 +670,9 @@ class PassiveCollector:
         if self.cfg.replay_file:
             logger.info("Starting lux-mon collector (transport=replay, file=%s)",
                         self.cfg.replay_file)
+        elif self.cfg.transport.lower() == "cloud_http":
+            logger.info("Starting lux-mon collector (transport=cloud_http, %s)",
+                        self.cfg.cloud_base_url)
         else:
             logger.info("Starting lux-mon collector (transport=%s, %s:%d)",
                         self.cfg.transport, self.cfg.dongle_host, self.cfg.dongle_port)
@@ -613,9 +714,54 @@ class PassiveCollector:
             k: self._read_db_settings().get(k, "") for k in self._RESTART_KEYS
         }
 
+        self._start_gapfill()
+
+    def _start_gapfill(self) -> None:
+        """Start the background gap-filler (collector.gapfill) when it can run.
+
+        It fills holes in the live InfluxDB data from the EG4 data export, in
+        its own thread with its own portal session, and writes InfluxDB only
+        (never MariaDB, MQTT, alerts or the hourly rollups). Needs the EG4
+        login (LUX_CLOUD_USERNAME/PASSWORD); off with LUX_GAPFILL_ENABLED=false
+        and for the replay transport. A failure here never stops the collector.
+        """
+        try:
+            # Imported lazily: collector.gapfill imports this module.
+            from .gapfill import GapFillThread, gapfill_disabled_reason, settings_from_env
+            settings = settings_from_env()
+            reason = gapfill_disabled_reason(self.cfg, settings)
+            if reason:
+                logger.info("Automatic gap-filling off: %s", reason)
+                return
+            self._gapfill = GapFillThread(self.cfg, model=self.driver.name, settings=settings,
+                                          portal_blocked=self._gapfill_portal_blocked)
+            self._gapfill.start()
+        except Exception:
+            logger.exception("Could not start automatic gap-filling")
+
+    def _gapfill_portal_blocked(self) -> Optional[str]:
+        """Why the gap-filler should not log in to the EG4 portal now, else None.
+
+        Reads the live transport's stats only: while the portal keeps
+        rejecting the live login, a second login would just add rejections.
+        """
+        transport = self._transport
+        if transport is None:
+            return None
+        try:
+            stats = transport.stats()
+        except Exception:
+            return None
+        if isinstance(stats, dict) and stats.get("auth_failed"):
+            return "the live EG4 cloud transport's login is being rejected"
+        return None
+
     def stop(self) -> None:
         """Signal the collector to stop and release resources."""
         self._stop.set()
+        gapfill = getattr(self, "_gapfill", None)
+        if gapfill:
+            gapfill.stop()
         if self._transport:
             self._transport.stop()
         if self._outputs:
@@ -654,65 +800,161 @@ class PassiveCollector:
         while not self._stop.wait(self.cfg.write_interval):
             # Detect live config changes (DB-authoritative) and re-apply.
             self._check_config_change()
-
-            if not self._latest_input_raw:
-                logger.warning("No input data received yet, skipping write")
-                continue
-
-            if 4 not in self._latest_input_raw:
-                logger.warning("Input register batch incomplete, skipping write")
-                continue
-
-            try:
-                self._latest_decoded = self.driver.decode(self._latest_input_raw)
-                self._clamp_values(self._latest_decoded)
-                if self._outputs:
-                    self._outputs.write(self._latest_decoded, self._latest_input_raw)
-                    self._outputs.evaluate_alerts(self._latest_decoded)
-                self._last_write = time.time()
-
-                # Check for an expired quick charge and restore the prior value.
-                if self._quick_charge and self.cfg.datalog_serial and self.cfg.inverter_serial:
-                    try:
-                        result = self._quick_charge.tick(
-                            dongle_host=self.cfg.dongle_host,
-                            dongle_port=self.cfg.dongle_port,
-                            datalog_serial=self.cfg.datalog_serial,
-                            inverter_serial=self.cfg.inverter_serial,
-                        )
-                        if result:
-                            logger.info("Quick charge tick: %s", result)
-                    except Exception:
-                        logger.exception("Quick charge tick failed")
-
-                # Evaluate automations after quick charge (automations stay active).
-                if self._automation and self.cfg.datalog_serial and self.cfg.inverter_serial:
-                    try:
-                        tz = _load_db_setting("timezone", self.cfg) or "America/Chicago"
-                        self._automation.evaluate_and_apply(
-                            snapshot=self._latest_decoded,
-                            dongle_host=self.cfg.dongle_host,
-                            dongle_port=self.cfg.dongle_port,
-                            datalog_serial=self.cfg.datalog_serial,
-                            inverter_serial=self.cfg.inverter_serial,
-                            timezone=tz,
-                        )
-                    except Exception:
-                        logger.exception("Automation evaluation failed")
-
-                if self._on_snapshot:
-                    try:
-                        self._on_snapshot(self._latest_decoded)
-                    except Exception:
-                        logger.exception("Snapshot callback failed")
-
-                # Periodic solar forecast refresh (Option A).
-                self._maybe_refresh_forecast()
-
-            except Exception:
-                logger.exception("Failed to write snapshot")
+            self._write_once()
 
         logger.info("Writer loop exiting")
+
+    def _write_once(self) -> None:
+        """One writer tick: decode the latest registers and write a snapshot.
+
+        Transports that expose ``data_seq`` (cloud_http) deliver new data only
+        occasionally: for them a snapshot is written once per new delivery,
+        using only the registers the transport still reports
+        (``live_registers``), so stale values are never re-stored as fresh.
+        Other transports keep the write-every-tick behaviour.
+        """
+        if not self._latest_input_raw:
+            logger.warning("No input data received yet, skipping write")
+            return
+
+        transport = self._transport
+        seq = getattr(transport, "data_seq", None)
+        interval_sec: Optional[float] = None
+        source_meta: Optional[dict] = None
+        data_time: Optional[float] = None
+        data_serial: Optional[str] = None
+        if seq is None:
+            raw = self._latest_input_raw
+            suppressed = getattr(transport, "suppressed_fields", None) or ()
+        else:
+            # Snapshot under the transport's emit lock so one write never
+            # mixes registers from two poll cycles.
+            with transport.emit_lock:
+                seq = transport.data_seq
+                live = transport.live_registers
+                raw = {r: v for r, v in list(self._latest_input_raw.items()) if r in live}
+                source_meta = transport.source_meta()
+                suppressed = frozenset(getattr(transport, "suppressed_fields", None) or ())
+                data_time = getattr(transport, "data_time", None)
+            data_serial = getattr(transport, "inverter_serial", None)
+            if seq == 0 or seq == self._last_written_seq:
+                logger.debug("No new cloud data (seq %s), skipping write", seq)
+                return
+            if (data_time is not None and self._last_data_time is not None
+                    and data_serial == self._last_data_serial and data_time <= self._last_data_time):
+                # The same (or an older) upload delivered again, e.g. by the
+                # new transport after a config reload: already written.
+                logger.debug("Cloud upload already written (seq %s), skipping write", seq)
+                self._last_written_seq = seq
+                return
+
+        if 4 not in raw:
+            logger.warning("Input register batch incomplete, skipping write")
+            return
+
+        try:
+            decoded = self.driver.decode(raw)
+            # Fields the transport cannot know (e.g. SOH without battery
+            # modules) are dropped rather than published as a fake 0.
+            for name in suppressed:
+                decoded.pop(name, None)
+            self._clamp_values(decoded)
+            self._latest_decoded = decoded
+            now = time.time()
+            if seq is not None:
+                interval_sec = self._gated_interval(now, data_time, data_serial, transport)
+            try:
+                if self._outputs:
+                    self._outputs.write(self._latest_decoded, raw,
+                                        interval_sec=interval_sec, source_meta=source_meta)
+            finally:
+                # Once a write was attempted the delivery is consumed: a
+                # failure after the MariaDB insert (e.g. MQTT publish) must
+                # not store the same upload again on every tick.
+                self._last_write = now
+                if seq is not None:
+                    self._last_written_seq = seq
+                    self._last_data_time = data_time
+                    self._last_data_serial = data_serial
+            if self._outputs:
+                try:
+                    self._outputs.evaluate_alerts(self._latest_decoded)
+                except Exception:
+                    logger.exception("Alert evaluation failed")
+
+            # Quick charge and automations write holding registers through the
+            # dongle; cloud_http has no local dongle access (and is read-only).
+            dongle_io = self.cfg.transport.lower() != "cloud_http"
+            if not dongle_io and not self._dongle_io_notice_logged:
+                logger.info("transport=cloud_http: quick-charge and automation ticks "
+                            "disabled (no local dongle access)")
+                self._dongle_io_notice_logged = True
+
+            # Check for an expired quick charge and restore the prior value.
+            if dongle_io and self._quick_charge and self.cfg.datalog_serial and self.cfg.inverter_serial:
+                try:
+                    result = self._quick_charge.tick(
+                        dongle_host=self.cfg.dongle_host,
+                        dongle_port=self.cfg.dongle_port,
+                        datalog_serial=self.cfg.datalog_serial,
+                        inverter_serial=self.cfg.inverter_serial,
+                    )
+                    if result:
+                        logger.info("Quick charge tick: %s", result)
+                except Exception:
+                    logger.exception("Quick charge tick failed")
+
+            # Evaluate automations after quick charge (automations stay active).
+            if dongle_io and self._automation and self.cfg.datalog_serial and self.cfg.inverter_serial:
+                try:
+                    tz = _load_db_setting("timezone", self.cfg) or "America/Chicago"
+                    self._automation.evaluate_and_apply(
+                        snapshot=self._latest_decoded,
+                        dongle_host=self.cfg.dongle_host,
+                        dongle_port=self.cfg.dongle_port,
+                        datalog_serial=self.cfg.datalog_serial,
+                        inverter_serial=self.cfg.inverter_serial,
+                        timezone=tz,
+                    )
+                except Exception:
+                    logger.exception("Automation evaluation failed")
+
+            if self._on_snapshot:
+                try:
+                    self._on_snapshot(self._latest_decoded)
+                except Exception:
+                    logger.exception("Snapshot callback failed")
+
+            # Periodic solar forecast refresh (Option A).
+            self._maybe_refresh_forecast()
+
+        except Exception:
+            logger.exception("Failed to write snapshot")
+
+    # Longest time one gated (cloud) snapshot may stand for in the hourly
+    # energy rollup: a longer gap between uploads is an outage, not a
+    # long-lived reading.
+    _GATED_INTERVAL_CAP_SEC = 900.0
+
+    def _gated_interval(self, now: float, data_time: Optional[float],
+                        data_serial: Optional[str], transport) -> float:
+        """Seconds a gated snapshot represents in the hourly energy rollup.
+
+        Normally the gap between the portal upload times (serverTime) of this
+        and the previously written snapshot, so the rollup covers the whole
+        time between uploads however far apart they are. Falls back to the
+        time since the last write, and for the first write to the
+        transport's effective (clamped) poll interval. Capped at
+        _GATED_INTERVAL_CAP_SEC.
+        """
+        if (data_time is not None and self._last_data_time is not None
+                and data_serial == self._last_data_serial):
+            gap = data_time - self._last_data_time
+        elif self._last_write:
+            gap = now - self._last_write
+        else:
+            gap = float(getattr(transport, "poll_interval", None) or self.cfg.cloud_poll_interval)
+        return min(max(gap, 0.0), self._GATED_INTERVAL_CAP_SEC)
 
     def _maybe_refresh_forecast(self) -> None:
         """Refresh the solar forecast on a configurable interval.
@@ -790,18 +1032,8 @@ class PassiveCollector:
     }
 
     def _clamp_values(self, decoded: dict) -> None:
-        """Clamp decoded values to physical sanity limits in-place."""
-        for key, limit in self._SANITY_LIMITS.items():
-            if key in decoded:
-                val = decoded[key]["value"]
-                if val < 0 and key not in self._SIGNED_FIELDS:
-                    decoded[key]["value"] = 0.0
-                elif val > limit:
-                    logger.warning(
-                        "Clamping %s: %.0f → %.0f (limit %.0f)",
-                        key, val, limit, limit,
-                    )
-                    decoded[key]["value"] = limit
+        """Clamp decoded values to physical sanity limits in-place (see clamp_values)."""
+        clamp_values(decoded, self.driver)
 
     @property
     def stats(self) -> dict:
@@ -813,6 +1045,30 @@ class PassiveCollector:
             "input_registers_known": len(self._latest_input_raw),
             "hold_registers_known": len(self._latest_hold_raw),
         }
+
+
+def clamp_values(decoded: dict, driver: Optional[ModelDriver] = None) -> None:
+    """Clamp decoded values to physical sanity limits in-place.
+
+    The defaults (PassiveCollector._SANITY_LIMITS) are sized for the 6000XP;
+    a driver may override or extend them via ``ModelDriver.sanity_limits``
+    (e.g. the larger 12000XP). Shared by the writer and collector.backfill.
+    """
+    limits = PassiveCollector._SANITY_LIMITS
+    extra = getattr(driver, "sanity_limits", None)
+    if extra:
+        limits = {**limits, **extra}
+    for key, limit in limits.items():
+        if key in decoded:
+            val = decoded[key]["value"]
+            if val < 0 and key not in PassiveCollector._SIGNED_FIELDS:
+                decoded[key]["value"] = 0.0
+            elif val > limit:
+                logger.warning(
+                    "Clamping %s: %.0f → %.0f (limit %.0f)",
+                    key, val, limit, limit,
+                )
+                decoded[key]["value"] = limit
 
 
 def run_collector(
@@ -837,6 +1093,8 @@ def run_collector(
 
     # Seed the DB from environment (bootstrap) so the DB-authoritative
     # collector reads the correct container-internal values + secrets.
+    if cfg.outputs.mariadb_enabled:
+        _wait_for_db(cfg)
     _seed_db_from_env(cfg)
 
     # Fill serials and output settings from DB (DB is authoritative).
@@ -851,6 +1109,8 @@ def run_collector(
         logger.warning(
             "LUX_POLL_MODE=true is deprecated; set LUX_TRANSPORT=tcp_active instead"
         )
+
+    logger.info("Temperatures written in %s", cfg.outputs.temperature_unit)
 
     inverter_model = _load_db_setting("inverter_model", cfg) or _env_or("LUX_INVERTER_MODEL") or DEFAULT_MODEL
     try:
