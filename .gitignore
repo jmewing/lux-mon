@@ -55,3 +55,10 @@ collector/qc_trigger_test.py
 
 # RS-485 BMS reference captures (large, not needed in-repo)
 captures/
+
+# Local operator scripts + logs that may embed dongle/inverter serials or LAN IPs.
+# NEVER commit these (public repo — serials cannot be rotated). Added 2026-10-06.
+/bin/luxctl.py
+/bin/smart-load.py
+smart-load.log
+smart-load-cron.log
