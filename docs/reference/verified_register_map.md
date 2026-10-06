@@ -163,3 +163,41 @@ The cloud sends Modbus writes to the dongle as the task progresses (WAIT_CHARGE 
 | 168 | 100 | AC charge battery current 100A |
 | 177 | 5000 | Max generator input 5000W |
 | 234 | 55 | Quick charge remaining minutes |
+
+## Smart Load toggle — VERIFIED 2026-09-26 (live differential capture)
+
+**Register 179 (`function_enable_4`), bit 13 = Smart Load enable.**
+
+Captured live off-vs-on delta (single before/after sweep of holding 0..255):
+
+| State | reg 179 value | hex | bit 13 |
+|---|---|---|---|
+| OFF | 53504 | 0xD100 | 0 |
+| ON  | 61696 | 0xF100 | 1 |
+
+Delta = 8192 = 2^13 — a single bit. No other holding register changed.
+
+Note: the "function_enable" bitfield register numbers in this file are grouped by
+the inverter's firmware blocks, NOT by logical function. Smart Load enable sits in
+**reg 179 bit 13**, not in reg 21 or 233. Do not assume the EG4 `functionParam`
+doc order.
+
+Manual control (lux-mon down; direct dongle):
+- enable:  write reg 179 = (current | 8192)
+- disable: write reg 179 = (current & ~8192)
+
+Tool: `/srv/lux-mon/bin/luxctl.py` (persistent connection; SINGLE pass, then release
+— the dongle tolerates only light traffic and Solar Assistant shares it).
+
+## Smart Load threshold registers (_12K_HOLD_*, verified live 2026-09-26)
+
+| lux-mon name | reg | live value |
+|---|---|---|
+| smart_load_on_voltage | 213 | 520 (52.0 V) |
+| smart_load_off_voltage | 214 | 400 (40.0 V) |
+| smart_load_on_soc | 215 | 90 % |
+| smart_load_off_soc | 216 | 30 % |
+
+## OPS: dongle is shared with Solar Assistant
+Do NOT poll in a tight loop. One full sweep then release. `luxctl.py snapshot`
+reads once and closes the socket. Solar Assistant and lux-mon both need this dongle.
